@@ -8,10 +8,14 @@ _ALIASES = {
     "monitor": {"monitor", "monitoring", "current_monitoring_state"},
 }
 
+# Live exposes input + output routing on all track types (return/master can take
+# external input and route output to hardware). Only input monitoring is
+# regular-track-only -- return/master raise "no monitoring state" on access.
+_ROUTING = {"input_type", "input_channel", "output_type", "output_channel"}
 _SUPPORTED = {
-    "regular": {"input_type", "input_channel", "output_type", "output_channel", "monitor"},
-    "return": {"output_type", "output_channel"},
-    "master": {"output_type", "output_channel"},
+    "regular": _ROUTING | {"monitor"},
+    "return": set(_ROUTING),
+    "master": set(_ROUTING),
 }
 
 

@@ -29,18 +29,19 @@ def test_validate_regular_all():
         validate_routing_property("regular", p)
 
 
-def test_validate_return_output_only():
-    validate_routing_property("return", "output_type")
-    with pytest.raises(ValueError):
-        validate_routing_property("return", "input_type")
+def test_validate_return_routing_but_no_monitor():
+    # Live exposes input + output routing on return tracks; only monitor is absent.
+    for p in ("input_type", "input_channel", "output_type", "output_channel"):
+        validate_routing_property("return", p)
     with pytest.raises(ValueError):
         validate_routing_property("return", "monitor")
 
 
-def test_validate_master_output_only():
-    validate_routing_property("master", "output_channel")
+def test_validate_master_routing_but_no_monitor():
+    for p in ("input_type", "input_channel", "output_type", "output_channel"):
+        validate_routing_property("master", p)
     with pytest.raises(ValueError):
-        validate_routing_property("master", "input_type")
+        validate_routing_property("master", "monitor")
 
 
 def test_resolve_by_display_name():
