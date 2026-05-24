@@ -230,7 +230,7 @@ class AbletonMCP(ControlSurface):
                                  "create_clip", "add_notes_to_clip", "set_clip_name",
                                  "set_tempo", "fire_clip", "stop_clip",
                                  "start_playback", "stop_playback", "load_browser_item",
-                                 "set_device_parameter"]:
+                                 "set_device_parameter", "set_mixer_property"]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
                 
@@ -290,6 +290,14 @@ class AbletonMCP(ControlSurface):
                             value = params.get("value", 0.0)
                             result = self._set_device_parameter(
                                 track_index, device_index, parameter_index, value)
+                        elif command_type == "set_mixer_property":
+                            track_index = params.get("track_index", 0)
+                            track_type = params.get("track_type", "regular")
+                            prop = params.get("property", "")
+                            value = params.get("value", 0.0)
+                            send_index = params.get("send_index", -1)
+                            result = self._set_mixer_property(
+                                track_index, track_type, prop, value, send_index)
 
                         # Put the result in the queue
                         response_queue.put({"status": "success", "result": result})
@@ -338,6 +346,10 @@ class AbletonMCP(ControlSurface):
                 track_index = params.get("track_index", 0)
                 device_index = params.get("device_index", 0)
                 response["result"] = self._get_device_parameters(track_index, device_index)
+            elif command_type == "get_mixer":
+                track_index = params.get("track_index", 0)
+                track_type = params.get("track_type", "regular")
+                response["result"] = self._get_mixer(track_index, track_type)
             else:
                 response["status"] = "error"
                 response["message"] = "Unknown command: " + command_type
@@ -425,6 +437,97 @@ class AbletonMCP(ControlSurface):
         except Exception as e:
             self.log_message("Error getting track info: " + str(e))
             raise
+
+    def _resolve_track(self, track_index, track_type):
+        """Return the Live track object for a (track_index, track_type)."""
+        if track_type == "master":
+            return self._song.master_track
+        if track_type == "return":
+            tracks = self._song.return_tracks
+        elif track_type == "regular":
+            tracks = self._song.tracks
+        else:
+            raise ValueError("Unknown track_type: " + str(track_type))
+        if track_index < 0 or track_index >= len(tracks):
+            raise IndexError("Track index out of range for " + track_type)
+        return tracks[track_index]
+
+    def _param_dict(self, p):
+        return {"value": p.value, "min": p.min, "max": p.max}
+
+    def _get_mixer(self, track_index, track_type):
+        """Read mixer state for a regular/return/master track."""
+        track = self._resolve_track(track_index, track_type)
+        md = track.mixer_device
+        result = {
+            "track_type": track_type,
+            "track_index": track_index,
+            "name": track.name,
+            "volume": self._param_dict(md.volume),
+            "panning": self._param_dict(md.panning),
+        }
+        # mute/solo: regular + return; arm: regular only; none on master.
+        if track_type in ("regular", "return"):
+            result["mute"] = track.mute
+            result["solo"] = track.solo
+            result["crossfade_assign"] = md.crossfade_assign
+        if track_type == "regular":
+            result["arm"] = track.arm
+        # sends: regular + return, parallel to return_tracks.
+        if track_type in ("regular", "return"):
+            sends = []
+            for i, send in enumerate(md.sends):
+                if i < len(self._song.return_tracks):
+                    return_name = self._song.return_tracks[i].name
+                else:
+                    return_name = ""
+                d = self._param_dict(send)
+                d["index"] = i
+                d["return_name"] = return_name
+                sends.append(d)
+            result["sends"] = sends
+        return result
+
+    def _clamp_param(self, param, value):
+        v = float(value)
+        if v < param.min:
+            v = param.min
+        if v > param.max:
+            v = param.max
+        param.value = v
+        return param.value
+
+    def _set_mixer_property(self, track_index, track_type, prop, value, send_index):
+        """Set one mixer property. `prop` is a canonical name (server
+        normalizes/validates via mixer_utils before sending)."""
+        track = self._resolve_track(track_index, track_type)
+        md = track.mixer_device
+        out = {"track_type": track_type, "track_index": track_index, "property": prop}
+
+        if prop == "volume":
+            out["value"] = self._clamp_param(md.volume, value)
+        elif prop == "pan":
+            out["value"] = self._clamp_param(md.panning, value)
+        elif prop == "send":
+            if send_index < 0 or send_index >= len(md.sends):
+                raise IndexError("send_index out of range")
+            out["value"] = self._clamp_param(md.sends[send_index], value)
+            out["send_index"] = send_index
+        elif prop == "mute":
+            track.mute = bool(value)
+            out["value"] = track.mute
+        elif prop == "solo":
+            track.solo = bool(value)
+            out["value"] = track.solo
+        elif prop == "arm":
+            track.arm = bool(value)
+            out["value"] = track.arm
+        elif prop == "crossfade_assign":
+            md.crossfade_assign = int(value)
+            out["value"] = md.crossfade_assign
+        else:
+            raise ValueError("Unsupported mixer property: " + str(prop))
+        return out
 
     def _get_device_parameters(self, track_index, device_index):
         """List all automatable parameters of a device on a track."""
