@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, List, Union
 
+from ableton_mcp_max.param_utils import resolve_parameter_index
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -283,6 +285,69 @@ def get_track_info(ctx: Context, track_index: int) -> str:
     except Exception as e:
         logger.error(f"Error getting track info from Ableton: {str(e)}")
         return f"Error getting track info: {str(e)}"
+
+@mcp.tool()
+def get_device_parameters(ctx: Context, track_index: int, device_index: int) -> str:
+    """
+    List all automatable parameters of a device on a track, with current
+    value, min, max, whether it's quantized, and (for quantized params) the
+    list of selectable value items.
+
+    Parameters:
+    - track_index: index of the track
+    - device_index: index of the device on that track (0 = first device)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "get_device_parameters",
+            {"track_index": track_index, "device_index": device_index},
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting device parameters: {str(e)}")
+        return f"Error getting device parameters: {str(e)}"
+
+@mcp.tool()
+def set_device_parameter(
+    ctx: Context,
+    track_index: int,
+    device_index: int,
+    parameter: Union[int, str],
+    value: float,
+) -> str:
+    """
+    Set a single device/instrument parameter.
+
+    Parameters:
+    - track_index: index of the track
+    - device_index: index of the device on that track
+    - parameter: parameter index (int) OR parameter name (str, case-insensitive)
+    - value: target value (clamped to the parameter's min/max). For quantized
+      parameters, pass the integer index of the desired value item.
+    """
+    try:
+        ableton = get_ableton_connection()
+        # Fetch the parameter list to resolve name->index and validate.
+        info = ableton.send_command(
+            "get_device_parameters",
+            {"track_index": track_index, "device_index": device_index},
+        )
+        params = info.get("parameters", [])
+        idx = resolve_parameter_index(params, parameter)
+        result = ableton.send_command(
+            "set_device_parameter",
+            {
+                "track_index": track_index,
+                "device_index": device_index,
+                "parameter_index": idx,
+                "value": value,
+            },
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting device parameter: {str(e)}")
+        return f"Error setting device parameter: {str(e)}"
 
 @mcp.tool()
 def create_midi_track(ctx: Context, index: int = -1) -> str:
