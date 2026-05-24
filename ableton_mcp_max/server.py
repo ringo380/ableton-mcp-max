@@ -9,6 +9,10 @@ from typing import AsyncIterator, Dict, Any, List, Union
 
 from ableton_mcp_max.param_utils import resolve_parameter_index
 from ableton_mcp_max.mixer_utils import normalize_property, validate_property
+from ableton_mcp_max.routing_utils import (
+    normalize_routing_property,
+    validate_routing_property,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -412,6 +416,67 @@ def set_mixer_property(
     except Exception as e:
         logger.error(f"Error setting mixer property: {str(e)}")
         return f"Error setting mixer property: {str(e)}"
+
+@mcp.tool()
+def get_routing(ctx: Context, track_index: int, track_type: str = "regular") -> str:
+    """
+    Read input/output routing and input monitoring for a track. Each routing
+    endpoint reports its current value and the list of available choices.
+    Fields are present only where the track type supports them (return/master
+    expose output routing only; no input or monitoring).
+
+    Parameters:
+    - track_index: index of the track (ignored for master; pass 0)
+    - track_type: "regular" (default), "return", or "master"
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "get_routing",
+            {"track_index": track_index, "track_type": track_type},
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting routing: {str(e)}")
+        return f"Error getting routing: {str(e)}"
+
+@mcp.tool()
+def set_routing(
+    ctx: Context,
+    track_index: int,
+    property: str,
+    value: Union[int, str],
+    track_type: str = "regular",
+) -> str:
+    """
+    Set an input/output routing endpoint or input monitoring on a track.
+
+    Parameters:
+    - track_index: index of the track (ignored for master; pass 0)
+    - property: input_type, input_channel, output_type, output_channel, or monitor
+    - value: for routing props, the target's display_name (str, case-insensitive)
+      or integer identifier (see get_routing for available choices); for monitor,
+      an int (0=In, 1=Auto, 2=Off)
+    - track_type: "regular" (default), "return", or "master"
+      (return/master support output_type/output_channel only)
+    """
+    try:
+        canonical = normalize_routing_property(property)
+        validate_routing_property(track_type, canonical)
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "set_routing",
+            {
+                "track_index": track_index,
+                "track_type": track_type,
+                "property": canonical,
+                "value": value,
+            },
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting routing: {str(e)}")
+        return f"Error setting routing: {str(e)}"
 
 @mcp.tool()
 def create_midi_track(ctx: Context, index: int = -1) -> str:
