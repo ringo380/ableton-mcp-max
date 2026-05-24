@@ -326,6 +326,10 @@ class AbletonMCP(ControlSurface):
             elif command_type == "get_browser_items_at_path":
                 path = params.get("path", "")
                 response["result"] = self.get_browser_items_at_path(path)
+            elif command_type == "get_device_parameters":
+                track_index = params.get("track_index", 0)
+                device_index = params.get("device_index", 0)
+                response["result"] = self._get_device_parameters(track_index, device_index)
             else:
                 response["status"] = "error"
                 response["message"] = "Unknown command: " + command_type
@@ -413,7 +417,42 @@ class AbletonMCP(ControlSurface):
         except Exception as e:
             self.log_message("Error getting track info: " + str(e))
             raise
-    
+
+    def _get_device_parameters(self, track_index, device_index):
+        """List all automatable parameters of a device on a track."""
+        if track_index < 0 or track_index >= len(self._song.tracks):
+            raise IndexError("Track index out of range")
+        track = self._song.tracks[track_index]
+        if device_index < 0 or device_index >= len(track.devices):
+            raise IndexError("Device index out of range")
+        device = track.devices[device_index]
+
+        parameters = []
+        for p_index, param in enumerate(device.parameters):
+            info = {
+                "index": p_index,
+                "name": param.name,
+                "value": param.value,
+                "min": param.min,
+                "max": param.max,
+                "is_quantized": param.is_quantized,
+                "is_enabled": param.is_enabled,
+            }
+            if param.is_quantized and hasattr(param, "value_items"):
+                try:
+                    info["value_items"] = [str(v) for v in param.value_items]
+                except Exception:
+                    pass
+            parameters.append(info)
+
+        return {
+            "track_index": track_index,
+            "device_index": device_index,
+            "device_name": device.name,
+            "parameter_count": len(parameters),
+            "parameters": parameters,
+        }
+
     def _create_midi_track(self, index):
         """Create a new MIDI track at the specified index"""
         try:
