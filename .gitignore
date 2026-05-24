@@ -5,6 +5,7 @@ CLAUDE.md
 memory/
 .browser-pilot/
 .plugin-config/
+.claude-dev-helper/
 
 # Python
 __pycache__/
