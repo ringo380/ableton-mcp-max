@@ -226,10 +226,11 @@ class AbletonMCP(ControlSurface):
                 track_index = params.get("track_index", 0)
                 response["result"] = self._get_track_info(track_index)
             # Commands that modify Live's state should be scheduled on the main thread
-            elif command_type in ["create_midi_track", "set_track_name", 
-                                 "create_clip", "add_notes_to_clip", "set_clip_name", 
+            elif command_type in ["create_midi_track", "set_track_name",
+                                 "create_clip", "add_notes_to_clip", "set_clip_name",
                                  "set_tempo", "fire_clip", "stop_clip",
-                                 "start_playback", "stop_playback", "load_browser_item"]:
+                                 "start_playback", "stop_playback", "load_browser_item",
+                                 "set_device_parameter"]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
                 
@@ -282,7 +283,14 @@ class AbletonMCP(ControlSurface):
                             track_index = params.get("track_index", 0)
                             item_uri = params.get("item_uri", "")
                             result = self._load_browser_item(track_index, item_uri)
-                        
+                        elif command_type == "set_device_parameter":
+                            track_index = params.get("track_index", 0)
+                            device_index = params.get("device_index", 0)
+                            parameter_index = params.get("parameter_index", 0)
+                            value = params.get("value", 0.0)
+                            result = self._set_device_parameter(
+                                track_index, device_index, parameter_index, value)
+
                         # Put the result in the queue
                         response_queue.put({"status": "success", "result": result})
                     except Exception as e:
@@ -451,6 +459,35 @@ class AbletonMCP(ControlSurface):
             "device_name": device.name,
             "parameter_count": len(parameters),
             "parameters": parameters,
+        }
+
+    def _set_device_parameter(self, track_index, device_index, parameter_index, value):
+        """Set one device parameter by integer index, clamped to its range."""
+        if track_index < 0 or track_index >= len(self._song.tracks):
+            raise IndexError("Track index out of range")
+        track = self._song.tracks[track_index]
+        if device_index < 0 or device_index >= len(track.devices):
+            raise IndexError("Device index out of range")
+        device = track.devices[device_index]
+        if parameter_index < 0 or parameter_index >= len(device.parameters):
+            raise IndexError("Parameter index out of range")
+        param = device.parameters[parameter_index]
+        if not param.is_enabled:
+            raise RuntimeError("Parameter '%s' is not settable (disabled)" % param.name)
+
+        v = float(value)
+        if v < param.min:
+            v = param.min
+        if v > param.max:
+            v = param.max
+        param.value = v
+
+        return {
+            "track_index": track_index,
+            "device_index": device_index,
+            "parameter_index": parameter_index,
+            "name": param.name,
+            "value": param.value,
         }
 
     def _create_midi_track(self, index):
