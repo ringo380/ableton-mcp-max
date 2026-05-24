@@ -1,14 +1,14 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Phase 2 (Mixer) code complete & deployed; pending live verification after a Live + Claude Code restart.
-**Next action:** Restart Live (load new handlers) + restart Claude Code (load get_mixer/set_mixer_property), then run the Task 2.5 mixer smoke tests. Routing (input/output/monitor) deferred to Phase 2b.
+**Current focus:** Phase 2 (Mixer) live-verified against Live 11 Suite. Ready for Phase 3 (Clip & MIDI Editing).
+**Next action:** Plan Phase 3 (Clip & MIDI Editing). Routing (input/output/monitor) still deferred as Phase 2b.
 
 ## Phases
 | Phase | Title | Status | Completed |
 |-------|-------|--------|-----------|
 | 0 | Foundation (fork + parity + install) | Live-verified | 2026-05-24 |
 | 1 | Device & Parameter Control | Live-verified | 2026-05-24 |
-| 2 | Mixer (volume/pan/mute/solo/arm/sends/master/returns/xfade) | Code done; live verify pending | |
+| 2 | Mixer (volume/pan/mute/solo/arm/sends/master/returns/xfade) | Live-verified | 2026-05-24 |
 | 2b | Routing (input/output/monitor) | Not started | |
 | 3 | Clip & MIDI Editing | Not started | |
 | 4 | Devices & Racks | Not started | |
@@ -29,8 +29,8 @@
 
 ## Phase 2 tools
 - [x] mixer_utils.normalize_property / validate_property (offline unit tests: 9/9 pass)
-- [ ] get_mixer (live verify pending — regular/return/master)
-- [ ] set_mixer_property (live verify pending — volume/pan/mute/solo/arm/send/crossfade_assign)
+- [x] get_mixer (live: regular has arm+sends+xfade; return has sends, no arm; master volume/pan only. Returns = A-Reverb, B-Delay)
+- [x] set_mixer_property (live: volume/pan clamped, mute toggle, send by index all OK; negative cases — arm-on-return, mute-on-master, send-without-index — rejected server-side with no Live mutation; values restored)
 
 ## Deployment state
 - MCP server registered as **AbletonMCPMax** for project `abletonwork`
