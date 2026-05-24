@@ -1,7 +1,7 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Phase 2 (Mixer) live-verified against Live 11 Suite. Ready for Phase 3 (Clip & MIDI Editing).
-**Next action:** Plan Phase 3 (Clip & MIDI Editing). Routing (input/output/monitor) still deferred as Phase 2b.
+**Current focus:** Phase 2 + 2b (Mixer & Routing) live-verified against Live 11 Suite. PR #1 holds the complete mixer+routing work, ready to squash-merge. Ready for Phase 3.
+**Next action:** Squash-merge PR #1, then plan Phase 3 (Clip & MIDI Editing).
 
 ## Phases
 | Phase | Title | Status | Completed |
@@ -9,7 +9,7 @@
 | 0 | Foundation (fork + parity + install) | Live-verified | 2026-05-24 |
 | 1 | Device & Parameter Control | Live-verified | 2026-05-24 |
 | 2 | Mixer (volume/pan/mute/solo/arm/sends/master/returns/xfade) | Live-verified | 2026-05-24 |
-| 2b | Routing (input/output/monitor) | Not started | |
+| 2b | Routing (input/output/monitor) | Live-verified | 2026-05-24 |
 | 3 | Clip & MIDI Editing | Not started | |
 | 4 | Devices & Racks | Not started | |
 | 5 | Scenes, Transport, Arrangement | Not started | |
@@ -31,6 +31,17 @@
 - [x] mixer_utils.normalize_property / validate_property (offline unit tests: 9/9 pass)
 - [x] get_mixer (live: regular has arm+sends+xfade; return has sends, no arm; master volume/pan only. Returns = A-Reverb, B-Delay)
 - [x] set_mixer_property (live: volume/pan clamped, mute toggle, send by index all OK; negative cases — arm-on-return, mute-on-master, send-without-index — rejected server-side with no Live mutation; values restored)
+
+## Phase 2b tools
+- [x] routing_utils.normalize/validate/resolve (offline unit tests: 9/9 pass)
+- [x] get_routing (live: regular = input/output/monitor; return & master = input+output, NO monitoring_state. Fixed hasattr→try/except: Live raises RuntimeError not AttributeError for monitoring on return/master)
+- [x] set_routing (live: monitor 2→1, output_type "Sends Only"→"Master" via object-assignment; negative — bogus/stale display_name — rejected with live "Available:" list; values restored)
+- Note: input-routing-on-return/master validation was loosened (Live exposes those endpoints) and is unit-tested; the loosened server validation takes effect next Claude Code restart. The _assign_routing handler path itself is live-proven via output_type.
+
+## Routing reachability notes
+- All track types expose input_routing_type/channel + output_routing_type/channel.
+- current_monitoring_state: regular tracks only (return/master raise "no monitoring state").
+- Endpoints are objects set by assigning from available_* lists (matched by display_name/identifier), never raw strings.
 
 ## Deployment state
 - MCP server registered as **AbletonMCPMax** for project `abletonwork`
