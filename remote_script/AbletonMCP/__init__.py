@@ -543,9 +543,9 @@ class AbletonMCP(ControlSurface):
 
     def _routing_endpoint(self, track, current_attr, available_attr):
         """Return {current, available:[display_name,...]} for a routing endpoint,
-        or None if the track lacks it."""
-        if not hasattr(track, current_attr) or not hasattr(track, available_attr):
-            return None
+        or None if the track lacks it. Uses try/except (not hasattr) because
+        Live raises RuntimeError -- not AttributeError -- for unsupported
+        endpoints, which hasattr would propagate rather than swallow."""
         try:
             current = getattr(track, current_attr)
             current_name = current.display_name if current is not None else None
@@ -570,11 +570,11 @@ class AbletonMCP(ControlSurface):
             result["output_type"] = ot
         if oc is not None:
             result["output_channel"] = oc
-        if hasattr(track, "current_monitoring_state"):
-            try:
-                result["monitoring_state"] = track.current_monitoring_state
-            except Exception:
-                pass
+        # Live raises RuntimeError on return/master monitoring access; guard with try.
+        try:
+            result["monitoring_state"] = track.current_monitoring_state
+        except Exception:
+            pass
         return result
 
     def _assign_routing(self, track, current_attr, available_attr, value):
