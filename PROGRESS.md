@@ -1,14 +1,15 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Phase 0 + Phase 1 live-verified against Live 11 Suite. Ready to plan Phase 2 (Mixer & Routing).
-**Next action:** Plan Phase 2 (Mixer & Routing).
+**Current focus:** Phase 2 (Mixer) code complete & deployed; pending live verification after a Live + Claude Code restart.
+**Next action:** Restart Live (load new handlers) + restart Claude Code (load get_mixer/set_mixer_property), then run the Task 2.5 mixer smoke tests. Routing (input/output/monitor) deferred to Phase 2b.
 
 ## Phases
 | Phase | Title | Status | Completed |
 |-------|-------|--------|-----------|
 | 0 | Foundation (fork + parity + install) | Live-verified | 2026-05-24 |
 | 1 | Device & Parameter Control | Live-verified | 2026-05-24 |
-| 2 | Mixer & Routing | Not started | |
+| 2 | Mixer (volume/pan/mute/solo/arm/sends/master/returns/xfade) | Code done; live verify pending | |
+| 2b | Routing (input/output/monitor) | Not started | |
 | 3 | Clip & MIDI Editing | Not started | |
 | 4 | Devices & Racks | Not started | |
 | 5 | Scenes, Transport, Arrangement | Not started | |
@@ -25,6 +26,11 @@
 - [x] param_utils.resolve_parameter_index (offline unit tests: 6/6 pass)
 - [x] get_device_parameters (live: Wavetable, 93 params read w/ value_items)
 - [x] set_device_parameter (live: by-name continuous + quantized, index clamping 999→48 all OK; values restored)
+
+## Phase 2 tools
+- [x] mixer_utils.normalize_property / validate_property (offline unit tests: 9/9 pass)
+- [ ] get_mixer (live verify pending — regular/return/master)
+- [ ] set_mixer_property (live verify pending — volume/pan/mute/solo/arm/send/crossfade_assign)
 
 ## Deployment state
 - MCP server registered as **AbletonMCPMax** for project `abletonwork`
