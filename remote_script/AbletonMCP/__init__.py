@@ -230,7 +230,8 @@ class AbletonMCP(ControlSurface):
                                  "create_clip", "add_notes_to_clip", "set_clip_name",
                                  "set_tempo", "fire_clip", "stop_clip",
                                  "start_playback", "stop_playback", "load_browser_item",
-                                 "set_device_parameter", "set_mixer_property"]:
+                                 "set_device_parameter", "set_mixer_property",
+                                 "set_routing"]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
                 
@@ -298,6 +299,13 @@ class AbletonMCP(ControlSurface):
                             send_index = params.get("send_index", -1)
                             result = self._set_mixer_property(
                                 track_index, track_type, prop, value, send_index)
+                        elif command_type == "set_routing":
+                            track_index = params.get("track_index", 0)
+                            track_type = params.get("track_type", "regular")
+                            prop = params.get("property", "")
+                            value = params.get("value", None)
+                            result = self._set_routing(
+                                track_index, track_type, prop, value)
 
                         # Put the result in the queue
                         response_queue.put({"status": "success", "result": result})
@@ -350,6 +358,10 @@ class AbletonMCP(ControlSurface):
                 track_index = params.get("track_index", 0)
                 track_type = params.get("track_type", "regular")
                 response["result"] = self._get_mixer(track_index, track_type)
+            elif command_type == "get_routing":
+                track_index = params.get("track_index", 0)
+                track_type = params.get("track_type", "regular")
+                response["result"] = self._get_routing(track_index, track_type)
             else:
                 response["status"] = "error"
                 response["message"] = "Unknown command: " + command_type
@@ -527,6 +539,92 @@ class AbletonMCP(ControlSurface):
             out["value"] = md.crossfade_assign
         else:
             raise ValueError("Unsupported mixer property: " + str(prop))
+        return out
+
+    def _routing_endpoint(self, track, current_attr, available_attr):
+        """Return {current, available:[display_name,...]} for a routing endpoint,
+        or None if the track lacks it."""
+        if not hasattr(track, current_attr) or not hasattr(track, available_attr):
+            return None
+        try:
+            current = getattr(track, current_attr)
+            current_name = current.display_name if current is not None else None
+            available = [c.display_name for c in getattr(track, available_attr)]
+            return {"current": current_name, "available": available}
+        except Exception:
+            return None
+
+    def _get_routing(self, track_index, track_type):
+        """Read input/output routing + monitoring for a track."""
+        track = self._resolve_track(track_index, track_type)
+        result = {"track_type": track_type, "track_index": track_index, "name": track.name}
+        it = self._routing_endpoint(track, "input_routing_type", "available_input_routing_types")
+        ic = self._routing_endpoint(track, "input_routing_channel", "available_input_routing_channels")
+        ot = self._routing_endpoint(track, "output_routing_type", "available_output_routing_types")
+        oc = self._routing_endpoint(track, "output_routing_channel", "available_output_routing_channels")
+        if it is not None:
+            result["input_type"] = it
+        if ic is not None:
+            result["input_channel"] = ic
+        if ot is not None:
+            result["output_type"] = ot
+        if oc is not None:
+            result["output_channel"] = oc
+        if hasattr(track, "current_monitoring_state"):
+            try:
+                result["monitoring_state"] = track.current_monitoring_state
+            except Exception:
+                pass
+        return result
+
+    def _assign_routing(self, track, current_attr, available_attr, value):
+        """Match value (display_name or identifier) against the available list
+        and assign the matching object to current_attr. Returns display_name."""
+        available = list(getattr(track, available_attr))
+        chosen = None
+        is_num = isinstance(value, int) or (
+            isinstance(value, str) and value.lstrip("-").isdigit())
+        if is_num:
+            ident = int(value)
+            for c in available:
+                if c.identifier == ident:
+                    chosen = c
+                    break
+        else:
+            lowered = str(value).strip().lower()
+            for c in available:
+                if c.display_name.lower() == lowered:
+                    chosen = c
+                    break
+        if chosen is None:
+            names = ", ".join(c.display_name for c in available)
+            raise ValueError("Routing choice '%s' not found. Available: %s"
+                             % (value, names))
+        setattr(track, current_attr, chosen)
+        return chosen.display_name
+
+    def _set_routing(self, track_index, track_type, prop, value):
+        """Set one routing endpoint or monitoring state. `prop` is canonical
+        (server normalizes/validates via routing_utils before sending)."""
+        track = self._resolve_track(track_index, track_type)
+        out = {"track_type": track_type, "track_index": track_index, "property": prop}
+        if prop == "input_type":
+            out["value"] = self._assign_routing(
+                track, "input_routing_type", "available_input_routing_types", value)
+        elif prop == "input_channel":
+            out["value"] = self._assign_routing(
+                track, "input_routing_channel", "available_input_routing_channels", value)
+        elif prop == "output_type":
+            out["value"] = self._assign_routing(
+                track, "output_routing_type", "available_output_routing_types", value)
+        elif prop == "output_channel":
+            out["value"] = self._assign_routing(
+                track, "output_routing_channel", "available_output_routing_channels", value)
+        elif prop == "monitor":
+            track.current_monitoring_state = int(value)
+            out["value"] = track.current_monitoring_state
+        else:
+            raise ValueError("Unsupported routing property: " + str(prop))
         return out
 
     def _get_device_parameters(self, track_index, device_index):
