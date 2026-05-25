@@ -1,7 +1,7 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Phase 3 (Clip & MIDI Editing) implemented on branch `phase-3-clip-midi`; offline tests green. Awaiting live verification.
-**Next action:** Reinstall remote script + quit/reopen Live + restart Claude Code, then live-verify the 9 Phase 3 tools (esp. get_notes/remove_notes arg order, RecordingQuantization grid ints, warp_mode ints, duplicate_clip_to). Record results below, then PR + squash-merge.
+**Current focus:** Phase 3 (Clip & MIDI Editing) fully live-verified against Live 11 Suite (MIDI + audio clips). All 9 tools confirmed. Ready to PR + squash-merge.
+**Next action:** Push branch `phase-3-clip-midi`, open PR, `gh pr merge --squash --delete-branch`, then plan Phase 4 (Devices & Racks).
 
 ## Phases
 | Phase | Title | Status | Completed |
@@ -10,7 +10,7 @@
 | 1 | Device & Parameter Control | Live-verified | 2026-05-24 |
 | 2 | Mixer (volume/pan/mute/solo/arm/sends/master/returns/xfade) | Live-verified | 2026-05-24 |
 | 2b | Routing (input/output/monitor) | Live-verified | 2026-05-24 |
-| 3 | Clip & MIDI Editing | Implemented (offline) | |
+| 3 | Clip & MIDI Editing | Live-verified | 2026-05-24 |
 | 4 | Devices & Racks | Not started | |
 | 5 | Scenes, Transport, Arrangement | Not started | |
 | 6 | Automation Envelopes | Not started | |
@@ -47,13 +47,14 @@
 - [x] remove_clip_notes (live: partial window [1,3) removed middle 2, left out-of-window notes)
 - [x] set_clip_property (live: signature_numerator 4→3, looping→false, gain rejected on MIDI)
 - [x] set_clip_loop (live: window set + looping re-enabled; inverted end<start rejected w/ values)
-- [~] quantize_clip (live: enum INTS confirmed grid1=1/4 snap, grid3=1/8t snap; corrected grid NAME
-      map needs Claude Code restart to load — re-verify "1/8" snaps to 0.5 after restart)
+- [x] quantize_clip (live: enum INTS confirmed grid1=1/4 snap, grid3=1/8t snap; after fix+restart
+      grid NAME "1/8"->int 2 snapped 0.6->0.5, i.e. straight eighth not triplet — fully confirmed)
 - [x] duplicate_clip (live: copied to default target slot+1; empty-target guard rejects occupied)
-- [x] delete_clip (live: both scratch slots emptied, slots remain; track 2 restored)
-- **Remaining live gaps:** (1) audio-clip properties (warping/warp_mode/gain/pitch_*) read+set on a
-  real AUDIO clip — none present in set (tracks 3/4 audio but empty); only the MIDI-rejection path
-  tested. (2) quantize grid NAME→int after restart.
+- [x] delete_clip (live: scratch slots emptied, slots remain)
+- [x] audio-clip properties (live: track 3/4 audio clips expose warping/warp_mode/gain/
+      gain_display_string/pitch_coarse/pitch_fine; set gain 0.4->0.6 ("0.00 dB"->"8.00 dB",
+      confirms gain is normalized 0-1), pitch_coarse->5, warp_mode 4->3, pitch_fine->25; all
+      restored. gain on MIDI clip rejected with clear error.)
 - **Note interaction (not a bug):** after set_clip_loop, clip.length reflects the loop length, so
   get_clip_notes default scan (time_span=-1→clip.length) only covers the loop region. Pass explicit
   from_time/time_span to scan beyond the loop.
