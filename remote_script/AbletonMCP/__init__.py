@@ -827,18 +827,31 @@ class AbletonMCP(ControlSurface):
         return track, track.devices[device_index]
 
     def _rack_macros(self, device):
-        """Return list of {index, name, value, min, max} for a rack's macro params.
-        Macros are device parameters named 'Macro N'."""
+        """Return list of {index, macro_number, name, value, min, max} for a
+        rack's macro params.
+
+        Macros are the device parameters between 'Device On' (index 0) and
+        'Chain Selector' (when present) — identified by POSITION, not name,
+        because macros may carry custom labels (e.g. 'Filter Cutoff') rather
+        than 'Macro N'.
+        """
         macros = []
+        macro_number = 0
         for p_index, param in enumerate(device.parameters):
-            if str(param.name).startswith("Macro"):
-                macros.append({
-                    "index": p_index,
-                    "name": param.name,
-                    "value": param.value,
-                    "min": param.min,
-                    "max": param.max,
-                })
+            name = str(param.name)
+            if name == "Device On":
+                continue
+            if name == "Chain Selector":
+                continue
+            macro_number += 1
+            macros.append({
+                "index": p_index,
+                "macro_number": macro_number,
+                "name": param.name,
+                "value": param.value,
+                "min": param.min,
+                "max": param.max,
+            })
         return macros
 
     def _get_device_info(self, track_index, device_index, track_type):
@@ -993,6 +1006,10 @@ class AbletonMCP(ControlSurface):
         elif prop in ("volume", "panning"):
             md = chain.mixer_device
             param = md.volume if prop == "volume" else md.panning
+            if not param.is_enabled:
+                raise RuntimeError(
+                    "Chain '%s' %s is not settable (disabled by Live for this chain)"
+                    % (chain.name, prop))
             v = float(value)
             if v < param.min:
                 v = param.min

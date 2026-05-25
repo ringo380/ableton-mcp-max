@@ -14,11 +14,12 @@ DEVICES = [
     {"index": 2, "name": "EQ Eight"},
 ]
 
-# Macros: 'index' is the underlying device-parameter index (1 = after Device On).
+# Macros: 'index' is the device-parameter index; 'macro_number' is 1-based
+# position. First two carry custom labels (renamed), the rest default names.
 MACROS = [
-    {"index": 1, "name": "Macro 1"},
-    {"index": 2, "name": "Macro 2"},
-    {"index": 3, "name": "Macro 3"},
+    {"index": 1, "macro_number": 1, "name": "Filter Cutoff"},
+    {"index": 2, "macro_number": 2, "name": "Drive"},
+    {"index": 3, "macro_number": 3, "name": "Macro 3"},
 ]
 
 
@@ -53,31 +54,37 @@ def test_device_unknown_name_raises_with_available_list():
 
 # resolve_macro -----------------------------------------------------------
 
-def test_macro_by_number_int():
-    assert resolve_macro(MACROS, 3) == 3
+def test_macro_by_number_int_positional():
+    # macro number 1 -> first macro (renamed "Filter Cutoff") at param index 1
+    assert resolve_macro(MACROS, 1) == 1
+    assert resolve_macro(MACROS, 2) == 2
 
 
 def test_macro_by_number_string():
-    assert resolve_macro(MACROS, "1") == 1
+    assert resolve_macro(MACROS, "3") == 3
 
 
-def test_macro_by_name():
-    assert resolve_macro(MACROS, "Macro 2") == 2
+def test_macro_by_custom_label_name():
+    assert resolve_macro(MACROS, "Drive") == 2
 
 
 def test_macro_by_case_insensitive_name():
-    assert resolve_macro(MACROS, "macro 2") == 2
+    assert resolve_macro(MACROS, "filter cutoff") == 1
+
+
+def test_macro_by_default_name():
+    assert resolve_macro(MACROS, "Macro 3") == 3
 
 
 def test_macro_number_out_of_range_raises():
     with pytest.raises(ValueError) as exc:
         resolve_macro(MACROS, 8)
-    assert "Macro 1" in str(exc.value)
+    assert "Filter Cutoff" in str(exc.value)
 
 
 def test_macro_unknown_name_raises():
     with pytest.raises(ValueError):
-        resolve_macro(MACROS, "Cutoff")
+        resolve_macro(MACROS, "Nonexistent")
 
 
 # chain property normalize/validate --------------------------------------

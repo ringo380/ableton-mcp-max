@@ -1,7 +1,7 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Phase 4 (Devices & Racks) — code complete on branch `phase-4-devices-racks`, offline suite 65/65 green. 7 new tools (get_device_info, delete_device, set_device_on, get_rack_macros, set_rack_macro, get_rack_chains, set_chain_property). Device move + preset selection DEFERRED to Phase 4b (no clean Live 11 LOM path). Awaiting live verification.
-**Next action:** Reinstall remote script + quit/reopen Live + restart Claude Code; live-verify Phase 4 tools (re-read set state first; restore all changed values); then PR + squash-merge.
+**Current focus:** Phase 4 (Devices & Racks) — partially live-verified, then 2 live-found bugs fixed (macro detection + chain is_enabled), offline suite 66/66 green. Awaiting ONE MORE reinstall+dual-restart to re-verify the macro path + delete_device.
+**Next action:** `bash scripts/install_remote_script.sh`, quit/reopen Live (⌘Q), restart Claude Code; re-verify get_rack_macros/set_rack_macro (now positional) + delete_device on the scratch "Basic Analog Bass" rack still on track 1; then PR + squash-merge. NOTE: track 1 "Lead" Wavetable was replaced by load_instrument_or_effect (it hot-swaps the instrument) — user should ⌘Z in Live to restore the original Lead patch when done.
 
 ## Phases
 | Phase | Title | Status | Completed |
@@ -117,19 +117,35 @@
 - [x] device_utils.resolve_device_index / resolve_macro / normalize_chain_property /
       validate_chain_property / coerce_chain_value / coerce_on_value
       (offline unit tests: 22/22; total suite 65/65)
-- [ ] get_device_info (class/type, is_active, can_have_chains/drum_pads, is_on,
-      macro_count/chain_count for racks; track_type-aware via _resolve_track)
-- [ ] delete_device (track.delete_device(index); reports new device_count) — LIVE on scratch device only
-- [ ] set_device_on (writes "Device On" param[0]; rejects devices without it)
-- [ ] get_rack_macros (filters device.parameters named "Macro N")
-- [ ] set_rack_macro (server resolves macro# / "Macro N" → param index; clamped set; rack-guarded)
-- [ ] get_rack_chains (device.chains: name, mute/solo, mixer volume/panning, contained devices)
-- [ ] set_chain_property (mute/solo bool; volume/panning clamped via chain.mixer_device; rack-guarded)
+- [x] get_device_info (live: Wavetable -> can_have_chains false, 93 params, is_on true;
+      "Basic Analog Bass" rack -> can_have_chains true, chain_count 1, is_on true. macro_count
+      now 16 after fix.)
+- [ ] delete_device (re-verify on scratch rack after restart)
+- [x] set_device_on (live: track 0 Wavetable off->on confirmed both ways incl. "on" string coercion; restored)
+- [ ] get_rack_macros — RE-VERIFY after fix (was name-prefix; see finding below)
+- [ ] set_rack_macro — RE-VERIFY after fix (now positional macro_number)
+- [x] get_rack_chains (live: 1 chain "Analog" with 6 inner devices Analog/Comp/VinylDist/Delay/Delay/Reverb;
+      mute/solo/volume/panning surfaced)
+- [x] set_chain_property mute/solo (live: chain "Analog" mute false->true->false confirmed; restored)
+- [~] set_chain_property volume/panning — chain mixer volume reports "parameter is disabled" on this
+      single-chain rack even when unmuted. Now pre-checked with is_enabled -> clean error. Whether any
+      rack chain exposes an *enabled* volume/panning still TBD (re-probe on a multi-chain rack later).
 - **Deferred to Phase 4b:** device move (no LOM reorder API) + preset selection (browser re-load).
 - **Add device** already covered by existing load_instrument_or_effect (browser load) — not re-impl.
-- LOM items to confirm live: macro naming/count on real Instrument Rack; chain.mixer_device
-  reachability on audio vs MIDI chains (try/except guarded); delete_device re-indexing;
-  drum-rack (can_have_drum_pads) chain shape degrades gracefully.
+
+### Live findings (2026-05-25)
+- **MACRO LAYOUT (important):** a rack's parameters are `Device On`(0), then the macros
+  (1..N), then `Chain Selector`(last). Macros may be RENAMED (e.g. "Basic Analog Bass" macros
+  1-8 = Filter Cutoff/Filter Reso/Filter Envelope/Space/Drive/Comp/Delay/Volume; 9-16 default
+  "Macro 9".."Macro 16"). Original name-prefix filter missed the renamed ones. FIXED: _rack_macros
+  now enumerates by POSITION (everything between Device On and Chain Selector) and tags each with
+  a 1-based macro_number; resolve_macro resolves a number positionally + a name by custom label.
+- **CHAIN MIXER:** chain.mixer_device.volume/panning can be `is_enabled == False` (seen on the
+  single-chain Analog rack chain) -> Live raises "Value cannot be set, the parameter is disabled".
+  Handler now pre-checks is_enabled and raises a clear message. mute/solo always work.
+- **load_instrument_or_effect HOT-SWAPS:** loading onto a track that already has an instrument
+  REPLACES it (track 1 Lead's Wavetable was replaced by the test rack). Restore via Live undo.
+- TBD: drum-rack (can_have_drum_pads) chain shape; multi-chain rack with enabled chain volume.
 
 ## Device parameter reachability notes
 - Wavetable: 93 automatable params exposed. Quantized params (Device On, Osc On,

@@ -50,23 +50,27 @@ def resolve_device_index(devices, identifier):
 def resolve_macro(macros, identifier):
     """Resolve a macro identifier to the underlying device-parameter index.
 
-    `macros` is a list of dicts with 'index' (the device-parameter index) and
-    'name' (e.g. 'Macro 1') keys. Accepts:
-      - an int / numeric string: treated as a 1-based macro number ("Macro 3" -> 3)
-      - an exact or case-insensitive macro name ("Macro 3", "macro 3")
+    `macros` is a list of dicts with 'index' (the device-parameter index),
+    'macro_number' (1-based position within the rack's macro bank), and 'name'
+    (which may be a custom label like 'Filter Cutoff', not just 'Macro N').
+    Accepts:
+      - an int / numeric string: a 1-based macro number (1 -> first macro)
+      - an exact or case-insensitive macro name (custom label or 'Macro N')
 
+    Resolving by number is positional, so renamed macros are still reachable.
     Raises ValueError if it can't be resolved.
     """
     is_numeric_str = isinstance(identifier, str) and identifier.lstrip("-").isdigit()
     if isinstance(identifier, int) or is_numeric_str:
         num = int(identifier)
-        target = "macro %d" % num
         for m in macros:
-            if str(m.get("name", "")).lower() == target:
+            if m.get("macro_number") == num:
                 return m["index"]
-        names = ", ".join(str(m.get("name", "")) for m in macros)
+        labels = ", ".join(
+            "%d=%s" % (m.get("macro_number"), m.get("name", "")) for m in macros
+        )
         raise ValueError(
-            "Macro number %d not found. Available: %s" % (num, names)
+            "Macro number %d not found. Available: %s" % (num, labels)
         )
 
     lowered = str(identifier).strip().lower()
