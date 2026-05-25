@@ -1,7 +1,7 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Phase 3 (Clip & MIDI Editing) fully live-verified against Live 11 Suite (MIDI + audio clips). All 9 tools confirmed. Ready to PR + squash-merge.
-**Next action:** Push branch `phase-3-clip-midi`, open PR, `gh pr merge --squash --delete-branch`, then plan Phase 4 (Devices & Racks).
+**Current focus:** Phase 3.1 (extended-note-API migration) live-verified — the legacy-note modal is GONE; note ops use Live 11 extended API + new modify_clip_notes. On branch `phase-3.1-extended-notes`, ready to PR + squash-merge.
+**Next action:** Push branch, PR, `gh pr merge --squash --delete-branch`, then plan Phase 4 (Devices & Racks).
 
 ## Phases
 | Phase | Title | Status | Completed |
@@ -11,6 +11,7 @@
 | 2 | Mixer (volume/pan/mute/solo/arm/sends/master/returns/xfade) | Live-verified | 2026-05-24 |
 | 2b | Routing (input/output/monitor) | Live-verified | 2026-05-24 |
 | 3 | Clip & MIDI Editing | Live-verified | 2026-05-24 |
+| 3.1 | Extended note API migration (+ modify_clip_notes) | Live-verified | 2026-05-25 |
 | 4 | Devices & Racks | Not started | |
 | 5 | Scenes, Transport, Arrangement | Not started | |
 | 6 | Automation Envelopes | Not started | |
@@ -96,6 +97,20 @@
   off-by-one beyond 1/4). Corrected to none=0,1/4=1,1/8=2,1/8t=3,1/8+1/8t=4,1/16=5,1/16t=6,
   1/16+1/16t=7,1/32=8 (confirmed: grid 1->1/4 snap, grid 3->1/8t snap). Fix is in clip_utils.py;
   takes effect after the next Claude Code restart (server-imported module, no hot reload).
+
+## Phase 3.1 — extended note API migration (live-verified 2026-05-25)
+- Migrated add/replace/remove/get note ops to Live 11 extended API
+  (add_new_notes / remove_notes_extended / get_notes_extended) + `import Live` in remote script.
+  **The legacy-note modal NO LONGER APPEARS on any write** (root issue resolved).
+- get_clip_notes now returns note_id + probability + velocity_deviation + release_velocity.
+  Live confirmed: explicit probability=0.5/release_velocity=80 on add round-trip through get;
+  omitted fields default to 1.0 / 0.0 / 64.0 (server-side clip_utils.normalize_note).
+- **Extended arg order CONFIRMED** = (from_pitch, pitch_span, from_time, time_span) — pitch FIRST,
+  opposite the legacy get_notes. Verified via pitch-window + time-window reads.
+- NEW modify_clip_notes (apply_note_modifications): live-confirmed in-place edit by note_id
+  (changed only provided fields, note_id preserved, other notes untouched — no remove+re-add);
+  bogus note_id rejected with "note_id(s) not found in clip: [...]".
+- clip_utils: +normalize_note (defaults/clamps) +NOTE_MOD_FIELDS; offline suite 43/43.
 
 ## Device parameter reachability notes
 - Wavetable: 93 automatable params exposed. Quantized params (Device On, Osc On,

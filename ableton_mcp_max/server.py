@@ -18,6 +18,8 @@ from ableton_mcp_max.clip_utils import (
     validate_clip_property,
     coerce_clip_value,
     resolve_quantize_grid,
+    normalize_note,
+    NOTE_MOD_FIELDS,
 )
 
 # Configure logging
@@ -120,7 +122,8 @@ class AbletonConnection:
             "set_tempo", "fire_clip", "stop_clip", "set_device_parameter",
             "start_playback", "stop_playback", "load_instrument_or_effect",
             "replace_clip_notes", "remove_clip_notes", "set_clip_property",
-            "set_clip_loop", "quantize_clip", "duplicate_clip", "delete_clip"
+            "set_clip_loop", "quantize_clip", "duplicate_clip", "delete_clip",
+            "modify_clip_notes"
         ]
         
         try:
@@ -550,14 +553,18 @@ def add_notes_to_clip(
     notes: List[Dict[str, Union[int, float, bool]]]
 ) -> str:
     """
-    Add MIDI notes to a clip.
-    
+    Add MIDI notes to a clip (MIDI clips only). Uses Live 11's extended note
+    API (no editor dialog).
+
     Parameters:
     - track_index: The index of the track containing the clip
     - clip_index: The index of the clip slot containing the clip
-    - notes: List of note dictionaries, each with pitch, start_time, duration, velocity, and mute
+    - notes: List of note dictionaries. Required-ish fields: pitch, start_time,
+      duration, velocity, mute. Optional Live 11 fields (sensible defaults):
+      probability (0.0-1.0), velocity_deviation, release_velocity (0-127).
     """
     try:
+        notes = [normalize_note(n) for n in notes]
         ableton = get_ableton_connection()
         result = ableton.send_command("add_notes_to_clip", {
             "track_index": track_index,
@@ -625,8 +632,10 @@ def get_clip_notes(
     pitch_span: int = 128,
 ) -> str:
     """
-    Read MIDI notes from a clip (MIDI clips only). Returns a list of note dicts
-    {pitch, start_time, duration, velocity, mute}.
+    Read MIDI notes from a clip (MIDI clips only). Uses Live 11's extended note
+    API. Returns a list of note dicts {note_id, pitch, start_time, duration,
+    velocity, mute, probability, velocity_deviation, release_velocity}. The
+    note_id can be passed to modify_clip_notes to edit a note in place.
 
     Parameters:
     - track_index / clip_index: locate the clip
@@ -662,13 +671,15 @@ def replace_clip_notes(
 ) -> str:
     """
     Replace ALL notes in a MIDI clip with the given notes (clears existing notes
-    first, then adds these). MIDI clips only.
+    first, then adds these). MIDI clips only. Uses Live 11's extended note API.
 
     Parameters:
     - track_index / clip_index: locate the clip
-    - notes: list of note dicts, each with pitch, start_time, duration, velocity, mute
+    - notes: list of note dicts with pitch, start_time, duration, velocity, mute,
+      and optional probability / velocity_deviation / release_velocity.
     """
     try:
+        notes = [normalize_note(n) for n in notes]
         ableton = get_ableton_connection()
         result = ableton.send_command(
             "replace_clip_notes",
@@ -717,6 +728,45 @@ def remove_clip_notes(
     except Exception as e:
         logger.error(f"Error removing clip notes: {str(e)}")
         return f"Error removing clip notes: {str(e)}"
+
+@mcp.tool()
+def modify_clip_notes(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    notes: List[Dict[str, Union[int, float, bool]]],
+) -> str:
+    """
+    Edit existing notes in a MIDI clip in place, by note_id (MIDI clips only).
+    Notes not referenced are left untouched -- no remove-and-re-add. Uses Live
+    11's apply_note_modifications.
+
+    Parameters:
+    - track_index / clip_index: locate the clip
+    - notes: list of dicts, each REQUIRING a note_id (from get_clip_notes) plus
+      any fields to change: pitch, start_time, duration, velocity, mute,
+      probability, velocity_deviation, release_velocity. Omitted fields are
+      left as-is on that note.
+    """
+    try:
+        cleaned = []
+        for n in notes:
+            if "note_id" not in n:
+                return "Error: every note must include a note_id (see get_clip_notes)"
+            entry = {"note_id": int(n["note_id"])}
+            for f in NOTE_MOD_FIELDS:
+                if f in n:
+                    entry[f] = n[f]
+            cleaned.append(entry)
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "modify_clip_notes",
+            {"track_index": track_index, "clip_index": clip_index, "notes": cleaned},
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error modifying clip notes: {str(e)}")
+        return f"Error modifying clip notes: {str(e)}"
 
 @mcp.tool()
 def set_clip_property(
