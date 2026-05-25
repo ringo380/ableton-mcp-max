@@ -2,6 +2,7 @@
 from __future__ import absolute_import, print_function, unicode_literals
 
 from _Framework.ControlSurface import ControlSurface
+import Live
 import socket
 import json
 import threading
@@ -234,7 +235,8 @@ class AbletonMCP(ControlSurface):
                                  "set_routing", "replace_clip_notes",
                                  "remove_clip_notes", "set_clip_property",
                                  "set_clip_loop", "quantize_clip",
-                                 "duplicate_clip", "delete_clip"]:
+                                 "duplicate_clip", "delete_clip",
+                                 "modify_clip_notes"]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
                 
@@ -358,6 +360,12 @@ class AbletonMCP(ControlSurface):
                             track_index = params.get("track_index", 0)
                             clip_index = params.get("clip_index", 0)
                             result = self._delete_clip(track_index, clip_index)
+                        elif command_type == "modify_clip_notes":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            notes = params.get("notes", [])
+                            result = self._modify_clip_notes(
+                                track_index, clip_index, notes)
 
                         # Put the result in the queue
                         response_queue.put({"status": "success", "result": result})
@@ -824,40 +832,30 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error creating clip: " + str(e))
             raise
     
+    def _build_note_spec(self, note):
+        """Build a Live.Clip.MidiNoteSpecification from a fully-normalized note
+        dict (server's clip_utils.normalize_note has already filled defaults)."""
+        return Live.Clip.MidiNoteSpecification(
+            pitch=int(note.get("pitch", 60)),
+            start_time=float(note.get("start_time", 0.0)),
+            duration=float(note.get("duration", 0.25)),
+            velocity=float(note.get("velocity", 100)),
+            mute=bool(note.get("mute", False)),
+            probability=float(note.get("probability", 1.0)),
+            velocity_deviation=float(note.get("velocity_deviation", 0.0)),
+            release_velocity=float(note.get("release_velocity", 64.0)),
+        )
+
     def _add_notes_to_clip(self, track_index, clip_index, notes):
-        """Add MIDI notes to a clip"""
+        """Add MIDI notes to a clip via the Live 11 extended API (add_new_notes),
+        which does not trigger the legacy-note-editor dialog."""
         try:
-            if track_index < 0 or track_index >= len(self._song.tracks):
-                raise IndexError("Track index out of range")
-            
-            track = self._song.tracks[track_index]
-            
-            if clip_index < 0 or clip_index >= len(track.clip_slots):
-                raise IndexError("Clip index out of range")
-            
-            clip_slot = track.clip_slots[clip_index]
-            
-            if not clip_slot.has_clip:
-                raise Exception("No clip in slot")
-            
-            clip = clip_slot.clip
-            
-            # Convert note data to Live's format
-            live_notes = []
-            for note in notes:
-                pitch = note.get("pitch", 60)
-                start_time = note.get("start_time", 0.0)
-                duration = note.get("duration", 0.25)
-                velocity = note.get("velocity", 100)
-                mute = note.get("mute", False)
-                
-                live_notes.append((pitch, start_time, duration, velocity, mute))
-            
-            # Add the notes
-            clip.set_notes(tuple(live_notes))
-            
+            clip = self._resolve_clip(track_index, clip_index)
+            self._require_midi_clip(clip, "add_notes_to_clip")
+            specs = [self._build_note_spec(n) for n in notes]
+            clip.add_new_notes(tuple(specs))
             result = {
-                "note_count": len(notes)
+                "note_count": len(specs)
             }
             return result
         except Exception as e:
@@ -972,15 +970,20 @@ class AbletonMCP(ControlSurface):
         if not clip.is_midi_clip:
             raise Exception("%s requires a MIDI clip" % action)
 
-    def _note_dicts(self, raw_notes):
+    def _note_dicts(self, midi_notes):
+        """Serialize Live 11 MidiNote objects (from get_notes_extended) to dicts."""
         out = []
-        for n in raw_notes:
+        for n in midi_notes:
             out.append({
-                "pitch": n[0],
-                "start_time": n[1],
-                "duration": n[2],
-                "velocity": n[3],
-                "mute": n[4],
+                "note_id": n.note_id,
+                "pitch": n.pitch,
+                "start_time": n.start_time,
+                "duration": n.duration,
+                "velocity": n.velocity,
+                "mute": n.mute,
+                "probability": n.probability,
+                "velocity_deviation": n.velocity_deviation,
+                "release_velocity": n.release_velocity,
             })
         return out
 
@@ -1018,14 +1021,15 @@ class AbletonMCP(ControlSurface):
 
     def _get_clip_notes(self, track_index, clip_index, from_time,
                         time_span, from_pitch, pitch_span):
-        """Read MIDI notes within a window. Note Live's get_notes arg order is
-        (from_time, from_pitch, time_span, pitch_span)."""
+        """Read MIDI notes within a window via the extended API. Note the
+        extended arg order is (from_pitch, pitch_span, from_time, time_span) --
+        pitch first, opposite the legacy get_notes."""
         try:
             clip = self._resolve_clip(track_index, clip_index)
             self._require_midi_clip(clip, "get_clip_notes")
             if time_span < 0:
                 time_span = clip.length
-            raw = clip.get_notes(from_time, from_pitch, time_span, pitch_span)
+            raw = clip.get_notes_extended(from_pitch, pitch_span, from_time, time_span)
             notes = self._note_dicts(raw)
             return {"note_count": len(notes), "notes": notes}
         except Exception as e:
@@ -1033,39 +1037,76 @@ class AbletonMCP(ControlSurface):
             raise
 
     def _replace_clip_notes(self, track_index, clip_index, notes):
-        """Clear all notes then set the given notes (set_notes only adds)."""
+        """Clear all notes then add the given notes, via the extended API (no
+        legacy-note dialog)."""
         try:
             clip = self._resolve_clip(track_index, clip_index)
             self._require_midi_clip(clip, "replace_clip_notes")
-            clip.remove_notes(0.0, 0, clip.length, 128)
-            live_notes = []
-            for note in notes:
-                live_notes.append((
-                    note.get("pitch", 60),
-                    note.get("start_time", 0.0),
-                    note.get("duration", 0.25),
-                    note.get("velocity", 100),
-                    note.get("mute", False),
-                ))
-            clip.set_notes(tuple(live_notes))
-            return {"note_count": len(live_notes)}
+            clip.remove_notes_extended(0, 128, 0.0, clip.length)
+            specs = [self._build_note_spec(n) for n in notes]
+            clip.add_new_notes(tuple(specs))
+            return {"note_count": len(specs)}
         except Exception as e:
             self.log_message("Error replacing clip notes: " + str(e))
             raise
 
     def _remove_clip_notes(self, track_index, clip_index, from_time,
                            time_span, from_pitch, pitch_span):
-        """Remove notes in a window. Live arg order: (from_time, from_pitch,
-        time_span, pitch_span)."""
+        """Remove notes in a window via the extended API. Extended arg order:
+        (from_pitch, pitch_span, from_time, time_span)."""
         try:
             clip = self._resolve_clip(track_index, clip_index)
             self._require_midi_clip(clip, "remove_clip_notes")
             if time_span < 0:
                 time_span = clip.length
-            clip.remove_notes(from_time, from_pitch, time_span, pitch_span)
+            clip.remove_notes_extended(from_pitch, pitch_span, from_time, time_span)
             return {"removed": True}
         except Exception as e:
             self.log_message("Error removing clip notes: " + str(e))
+            raise
+
+    def _modify_clip_notes(self, track_index, clip_index, notes):
+        """Edit existing notes in place by note_id. Fetches the current notes,
+        mutates the targeted MidiNote objects, and applies them back via
+        apply_note_modifications -- untouched notes are preserved."""
+        try:
+            clip = self._resolve_clip(track_index, clip_index)
+            self._require_midi_clip(clip, "modify_clip_notes")
+            current = clip.get_notes_extended(0, 128, 0.0, clip.length)
+            by_id = {}
+            for n in current:
+                by_id[n.note_id] = n
+            modified = 0
+            missing = []
+            for spec in notes:
+                nid = int(spec.get("note_id", -1))
+                target = by_id.get(nid)
+                if target is None:
+                    missing.append(nid)
+                    continue
+                if "pitch" in spec:
+                    target.pitch = int(spec["pitch"])
+                if "start_time" in spec:
+                    target.start_time = float(spec["start_time"])
+                if "duration" in spec:
+                    target.duration = float(spec["duration"])
+                if "velocity" in spec:
+                    target.velocity = float(spec["velocity"])
+                if "mute" in spec:
+                    target.mute = bool(spec["mute"])
+                if "probability" in spec:
+                    target.probability = float(spec["probability"])
+                if "velocity_deviation" in spec:
+                    target.velocity_deviation = float(spec["velocity_deviation"])
+                if "release_velocity" in spec:
+                    target.release_velocity = float(spec["release_velocity"])
+                modified += 1
+            if missing:
+                raise Exception("note_id(s) not found in clip: %s" % missing)
+            clip.apply_note_modifications(current)
+            return {"modified": modified}
+        except Exception as e:
+            self.log_message("Error modifying clip notes: " + str(e))
             raise
 
     def _set_clip_property(self, track_index, clip_index, prop, value):

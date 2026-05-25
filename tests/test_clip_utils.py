@@ -4,6 +4,8 @@ from ableton_mcp_max.clip_utils import (
     validate_clip_property,
     coerce_clip_value,
     resolve_quantize_grid,
+    normalize_note,
+    NOTE_MOD_FIELDS,
     QUANTIZE_GRID_MAP,
 )
 
@@ -104,3 +106,36 @@ def test_resolve_grid_unknown_raises_with_list():
     with pytest.raises(ValueError) as exc:
         resolve_quantize_grid("1/3")
     assert "Available" in str(exc.value)
+
+
+# --- normalize_note: defaults + clamps for the extended note API ---
+def test_normalize_note_defaults():
+    n = normalize_note({"pitch": 64, "start_time": 1.0, "duration": 0.5})
+    assert n["pitch"] == 64
+    assert n["velocity"] == 100
+    assert n["mute"] is False
+    assert n["probability"] == 1.0
+    assert n["velocity_deviation"] == 0.0
+    assert n["release_velocity"] == 64.0
+    assert set(n.keys()) == set(NOTE_MOD_FIELDS)
+
+
+def test_normalize_note_passthrough_extended():
+    n = normalize_note({
+        "pitch": 60, "probability": 0.5,
+        "velocity_deviation": 10.0, "release_velocity": 80,
+    })
+    assert n["probability"] == 0.5
+    assert n["velocity_deviation"] == 10.0
+    assert n["release_velocity"] == 80.0
+
+
+def test_normalize_note_clamps():
+    n = normalize_note({"pitch": 200, "velocity": 999, "probability": 2.0})
+    assert n["pitch"] == 127
+    assert n["velocity"] == 127.0
+    assert n["probability"] == 1.0
+    n2 = normalize_note({"pitch": -5, "probability": -1.0, "release_velocity": -3})
+    assert n2["pitch"] == 0
+    assert n2["probability"] == 0.0
+    assert n2["release_velocity"] == 0.0

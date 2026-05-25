@@ -114,6 +114,58 @@ def coerce_clip_value(canonical_property, value):
     return out
 
 
+# Settable fields on an existing note (modify_clip_notes). note_id is read-only
+# and used only to locate the note.
+NOTE_MOD_FIELDS = (
+    "pitch", "start_time", "duration", "velocity", "mute",
+    "probability", "velocity_deviation", "release_velocity",
+)
+
+# Neutral defaults for a new note built via MidiNoteSpecification.
+_NOTE_DEFAULTS = {
+    "pitch": 60,
+    "start_time": 0.0,
+    "duration": 0.25,
+    "velocity": 100,
+    "mute": False,
+    "probability": 1.0,
+    "velocity_deviation": 0.0,
+    "release_velocity": 64.0,
+}
+
+
+def _clamp(v, lo, hi):
+    if v < lo:
+        return lo
+    if v > hi:
+        return hi
+    return v
+
+
+def normalize_note(note):
+    """Build the full set of MidiNoteSpecification fields from a (possibly
+    partial) note dict, filling neutral defaults and applying pure clamps.
+    Pure -- no Live deps; the remote script feeds the result to
+    Live.Clip.MidiNoteSpecification."""
+    out = {
+        "pitch": int(note.get("pitch", _NOTE_DEFAULTS["pitch"])),
+        "start_time": float(note.get("start_time", _NOTE_DEFAULTS["start_time"])),
+        "duration": float(note.get("duration", _NOTE_DEFAULTS["duration"])),
+        "velocity": float(note.get("velocity", _NOTE_DEFAULTS["velocity"])),
+        "mute": bool(note.get("mute", _NOTE_DEFAULTS["mute"])),
+        "probability": float(note.get("probability", _NOTE_DEFAULTS["probability"])),
+        "velocity_deviation": float(
+            note.get("velocity_deviation", _NOTE_DEFAULTS["velocity_deviation"])),
+        "release_velocity": float(
+            note.get("release_velocity", _NOTE_DEFAULTS["release_velocity"])),
+    }
+    out["pitch"] = int(_clamp(out["pitch"], 0, 127))
+    out["velocity"] = _clamp(out["velocity"], 0.0, 127.0)
+    out["probability"] = _clamp(out["probability"], 0.0, 1.0)
+    out["release_velocity"] = _clamp(out["release_velocity"], 0.0, 127.0)
+    return out
+
+
 def resolve_quantize_grid(name):
     """Map a friendly grid name ('1/8', '1/16t', ...) to its
     Live.Song.RecordingQuantization int. Raises ValueError listing options."""
