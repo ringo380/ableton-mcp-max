@@ -1,7 +1,7 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Phase 4 (Devices & Racks) — ALL 7 tools live-verified (incl. the 2 live-found fixes: positional macro detection + chain is_enabled guard). Offline suite 66/66. Ready to PR + squash-merge.
-**Next action:** Push branch `phase-4-devices-racks`, PR, `gh pr merge --squash --delete-branch`, `git remote prune origin`. Then plan Phase 5 (Scenes, Transport, Arrangement). Phase 4b (device move + preset selection) remains deferred.
+**Current focus:** Phase 5 (Scenes, Transport, Arrangement) — ALL 20 tools live-verified. Offline suite 93/93. Ready to PR + squash-merge.
+**Next action:** Push branch `feat/phase5-scenes-transport-arrangement`, PR, `gh pr merge --squash --delete-branch`, `git remote prune origin`. Then plan Phase 6 (Automation Envelopes). Phase 4b (device move + preset selection) remains deferred.
 
 ## Phases
 | Phase | Title | Status | Completed |
@@ -14,7 +14,7 @@
 | 3.1 | Extended note API migration (+ modify_clip_notes) | Live-verified | 2026-05-25 |
 | 4 | Devices & Racks (info/delete/on-off/macros/chains) | Live-verified | 2026-05-25 |
 | 4b | Device move + preset selection (deferred) | Not started | |
-| 5 | Scenes, Transport, Arrangement | Not started | |
+| 5 | Scenes, Transport, Arrangement | Live-verified | 2026-05-25 |
 | 6 | Automation Envelopes | Not started | |
 | 7 | Change Listeners (stretch) | Not started | |
 
@@ -154,3 +154,49 @@
   expose value_items and are settable by integer index. Continuous params settable
   by float; out-of-range values clamp to min/max. Settable by name (case-insensitive)
   or index. No menu-only/unreachable controls observed at the device top level.
+
+## Phase 5 tools (Scenes, Transport, Arrangement) — ALL live-verified 2026-05-25
+- [x] scene_utils.normalize_scene_property / coerce_scene_value;
+      transport_utils.parse_time_signature / resolve_cue_direction / coerce_song_time /
+      coerce_jump_beats / coerce_loop_fields / coerce_punch_fields
+      (offline suite 93/93). Reuse device_utils.coerce_on_value for bool toggles.
+- **Scenes (7):**
+  - [x] get_scenes (live: 9 scenes; per-scene tempo/time-sig surface -1 sentinel when not overridden)
+  - [x] fire_scene (live: launched scene 0, is_playing→true; index 99 rejected "out of range (0..8)")
+  - [x] create_scene (live: -1 appended, count 9→10)
+  - [x] delete_scene (live: count 10→9; range-guarded)
+  - [x] duplicate_scene (live: count 9→10, copy after source)
+  - [x] set_scene_name (live: scene 2 ""→"VERIFY"→"" restored)
+  - [x] set_scene_property (live: color/tempo/tempo_enabled/time_signature all applied;
+        aliases bpm/time_sig/colour fold correctly; bad denom 4/3 + bogus prop rejected server-side)
+- **Transport (8):**
+  - [x] get_transport (live: full state incl. session_record/song_length/back_to_arranger)
+  - [x] continue_playback (live: resumed from position, advanced playhead)
+  - [x] set_metronome (live: off→on→off; reads back fresh)
+  - [x] set_arrangement_record (live: record_mode on→off — NOTE arming starts playback)
+  - [x] set_session_record (live: on→off — NOTE arming starts playback)
+  - [x] set_punch (live: in/out true→false; both-None guard server-side)
+  - [x] set_song_position (live: jumped to 8 then 64; negative -1 rejected server-side)
+  - [x] jump_by (live: +/- beats, -4 from 8→4)
+- **Arrangement (5):**
+  - [x] get_cue_points (live: 2 locators locator1@32, locator2@64)
+  - [x] set_arrangement_loop (live: enabled/start/length applied, only-provided fields;
+        all-None guard server-side; restored to original off/8/16)
+  - [x] jump_to_cue (live: prev 64→32, next/forward 32→64; "sideways" rejected)
+  - [x] back_to_arrangement (live: back_to_arranger override true→false re-engages arrangement)
+  - [x] re_enable_automation (live: returns re_enabled true, no error — LOM call present in build)
+
+### Phase 5 live findings (2026-05-25)
+- **Verify-or-drop flags ALL resolved:** re_enable_automation() exists & works; back_to_arranger=0
+  clears the override; jump_to_next_cue()/jump_to_prev_cue() both work (used instead of cue.jump()).
+- **Return-value lag (cosmetic):** song-level property WRITES (record_mode, session_record, punch_in/out,
+  current_song_time, loop, back_to_arranger) succeed but the handler's same-task read-back returns the
+  PRE-write value — a follow-up get_transport always shows the correct value. metronome reads fresh.
+  The mutation itself is reliable; only the returned confirmation dict can be stale. Not worth a fix
+  (Live applies the property change asynchronously even within schedule_message).
+- **Arming record auto-starts playback:** set_arrangement_record(on) and set_session_record(on) begin
+  playback immediately. Tests must stop + restore promptly. song_length stayed 232.0 → nothing recorded
+  (no armed tracks).
+- **Per-scene time_signature cannot be reset to the -1 "inherit" sentinel** (numerator must be >=1):
+  once set it's a permanent override. Live API limitation — set_scene_property can change it but not clear it.
+- **Live snaps scene color to its palette:** set color 16711680 stored as 16728642 (nearest entry).
