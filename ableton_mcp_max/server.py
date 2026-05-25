@@ -39,6 +39,13 @@ from ableton_mcp_max.transport_utils import (
     coerce_loop_fields,
     coerce_punch_fields,
 )
+from ableton_mcp_max.automation_utils import (
+    normalize_clip_location,
+    normalize_target_type,
+    normalize_mixer_target,
+    coerce_resolution,
+    normalize_breakpoints,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -1798,6 +1805,239 @@ def load_drum_kit(ctx: Context, track_index: int, rack_uri: str, kit_path: str) 
     except Exception as e:
         logger.error(f"Error loading drum kit: {str(e)}")
         return f"Error loading drum kit: {str(e)}"
+
+def _resolve_auto_target(ableton, track_index, target_type, device_index,
+                         parameter, mixer_property, send_index):
+    """Normalize an automation parameter target. For device targets, resolve a
+    parameter name->index via a get_device_parameters round-trip (mirrors
+    set_device_parameter). Returns a dict of resolved fields to forward to the
+    Remote Script."""
+    ttype = normalize_target_type(target_type)
+    if ttype == "mixer":
+        canonical, sidx = normalize_mixer_target(mixer_property, send_index)
+        return {
+            "target_type": "mixer",
+            "mixer_property": canonical,
+            "send_index": sidx,
+            "device_index": 0,
+            "parameter_index": 0,
+        }
+    # device: resolve name/index against the live parameter list
+    info = ableton.send_command(
+        "get_device_parameters",
+        {"track_index": track_index, "device_index": device_index},
+    )
+    plist = info.get("parameters", [])
+    idx = resolve_parameter_index(plist, parameter)
+    return {
+        "target_type": "device",
+        "device_index": device_index,
+        "parameter_index": idx,
+        "mixer_property": "",
+        "send_index": -1,
+    }
+
+
+@mcp.tool()
+def get_automation(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    target_type: str = "device",
+    device_index: int = 0,
+    parameter: Union[int, str] = 0,
+    mixer_property: str = "",
+    send_index: int = -1,
+    clip_location: str = "session",
+    from_time: float = 0.0,
+    time_span: float = -1.0,
+    resolution: int = 16,
+) -> str:
+    """
+    Read a parameter's automation envelope in a clip as evenly-spaced samples
+    (the Live API cannot enumerate breakpoints, only sample value_at_time).
+
+    Parameters:
+    - track_index, clip_index: locate the clip
+    - clip_location: "session" (default) or "arrangement"
+    - target_type: "device" (default) or "mixer"
+      - device: device_index + parameter (name or index; rack macros included)
+      - mixer: mixer_property in {volume, pan, send} (+ send_index for send)
+    - from_time/time_span: sample window in beats (time_span<0 -> whole clip)
+    - resolution: number of samples (>=1)
+    Returns has_envelope plus a samples=[{time,value}] list.
+    """
+    try:
+        loc = normalize_clip_location(clip_location)
+        ableton = get_ableton_connection()
+        target = _resolve_auto_target(
+            ableton, track_index, target_type, device_index, parameter,
+            mixer_property, send_index)
+        payload = {
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "clip_location": loc,
+            "from_time": from_time,
+            "time_span": time_span,
+            "resolution": coerce_resolution(resolution),
+        }
+        payload.update(target)
+        result = ableton.send_command("get_automation", payload)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error reading automation: {str(e)}")
+        return f"Error reading automation: {str(e)}"
+
+
+@mcp.tool()
+def set_automation(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    target_type: str = "device",
+    device_index: int = 0,
+    parameter: Union[int, str] = 0,
+    mixer_property: str = "",
+    send_index: int = -1,
+    clip_location: str = "session",
+    points: List[Dict[str, Any]] = None,
+    time: float = None,
+    value: float = None,
+    duration: float = 0.0,
+) -> str:
+    """
+    Write automation breakpoints into a clip (creating the envelope if absent).
+
+    Provide EITHER a single point (time + value, optional duration) OR a
+    `points` list of {time, value, duration?}. duration=0 inserts a single
+    breakpoint; duration>0 inserts a flat step of that length. Values are
+    clamped to the parameter's range by Live.
+
+    Targeting is identical to get_automation (clip_location, target_type,
+    device/mixer fields).
+    """
+    try:
+        loc = normalize_clip_location(clip_location)
+        breakpoints = normalize_breakpoints(points, time, value, duration)
+        ableton = get_ableton_connection()
+        target = _resolve_auto_target(
+            ableton, track_index, target_type, device_index, parameter,
+            mixer_property, send_index)
+        payload = {
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "clip_location": loc,
+            "breakpoints": breakpoints,
+        }
+        payload.update(target)
+        result = ableton.send_command("set_automation", payload)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting automation: {str(e)}")
+        return f"Error setting automation: {str(e)}"
+
+
+@mcp.tool()
+def clear_automation(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    target_type: str = "device",
+    device_index: int = 0,
+    parameter: Union[int, str] = 0,
+    mixer_property: str = "",
+    send_index: int = -1,
+    clip_location: str = "session",
+    from_time: float = None,
+    time_span: float = None,
+) -> str:
+    """
+    Clear a parameter's automation in a clip. Pass BOTH from_time and time_span
+    to clear only that range; omit both to remove the parameter's whole envelope.
+
+    Targeting is identical to get_automation.
+    """
+    try:
+        loc = normalize_clip_location(clip_location)
+        ableton = get_ableton_connection()
+        target = _resolve_auto_target(
+            ableton, track_index, target_type, device_index, parameter,
+            mixer_property, send_index)
+        payload = {
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "clip_location": loc,
+            "from_time": from_time,
+            "time_span": time_span,
+        }
+        payload.update(target)
+        result = ableton.send_command("clear_automation", payload)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error clearing automation: {str(e)}")
+        return f"Error clearing automation: {str(e)}"
+
+
+@mcp.tool()
+def create_automation_envelope(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    target_type: str = "device",
+    device_index: int = 0,
+    parameter: Union[int, str] = 0,
+    mixer_property: str = "",
+    send_index: int = -1,
+    clip_location: str = "session",
+) -> str:
+    """
+    Create an empty automation envelope for a parameter in a clip (no-op if one
+    already exists; `created` reports which). Targeting is identical to
+    get_automation. Note: set_automation already creates envelopes lazily; use
+    this only when you want an empty lane without writing points.
+    """
+    try:
+        loc = normalize_clip_location(clip_location)
+        ableton = get_ableton_connection()
+        target = _resolve_auto_target(
+            ableton, track_index, target_type, device_index, parameter,
+            mixer_property, send_index)
+        payload = {
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "clip_location": loc,
+        }
+        payload.update(target)
+        result = ableton.send_command("create_automation_envelope", payload)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error creating automation envelope: {str(e)}")
+        return f"Error creating automation envelope: {str(e)}"
+
+
+@mcp.tool()
+def clear_all_automation(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    clip_location: str = "session",
+) -> str:
+    """
+    Remove every automation envelope in a clip (clip.clear_all_envelopes()).
+    """
+    try:
+        loc = normalize_clip_location(clip_location)
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "clear_all_automation",
+            {"track_index": track_index, "clip_index": clip_index,
+             "clip_location": loc},
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error clearing all automation: {str(e)}")
+        return f"Error clearing all automation: {str(e)}"
+
 
 # Main execution
 def main():
