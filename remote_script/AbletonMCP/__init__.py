@@ -246,7 +246,10 @@ class AbletonMCP(ControlSurface):
                                  "set_session_record", "set_punch",
                                  "set_song_position", "jump_by",
                                  "set_arrangement_loop", "jump_to_cue",
-                                 "back_to_arrangement", "re_enable_automation"]:
+                                 "back_to_arrangement", "re_enable_automation",
+                                 "set_automation", "clear_automation",
+                                 "create_automation_envelope",
+                                 "clear_all_automation"]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
                 
@@ -464,6 +467,44 @@ class AbletonMCP(ControlSurface):
                             result = self._back_to_arrangement()
                         elif command_type == "re_enable_automation":
                             result = self._re_enable_automation()
+                        elif command_type == "set_automation":
+                            result = self._set_automation(
+                                params.get("track_index", 0),
+                                params.get("clip_index", 0),
+                                params.get("clip_location", "session"),
+                                params.get("target_type", "device"),
+                                params.get("device_index", 0),
+                                params.get("parameter_index", 0),
+                                params.get("mixer_property", ""),
+                                params.get("send_index", -1),
+                                params.get("breakpoints", []))
+                        elif command_type == "clear_automation":
+                            result = self._clear_automation(
+                                params.get("track_index", 0),
+                                params.get("clip_index", 0),
+                                params.get("clip_location", "session"),
+                                params.get("target_type", "device"),
+                                params.get("device_index", 0),
+                                params.get("parameter_index", 0),
+                                params.get("mixer_property", ""),
+                                params.get("send_index", -1),
+                                params.get("from_time", None),
+                                params.get("time_span", None))
+                        elif command_type == "create_automation_envelope":
+                            result = self._create_automation_envelope(
+                                params.get("track_index", 0),
+                                params.get("clip_index", 0),
+                                params.get("clip_location", "session"),
+                                params.get("target_type", "device"),
+                                params.get("device_index", 0),
+                                params.get("parameter_index", 0),
+                                params.get("mixer_property", ""),
+                                params.get("send_index", -1))
+                        elif command_type == "clear_all_automation":
+                            result = self._clear_all_automation(
+                                params.get("track_index", 0),
+                                params.get("clip_index", 0),
+                                params.get("clip_location", "session"))
 
                         # Put the result in the queue
                         response_queue.put({"status": "success", "result": result})
@@ -558,6 +599,20 @@ class AbletonMCP(ControlSurface):
                 response["result"] = self._get_transport()
             elif command_type == "get_cue_points":
                 response["result"] = self._get_cue_points()
+            elif command_type == "get_automation":
+                response["result"] = self._get_automation(
+                    params.get("track_index", 0),
+                    params.get("clip_index", 0),
+                    params.get("clip_location", "session"),
+                    params.get("target_type", "device"),
+                    params.get("device_index", 0),
+                    params.get("parameter_index", 0),
+                    params.get("mixer_property", ""),
+                    params.get("send_index", -1),
+                    params.get("from_time", 0.0),
+                    params.get("time_span", -1.0),
+                    params.get("resolution", 16),
+                )
             else:
                 response["status"] = "error"
                 response["message"] = "Unknown command: " + command_type
@@ -1299,6 +1354,175 @@ class AbletonMCP(ControlSurface):
         if not clip_slot.has_clip:
             raise Exception("No clip in slot")
         return clip_slot.clip
+
+    def _resolve_clip_loc(self, track_index, clip_index, clip_location):
+        """Return the Live clip at (track_index, clip_index) in session or
+        arrangement view. Raises on out-of-range / empty session slot."""
+        if track_index < 0 or track_index >= len(self._song.tracks):
+            raise IndexError("Track index out of range")
+        track = self._song.tracks[track_index]
+        if clip_location == "arrangement":
+            clips = track.arrangement_clips
+            if clip_index < 0 or clip_index >= len(clips):
+                raise IndexError("Arrangement clip index out of range")
+            return clips[clip_index]
+        # default: session
+        if clip_index < 0 or clip_index >= len(track.clip_slots):
+            raise IndexError("Clip index out of range")
+        clip_slot = track.clip_slots[clip_index]
+        if not clip_slot.has_clip:
+            raise Exception("No clip in slot")
+        return clip_slot.clip
+
+    def _resolve_auto_param(self, track_index, target_type, device_index,
+                            parameter_index, mixer_property, send_index):
+        """Return the DeviceParameter to automate (device param/macro or mixer
+        volume/pan/send). `parameter_index` and `mixer_property` are already
+        resolved/normalized by the server."""
+        if track_index < 0 or track_index >= len(self._song.tracks):
+            raise IndexError("Track index out of range")
+        track = self._song.tracks[track_index]
+        if target_type == "mixer":
+            md = track.mixer_device
+            if mixer_property == "volume":
+                return md.volume
+            if mixer_property == "pan":
+                return md.panning
+            if mixer_property == "send":
+                if send_index < 0 or send_index >= len(md.sends):
+                    raise IndexError("send_index out of range")
+                return md.sends[send_index]
+            raise ValueError("Unsupported mixer_property: " + str(mixer_property))
+        # default: device
+        if device_index < 0 or device_index >= len(track.devices):
+            raise IndexError("Device index out of range")
+        device = track.devices[device_index]
+        if parameter_index < 0 or parameter_index >= len(device.parameters):
+            raise IndexError("Parameter index out of range")
+        return device.parameters[parameter_index]
+
+    def _get_automation(self, track_index, clip_index, clip_location,
+                        target_type, device_index, parameter_index,
+                        mixer_property, send_index, from_time, time_span,
+                        resolution):
+        """Sampled read of a parameter's automation envelope in a clip.
+        No LOM API enumerates breakpoints, so we sample value_at_time."""
+        clip = self._resolve_clip_loc(track_index, clip_index, clip_location)
+        param = self._resolve_auto_param(
+            track_index, target_type, device_index, parameter_index,
+            mixer_property, send_index)
+        env = clip.automation_envelope(param)
+        result = {
+            "clip_location": clip_location,
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "target": {"type": target_type, "name": param.name},
+            "has_envelope": env is not None,
+            "samples": [],
+        }
+        if env is None:
+            return result
+        start = float(from_time)
+        span = float(time_span)
+        if span < 0:
+            span = clip.length
+        n = int(resolution)
+        if n < 1:
+            n = 1
+        samples = []
+        if n == 1:
+            samples.append({"time": start, "value": env.value_at_time(start)})
+        else:
+            step = span / float(n - 1)
+            i = 0
+            while i < n:
+                t = start + step * i
+                samples.append({"time": t, "value": env.value_at_time(t)})
+                i = i + 1
+        result["samples"] = samples
+        return result
+
+    def _set_automation(self, track_index, clip_index, clip_location,
+                        target_type, device_index, parameter_index,
+                        mixer_property, send_index, breakpoints):
+        """Insert one or more breakpoints/steps into a parameter's envelope,
+        creating the envelope if it does not yet exist. `breakpoints` is a
+        server-validated list of {time, value, duration}."""
+        clip = self._resolve_clip_loc(track_index, clip_index, clip_location)
+        param = self._resolve_auto_param(
+            track_index, target_type, device_index, parameter_index,
+            mixer_property, send_index)
+        env = clip.automation_envelope(param)
+        if env is None:
+            env = clip.create_automation_envelope(param)
+        count = 0
+        for bp in breakpoints:
+            env.insert_step(
+                float(bp["time"]), float(bp["duration"]), float(bp["value"]))
+            count = count + 1
+        return {
+            "clip_location": clip_location,
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "target": {"type": target_type, "name": param.name},
+            "points_written": count,
+        }
+
+    def _clear_automation(self, track_index, clip_index, clip_location,
+                         target_type, device_index, parameter_index,
+                         mixer_property, send_index, from_time, time_span):
+        """Clear a parameter's automation. With a range -> clear_range; without
+        -> clear the whole envelope for that parameter."""
+        clip = self._resolve_clip_loc(track_index, clip_index, clip_location)
+        param = self._resolve_auto_param(
+            track_index, target_type, device_index, parameter_index,
+            mixer_property, send_index)
+        out = {
+            "clip_location": clip_location,
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "target": {"type": target_type, "name": param.name},
+        }
+        if from_time is not None and time_span is not None:
+            env = clip.automation_envelope(param)
+            if env is not None:
+                env.clear_range(float(from_time), float(time_span))
+            out["cleared"] = "range"
+        else:
+            clip.clear_envelope(param)
+            out["cleared"] = "envelope"
+        return out
+
+    def _create_automation_envelope(self, track_index, clip_index,
+                                    clip_location, target_type, device_index,
+                                    parameter_index, mixer_property, send_index):
+        """Explicitly create an empty envelope for a parameter. `created` is
+        False if one already existed."""
+        clip = self._resolve_clip_loc(track_index, clip_index, clip_location)
+        param = self._resolve_auto_param(
+            track_index, target_type, device_index, parameter_index,
+            mixer_property, send_index)
+        existed = clip.automation_envelope(param) is not None
+        if not existed:
+            clip.create_automation_envelope(param)
+        return {
+            "clip_location": clip_location,
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "target": {"type": target_type, "name": param.name},
+            "created": (not existed),
+        }
+
+    def _clear_all_automation(self, track_index, clip_index, clip_location):
+        """Remove every automation envelope in the clip."""
+        clip = self._resolve_clip_loc(track_index, clip_index, clip_location)
+        clip.clear_all_envelopes()
+        return {
+            "clip_location": clip_location,
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "cleared_all": True,
+        }
 
     def _require_midi_clip(self, clip, action):
         if not clip.is_midi_clip:
