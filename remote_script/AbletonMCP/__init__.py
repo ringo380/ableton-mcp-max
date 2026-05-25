@@ -231,7 +231,10 @@ class AbletonMCP(ControlSurface):
                                  "set_tempo", "fire_clip", "stop_clip",
                                  "start_playback", "stop_playback", "load_browser_item",
                                  "set_device_parameter", "set_mixer_property",
-                                 "set_routing"]:
+                                 "set_routing", "replace_clip_notes",
+                                 "remove_clip_notes", "set_clip_property",
+                                 "set_clip_loop", "quantize_clip",
+                                 "duplicate_clip", "delete_clip"]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
                 
@@ -306,6 +309,55 @@ class AbletonMCP(ControlSurface):
                             value = params.get("value", None)
                             result = self._set_routing(
                                 track_index, track_type, prop, value)
+                        elif command_type == "replace_clip_notes":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            notes = params.get("notes", [])
+                            result = self._replace_clip_notes(
+                                track_index, clip_index, notes)
+                        elif command_type == "remove_clip_notes":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            from_time = params.get("from_time", 0.0)
+                            time_span = params.get("time_span", -1.0)
+                            from_pitch = params.get("from_pitch", 0)
+                            pitch_span = params.get("pitch_span", 128)
+                            result = self._remove_clip_notes(
+                                track_index, clip_index, from_time,
+                                time_span, from_pitch, pitch_span)
+                        elif command_type == "set_clip_property":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            prop = params.get("property", "")
+                            value = params.get("value", None)
+                            result = self._set_clip_property(
+                                track_index, clip_index, prop, value)
+                        elif command_type == "set_clip_loop":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            loop_start = params.get("loop_start", 0.0)
+                            loop_end = params.get("loop_end", 0.0)
+                            looping = params.get("looping", -1)
+                            result = self._set_clip_loop(
+                                track_index, clip_index, loop_start,
+                                loop_end, looping)
+                        elif command_type == "quantize_clip":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            grid = params.get("grid", 0)
+                            amount = params.get("amount", 1.0)
+                            result = self._quantize_clip(
+                                track_index, clip_index, grid, amount)
+                        elif command_type == "duplicate_clip":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            target_clip_index = params.get("target_clip_index", -1)
+                            result = self._duplicate_clip(
+                                track_index, clip_index, target_clip_index)
+                        elif command_type == "delete_clip":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            result = self._delete_clip(track_index, clip_index)
 
                         # Put the result in the queue
                         response_queue.put({"status": "success", "result": result})
@@ -362,6 +414,20 @@ class AbletonMCP(ControlSurface):
                 track_index = params.get("track_index", 0)
                 track_type = params.get("track_type", "regular")
                 response["result"] = self._get_routing(track_index, track_type)
+            elif command_type == "get_clip_info":
+                track_index = params.get("track_index", 0)
+                clip_index = params.get("clip_index", 0)
+                response["result"] = self._get_clip_info(track_index, clip_index)
+            elif command_type == "get_clip_notes":
+                track_index = params.get("track_index", 0)
+                clip_index = params.get("clip_index", 0)
+                from_time = params.get("from_time", 0.0)
+                time_span = params.get("time_span", -1.0)
+                from_pitch = params.get("from_pitch", 0)
+                pitch_span = params.get("pitch_span", 128)
+                response["result"] = self._get_clip_notes(
+                    track_index, clip_index, from_time, time_span,
+                    from_pitch, pitch_span)
             else:
                 response["status"] = "error"
                 response["message"] = "Unknown command: " + command_type
@@ -878,13 +944,247 @@ class AbletonMCP(ControlSurface):
             clip_slot = track.clip_slots[clip_index]
             
             clip_slot.stop()
-            
+
             result = {
                 "stopped": True
             }
             return result
         except Exception as e:
             self.log_message("Error stopping clip: " + str(e))
+            raise
+
+    # --- Phase 3: clip & MIDI editing ---
+
+    def _resolve_clip(self, track_index, clip_index):
+        """Return the Live clip object at (track_index, clip_index).
+        Raises on out-of-range indices or an empty clip slot."""
+        if track_index < 0 or track_index >= len(self._song.tracks):
+            raise IndexError("Track index out of range")
+        track = self._song.tracks[track_index]
+        if clip_index < 0 or clip_index >= len(track.clip_slots):
+            raise IndexError("Clip index out of range")
+        clip_slot = track.clip_slots[clip_index]
+        if not clip_slot.has_clip:
+            raise Exception("No clip in slot")
+        return clip_slot.clip
+
+    def _require_midi_clip(self, clip, action):
+        if not clip.is_midi_clip:
+            raise Exception("%s requires a MIDI clip" % action)
+
+    def _note_dicts(self, raw_notes):
+        out = []
+        for n in raw_notes:
+            out.append({
+                "pitch": n[0],
+                "start_time": n[1],
+                "duration": n[2],
+                "velocity": n[3],
+                "mute": n[4],
+            })
+        return out
+
+    def _get_clip_info(self, track_index, clip_index):
+        """Read clip properties. Audio-only fields are probed with try/except
+        (Live raises RuntimeError -- not AttributeError -- on MIDI clips)."""
+        try:
+            clip = self._resolve_clip(track_index, clip_index)
+            result = {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "name": clip.name,
+                "length": clip.length,
+                "is_midi_clip": clip.is_midi_clip,
+                "is_audio_clip": clip.is_audio_clip,
+                "looping": clip.looping,
+                "loop_start": clip.loop_start,
+                "loop_end": clip.loop_end,
+                "start_marker": clip.start_marker,
+                "end_marker": clip.end_marker,
+                "signature_numerator": clip.signature_numerator,
+                "signature_denominator": clip.signature_denominator,
+                "is_playing": clip.is_playing,
+            }
+            for attr in ("warping", "warp_mode", "gain", "gain_display_string",
+                         "pitch_coarse", "pitch_fine"):
+                try:
+                    result[attr] = getattr(clip, attr)
+                except Exception:
+                    pass
+            return result
+        except Exception as e:
+            self.log_message("Error getting clip info: " + str(e))
+            raise
+
+    def _get_clip_notes(self, track_index, clip_index, from_time,
+                        time_span, from_pitch, pitch_span):
+        """Read MIDI notes within a window. Note Live's get_notes arg order is
+        (from_time, from_pitch, time_span, pitch_span)."""
+        try:
+            clip = self._resolve_clip(track_index, clip_index)
+            self._require_midi_clip(clip, "get_clip_notes")
+            if time_span < 0:
+                time_span = clip.length
+            raw = clip.get_notes(from_time, from_pitch, time_span, pitch_span)
+            notes = self._note_dicts(raw)
+            return {"note_count": len(notes), "notes": notes}
+        except Exception as e:
+            self.log_message("Error getting clip notes: " + str(e))
+            raise
+
+    def _replace_clip_notes(self, track_index, clip_index, notes):
+        """Clear all notes then set the given notes (set_notes only adds)."""
+        try:
+            clip = self._resolve_clip(track_index, clip_index)
+            self._require_midi_clip(clip, "replace_clip_notes")
+            clip.remove_notes(0.0, 0, clip.length, 128)
+            live_notes = []
+            for note in notes:
+                live_notes.append((
+                    note.get("pitch", 60),
+                    note.get("start_time", 0.0),
+                    note.get("duration", 0.25),
+                    note.get("velocity", 100),
+                    note.get("mute", False),
+                ))
+            clip.set_notes(tuple(live_notes))
+            return {"note_count": len(live_notes)}
+        except Exception as e:
+            self.log_message("Error replacing clip notes: " + str(e))
+            raise
+
+    def _remove_clip_notes(self, track_index, clip_index, from_time,
+                           time_span, from_pitch, pitch_span):
+        """Remove notes in a window. Live arg order: (from_time, from_pitch,
+        time_span, pitch_span)."""
+        try:
+            clip = self._resolve_clip(track_index, clip_index)
+            self._require_midi_clip(clip, "remove_clip_notes")
+            if time_span < 0:
+                time_span = clip.length
+            clip.remove_notes(from_time, from_pitch, time_span, pitch_span)
+            return {"removed": True}
+        except Exception as e:
+            self.log_message("Error removing clip notes: " + str(e))
+            raise
+
+    def _set_clip_property(self, track_index, clip_index, prop, value):
+        """Set one clip property. `prop` is canonical (server normalizes/coerces
+        first). Audio-only props on a MIDI clip raise a clear error."""
+        try:
+            clip = self._resolve_clip(track_index, clip_index)
+            audio_only = ("warping", "warp_mode", "gain",
+                          "pitch_coarse", "pitch_fine")
+            if prop in audio_only and not clip.is_audio_clip:
+                raise Exception(
+                    "Property '%s' is audio-only; not valid on a MIDI clip" % prop)
+            setattr(clip, prop, value)
+            return {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "property": prop,
+                "value": getattr(clip, prop),
+            }
+        except Exception as e:
+            self.log_message("Error setting clip property: " + str(e))
+            raise
+
+    def _set_clip_loop(self, track_index, clip_index, loop_start,
+                       loop_end, looping):
+        """Set the loop window, writing edges in an order that never inverts
+        the window. looping == -1 leaves looping unchanged."""
+        try:
+            clip = self._resolve_clip(track_index, clip_index)
+            if loop_end <= loop_start:
+                raise Exception(
+                    "loop_end (%s) must be greater than loop_start (%s)"
+                    % (loop_end, loop_start))
+            if looping != -1:
+                clip.looping = bool(looping)
+            # Widen first: if the new window is to the right of the current one,
+            # move the end before the start (and vice versa) to avoid an
+            # invalid intermediate state.
+            if loop_start >= clip.loop_end:
+                clip.loop_end = loop_end
+                clip.loop_start = loop_start
+            else:
+                clip.loop_start = loop_start
+                clip.loop_end = loop_end
+            return {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "loop_start": clip.loop_start,
+                "loop_end": clip.loop_end,
+                "looping": clip.looping,
+            }
+        except Exception as e:
+            self.log_message("Error setting clip loop: " + str(e))
+            raise
+
+    def _quantize_clip(self, track_index, clip_index, grid, amount):
+        """Quantize a MIDI clip's notes. `grid` is a RecordingQuantization int."""
+        try:
+            clip = self._resolve_clip(track_index, clip_index)
+            self._require_midi_clip(clip, "quantize_clip")
+            clip.quantize(grid, amount)
+            return {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "grid": grid,
+                "amount": amount,
+            }
+        except Exception as e:
+            self.log_message("Error quantizing clip: " + str(e))
+            raise
+
+    def _duplicate_clip(self, track_index, clip_index, target_clip_index):
+        """Duplicate a clip into another (empty) slot on the same track."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            if clip_index < 0 or clip_index >= len(track.clip_slots):
+                raise IndexError("Clip index out of range")
+            source_slot = track.clip_slots[clip_index]
+            if not source_slot.has_clip:
+                raise Exception("No clip in slot")
+            if target_clip_index < 0:
+                target_clip_index = clip_index + 1
+            if target_clip_index < 0 or target_clip_index >= len(track.clip_slots):
+                raise IndexError("Target clip index out of range")
+            target_slot = track.clip_slots[target_clip_index]
+            if target_slot.has_clip:
+                raise Exception("Target clip slot already has a clip")
+            source_slot.duplicate_clip_to(target_slot)
+            return {
+                "track_index": track_index,
+                "source_clip_index": clip_index,
+                "target_clip_index": target_clip_index,
+                "name": target_slot.clip.name,
+            }
+        except Exception as e:
+            self.log_message("Error duplicating clip: " + str(e))
+            raise
+
+    def _delete_clip(self, track_index, clip_index):
+        """Delete the clip in a slot (the slot itself remains)."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            if clip_index < 0 or clip_index >= len(track.clip_slots):
+                raise IndexError("Clip index out of range")
+            clip_slot = track.clip_slots[clip_index]
+            if not clip_slot.has_clip:
+                raise Exception("No clip in slot")
+            clip_slot.delete_clip()
+            return {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "deleted": True,
+            }
+        except Exception as e:
+            self.log_message("Error deleting clip: " + str(e))
             raise
     
     

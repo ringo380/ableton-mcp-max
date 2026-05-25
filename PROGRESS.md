@@ -1,7 +1,7 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Phase 2 + 2b (Mixer & Routing) live-verified against Live 11 Suite. PR #1 holds the complete mixer+routing work, ready to squash-merge. Ready for Phase 3.
-**Next action:** Squash-merge PR #1, then plan Phase 3 (Clip & MIDI Editing).
+**Current focus:** Phase 3 (Clip & MIDI Editing) implemented on branch `phase-3-clip-midi`; offline tests green. Awaiting live verification.
+**Next action:** Reinstall remote script + quit/reopen Live + restart Claude Code, then live-verify the 9 Phase 3 tools (esp. get_notes/remove_notes arg order, RecordingQuantization grid ints, warp_mode ints, duplicate_clip_to). Record results below, then PR + squash-merge.
 
 ## Phases
 | Phase | Title | Status | Completed |
@@ -10,7 +10,7 @@
 | 1 | Device & Parameter Control | Live-verified | 2026-05-24 |
 | 2 | Mixer (volume/pan/mute/solo/arm/sends/master/returns/xfade) | Live-verified | 2026-05-24 |
 | 2b | Routing (input/output/monitor) | Live-verified | 2026-05-24 |
-| 3 | Clip & MIDI Editing | Not started | |
+| 3 | Clip & MIDI Editing | Implemented (offline) | |
 | 4 | Devices & Racks | Not started | |
 | 5 | Scenes, Transport, Arrangement | Not started | |
 | 6 | Automation Envelopes | Not started | |
@@ -37,6 +37,22 @@
 - [x] get_routing (live: regular = input/output/monitor; return & master = input+output, NO monitoring_state. Fixed hasattr→try/except: Live raises RuntimeError not AttributeError for monitoring on return/master)
 - [x] set_routing (live: monitor 2→1, output_type "Sends Only"→"Master" via object-assignment; negative — bogus/stale display_name — rejected with live "Available:" list; values restored)
 - Note: input-routing-on-return/master validation was loosened (Live exposes those endpoints) and is unit-tested; the loosened server validation takes effect next Claude Code restart. The _assign_routing handler path itself is live-proven via output_type.
+
+## Phase 3 tools
+- [x] clip_utils.normalize_clip_property / validate_clip_property / coerce_clip_value /
+      resolve_quantize_grid (offline unit tests: 24/24 pass; total suite 39/39)
+- [ ] get_clip_info (read; audio-only fields probed via try/except)
+- [ ] get_clip_notes (MIDI-only; get_notes arg order from_time,from_pitch,time_span,pitch_span; time_span<0→clip.length)
+- [ ] replace_clip_notes (MIDI-only; remove_notes(0,0,length,128) then set_notes)
+- [ ] remove_clip_notes (MIDI-only; window remove)
+- [ ] set_clip_property (generic; audio-only props rejected on MIDI both server + remote)
+- [ ] set_clip_loop (ordered dual-edge write; looping=-1 leaves unchanged)
+- [ ] quantize_clip (MIDI-only; grid=RecordingQuantization int — VALUES NEED LIVE CONFIRM)
+- [ ] duplicate_clip (clip_slot.duplicate_clip_to; default target=clip_index+1; empty-target guard)
+- [ ] delete_clip (clip_slot.delete_clip)
+- **Verify-live flags:** get_notes/remove_notes arg order; RecordingQuantization enum + grid int values
+  in clip_utils.QUANTIZE_GRID_MAP (incl. whether 1/4 exists); warp_mode int→mode mapping; gain 0–1↔dB;
+  duplicate_clip_to signature.
 
 ## Routing reachability notes
 - All track types expose input_routing_type/channel + output_routing_type/channel.
