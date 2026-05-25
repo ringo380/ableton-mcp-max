@@ -1,7 +1,7 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Phase 3.1 (extended-note-API migration) live-verified — the legacy-note modal is GONE; note ops use Live 11 extended API + new modify_clip_notes. On branch `phase-3.1-extended-notes`, ready to PR + squash-merge.
-**Next action:** Push branch, PR, `gh pr merge --squash --delete-branch`, then plan Phase 4 (Devices & Racks).
+**Current focus:** Phase 4 (Devices & Racks) — code complete on branch `phase-4-devices-racks`, offline suite 65/65 green. 7 new tools (get_device_info, delete_device, set_device_on, get_rack_macros, set_rack_macro, get_rack_chains, set_chain_property). Device move + preset selection DEFERRED to Phase 4b (no clean Live 11 LOM path). Awaiting live verification.
+**Next action:** Reinstall remote script + quit/reopen Live + restart Claude Code; live-verify Phase 4 tools (re-read set state first; restore all changed values); then PR + squash-merge.
 
 ## Phases
 | Phase | Title | Status | Completed |
@@ -12,7 +12,8 @@
 | 2b | Routing (input/output/monitor) | Live-verified | 2026-05-24 |
 | 3 | Clip & MIDI Editing | Live-verified | 2026-05-24 |
 | 3.1 | Extended note API migration (+ modify_clip_notes) | Live-verified | 2026-05-25 |
-| 4 | Devices & Racks | Not started | |
+| 4 | Devices & Racks (info/delete/on-off/macros/chains) | Code complete, awaiting live | |
+| 4b | Device move + preset selection (deferred) | Not started | |
 | 5 | Scenes, Transport, Arrangement | Not started | |
 | 6 | Automation Envelopes | Not started | |
 | 7 | Change Listeners (stretch) | Not started | |
@@ -111,6 +112,24 @@
   (changed only provided fields, note_id preserved, other notes untouched — no remove+re-add);
   bogus note_id rejected with "note_id(s) not found in clip: [...]".
 - clip_utils: +normalize_note (defaults/clamps) +NOTE_MOD_FIELDS; offline suite 43/43.
+
+## Phase 4 tools (Devices & Racks) — code complete, awaiting live verification
+- [x] device_utils.resolve_device_index / resolve_macro / normalize_chain_property /
+      validate_chain_property / coerce_chain_value / coerce_on_value
+      (offline unit tests: 22/22; total suite 65/65)
+- [ ] get_device_info (class/type, is_active, can_have_chains/drum_pads, is_on,
+      macro_count/chain_count for racks; track_type-aware via _resolve_track)
+- [ ] delete_device (track.delete_device(index); reports new device_count) — LIVE on scratch device only
+- [ ] set_device_on (writes "Device On" param[0]; rejects devices without it)
+- [ ] get_rack_macros (filters device.parameters named "Macro N")
+- [ ] set_rack_macro (server resolves macro# / "Macro N" → param index; clamped set; rack-guarded)
+- [ ] get_rack_chains (device.chains: name, mute/solo, mixer volume/panning, contained devices)
+- [ ] set_chain_property (mute/solo bool; volume/panning clamped via chain.mixer_device; rack-guarded)
+- **Deferred to Phase 4b:** device move (no LOM reorder API) + preset selection (browser re-load).
+- **Add device** already covered by existing load_instrument_or_effect (browser load) — not re-impl.
+- LOM items to confirm live: macro naming/count on real Instrument Rack; chain.mixer_device
+  reachability on audio vs MIDI chains (try/except guarded); delete_device re-indexing;
+  drum-rack (can_have_drum_pads) chain shape degrades gracefully.
 
 ## Device parameter reachability notes
 - Wavetable: 93 automatable params exposed. Quantized params (Device On, Osc On,
