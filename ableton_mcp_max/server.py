@@ -28,6 +28,17 @@ from ableton_mcp_max.device_utils import (
     coerce_chain_value,
     coerce_on_value,
 )
+from ableton_mcp_max.scene_utils import (
+    normalize_scene_property,
+    coerce_scene_value,
+)
+from ableton_mcp_max.transport_utils import (
+    resolve_cue_direction,
+    coerce_song_time,
+    coerce_jump_beats,
+    coerce_loop_fields,
+    coerce_punch_fields,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -132,7 +143,12 @@ class AbletonConnection:
             "set_clip_loop", "quantize_clip", "duplicate_clip", "delete_clip",
             "modify_clip_notes",
             "delete_device", "set_device_on", "set_rack_macro",
-            "set_chain_property"
+            "set_chain_property",
+            "fire_scene", "create_scene", "delete_scene", "duplicate_scene",
+            "set_scene_name", "set_scene_property", "continue_playback",
+            "set_metronome", "set_arrangement_record", "set_session_record",
+            "set_punch", "set_song_position", "jump_by", "set_arrangement_loop",
+            "jump_to_cue", "back_to_arrangement", "re_enable_automation"
         ]
         
         try:
@@ -1275,6 +1291,360 @@ def stop_playback(ctx: Context) -> str:
     except Exception as e:
         logger.error(f"Error stopping playback: {str(e)}")
         return f"Error stopping playback: {str(e)}"
+
+# === Scenes ===============================================================
+
+@mcp.tool()
+def get_scenes(ctx: Context) -> str:
+    """List all scenes in the session (index, name, color, tempo, time signature,
+    is_empty, is_triggered)."""
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_scenes")
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting scenes: {str(e)}")
+        return f"Error getting scenes: {str(e)}"
+
+@mcp.tool()
+def fire_scene(ctx: Context, scene_index: int) -> str:
+    """
+    Launch a scene (fires every clip in that session row).
+
+    Parameters:
+    - scene_index: The index of the scene to fire
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("fire_scene", {"scene_index": scene_index})
+        return f"Fired scene {scene_index}"
+    except Exception as e:
+        logger.error(f"Error firing scene: {str(e)}")
+        return f"Error firing scene: {str(e)}"
+
+@mcp.tool()
+def create_scene(ctx: Context, index: int = -1) -> str:
+    """
+    Create a new scene.
+
+    Parameters:
+    - index: Position to insert at; -1 (default) appends at the end
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("create_scene", {"index": index})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error creating scene: {str(e)}")
+        return f"Error creating scene: {str(e)}"
+
+@mcp.tool()
+def delete_scene(ctx: Context, scene_index: int) -> str:
+    """
+    Delete a scene.
+
+    Parameters:
+    - scene_index: The index of the scene to delete
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("delete_scene", {"scene_index": scene_index})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error deleting scene: {str(e)}")
+        return f"Error deleting scene: {str(e)}"
+
+@mcp.tool()
+def duplicate_scene(ctx: Context, scene_index: int) -> str:
+    """
+    Duplicate a scene (the copy is inserted directly after it).
+
+    Parameters:
+    - scene_index: The index of the scene to duplicate
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("duplicate_scene", {"scene_index": scene_index})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error duplicating scene: {str(e)}")
+        return f"Error duplicating scene: {str(e)}"
+
+@mcp.tool()
+def set_scene_name(ctx: Context, scene_index: int, name: str) -> str:
+    """
+    Rename a scene.
+
+    Parameters:
+    - scene_index: The index of the scene
+    - name: The new name
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "set_scene_name", {"scene_index": scene_index, "name": name})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting scene name: {str(e)}")
+        return f"Error setting scene name: {str(e)}"
+
+@mcp.tool()
+def set_scene_property(
+    ctx: Context,
+    scene_index: int,
+    property: str,
+    value: Union[int, float, str],
+) -> str:
+    """
+    Set a scene property.
+
+    Parameters:
+    - scene_index: The index of the scene
+    - property: One of 'color', 'tempo', 'tempo_enabled', 'time_signature'
+      (aliases accepted: colour, bpm, tempo_on, time_sig/signature)
+    - value: color int; tempo BPM (clamped 20-999); tempo_enabled on/off;
+      time_signature as 'num/den' (e.g. '6/8')
+    """
+    try:
+        canonical = normalize_scene_property(property)
+        coerced = coerce_scene_value(canonical, value)
+        # JSON can't carry a tuple; send time signature as a list.
+        if isinstance(coerced, tuple):
+            coerced = list(coerced)
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "set_scene_property",
+            {"scene_index": scene_index, "property": canonical, "value": coerced},
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting scene property: {str(e)}")
+        return f"Error setting scene property: {str(e)}"
+
+# === Transport ============================================================
+
+@mcp.tool()
+def get_transport(ctx: Context) -> str:
+    """Get transport / arrangement state: is_playing, current_song_time, tempo,
+    time signature, metronome, arrangement loop (on/start/length), record_mode,
+    session_record, punch_in/out."""
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_transport")
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting transport: {str(e)}")
+        return f"Error getting transport: {str(e)}"
+
+@mcp.tool()
+def continue_playback(ctx: Context) -> str:
+    """Resume playback from the current position (unlike start_playback, which
+    restarts from the top)."""
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("continue_playback")
+        return "Continued playback"
+    except Exception as e:
+        logger.error(f"Error continuing playback: {str(e)}")
+        return f"Error continuing playback: {str(e)}"
+
+@mcp.tool()
+def set_metronome(ctx: Context, on: Union[bool, int, str]) -> str:
+    """
+    Turn the metronome on or off.
+
+    Parameters:
+    - on: true/false, on/off, 1/0
+    """
+    try:
+        value = coerce_on_value(on)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_metronome", {"on": value})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting metronome: {str(e)}")
+        return f"Error setting metronome: {str(e)}"
+
+@mcp.tool()
+def set_arrangement_record(ctx: Context, on: Union[bool, int, str]) -> str:
+    """
+    Arm or disarm arrangement record (record_mode).
+
+    Parameters:
+    - on: true/false, on/off, 1/0
+    """
+    try:
+        value = coerce_on_value(on)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_arrangement_record", {"on": value})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting arrangement record: {str(e)}")
+        return f"Error setting arrangement record: {str(e)}"
+
+@mcp.tool()
+def set_session_record(ctx: Context, on: Union[bool, int, str]) -> str:
+    """
+    Turn session record on or off.
+
+    Parameters:
+    - on: true/false, on/off, 1/0
+    """
+    try:
+        value = coerce_on_value(on)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_session_record", {"on": value})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting session record: {str(e)}")
+        return f"Error setting session record: {str(e)}"
+
+@mcp.tool()
+def set_punch(
+    ctx: Context,
+    punch_in: Union[bool, int, str] = None,
+    punch_out: Union[bool, int, str] = None,
+) -> str:
+    """
+    Set the arrangement punch-in/out flags. Only the parameters you provide are
+    changed.
+
+    Parameters:
+    - punch_in: true/false, on/off, 1/0 (optional)
+    - punch_out: true/false, on/off, 1/0 (optional)
+    """
+    try:
+        fields = coerce_punch_fields(punch_in, punch_out)
+        ableton = get_ableton_connection()
+        params = {}
+        if "punch_in" in fields:
+            params["punch_in"] = fields["punch_in"]
+        if "punch_out" in fields:
+            params["punch_out"] = fields["punch_out"]
+        result = ableton.send_command("set_punch", params)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting punch: {str(e)}")
+        return f"Error setting punch: {str(e)}"
+
+@mcp.tool()
+def set_song_position(ctx: Context, time_beats: float) -> str:
+    """
+    Jump the playhead to an absolute position.
+
+    Parameters:
+    - time_beats: Position in beats (must be >= 0)
+    """
+    try:
+        value = coerce_song_time(time_beats)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_song_position", {"time_beats": value})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting song position: {str(e)}")
+        return f"Error setting song position: {str(e)}"
+
+@mcp.tool()
+def jump_by(ctx: Context, beats: float) -> str:
+    """
+    Nudge the playhead by a relative amount.
+
+    Parameters:
+    - beats: Beats to move (negative moves backward)
+    """
+    try:
+        value = coerce_jump_beats(beats)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("jump_by", {"beats": value})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error jumping by beats: {str(e)}")
+        return f"Error jumping by beats: {str(e)}"
+
+# === Arrangement ==========================================================
+
+@mcp.tool()
+def get_cue_points(ctx: Context) -> str:
+    """List arrangement cue points / locators (index, name, time)."""
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_cue_points")
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting cue points: {str(e)}")
+        return f"Error getting cue points: {str(e)}"
+
+@mcp.tool()
+def set_arrangement_loop(
+    ctx: Context,
+    enabled: Union[bool, int, str] = None,
+    start: float = None,
+    length: float = None,
+) -> str:
+    """
+    Configure the arrangement loop brace. Only the parameters you provide are
+    changed.
+
+    Parameters:
+    - enabled: true/false, on/off, 1/0 (optional)
+    - start: Loop start in beats, >= 0 (optional)
+    - length: Loop length in beats, > 0 (optional)
+    """
+    try:
+        fields = coerce_loop_fields(enabled, start, length)
+        ableton = get_ableton_connection()
+        params = {}
+        if "enabled" in fields:
+            params["enabled"] = fields["enabled"]
+        if "start" in fields:
+            params["start"] = fields["start"]
+        if "length" in fields:
+            params["length"] = fields["length"]
+        result = ableton.send_command("set_arrangement_loop", params)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting arrangement loop: {str(e)}")
+        return f"Error setting arrangement loop: {str(e)}"
+
+@mcp.tool()
+def jump_to_cue(ctx: Context, direction: str = "next") -> str:
+    """
+    Jump to the next or previous arrangement cue point.
+
+    Parameters:
+    - direction: 'next' or 'prev' (aliases: forward/back accepted)
+    """
+    try:
+        canonical = resolve_cue_direction(direction)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("jump_to_cue", {"direction": canonical})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error jumping to cue: {str(e)}")
+        return f"Error jumping to cue: {str(e)}"
+
+@mcp.tool()
+def back_to_arrangement(ctx: Context) -> str:
+    """Re-engage the arrangement timeline after launching session clips (clears
+    the 'back to arrangement' override)."""
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("back_to_arrangement")
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error returning to arrangement: {str(e)}")
+        return f"Error returning to arrangement: {str(e)}"
+
+@mcp.tool()
+def re_enable_automation(ctx: Context) -> str:
+    """Re-enable automation that was overridden by manual control changes."""
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("re_enable_automation")
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error re-enabling automation: {str(e)}")
+        return f"Error re-enabling automation: {str(e)}"
 
 @mcp.tool()
 def get_browser_tree(ctx: Context, category_type: str = "all") -> str:
