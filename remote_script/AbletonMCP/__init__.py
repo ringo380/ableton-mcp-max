@@ -238,7 +238,15 @@ class AbletonMCP(ControlSurface):
                                  "duplicate_clip", "delete_clip",
                                  "modify_clip_notes",
                                  "delete_device", "set_device_on",
-                                 "set_rack_macro", "set_chain_property"]:
+                                 "set_rack_macro", "set_chain_property",
+                                 "fire_scene", "create_scene", "delete_scene",
+                                 "duplicate_scene", "set_scene_name",
+                                 "set_scene_property", "continue_playback",
+                                 "set_metronome", "set_arrangement_record",
+                                 "set_session_record", "set_punch",
+                                 "set_song_position", "jump_by",
+                                 "set_arrangement_loop", "jump_to_cue",
+                                 "back_to_arrangement", "re_enable_automation"]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
                 
@@ -400,6 +408,62 @@ class AbletonMCP(ControlSurface):
                             result = self._set_chain_property(
                                 track_index, device_index, chain_index,
                                 prop, value, track_type)
+                        elif command_type == "fire_scene":
+                            scene_index = params.get("scene_index", 0)
+                            result = self._fire_scene(scene_index)
+                        elif command_type == "create_scene":
+                            index = params.get("index", -1)
+                            result = self._create_scene(index)
+                        elif command_type == "delete_scene":
+                            scene_index = params.get("scene_index", 0)
+                            result = self._delete_scene(scene_index)
+                        elif command_type == "duplicate_scene":
+                            scene_index = params.get("scene_index", 0)
+                            result = self._duplicate_scene(scene_index)
+                        elif command_type == "set_scene_name":
+                            scene_index = params.get("scene_index", 0)
+                            name = params.get("name", "")
+                            result = self._set_scene_name(scene_index, name)
+                        elif command_type == "set_scene_property":
+                            scene_index = params.get("scene_index", 0)
+                            prop = params.get("property", "")
+                            value = params.get("value", None)
+                            result = self._set_scene_property(
+                                scene_index, prop, value)
+                        elif command_type == "continue_playback":
+                            result = self._continue_playback()
+                        elif command_type == "set_metronome":
+                            on = params.get("on", True)
+                            result = self._set_metronome(on)
+                        elif command_type == "set_arrangement_record":
+                            on = params.get("on", True)
+                            result = self._set_arrangement_record(on)
+                        elif command_type == "set_session_record":
+                            on = params.get("on", True)
+                            result = self._set_session_record(on)
+                        elif command_type == "set_punch":
+                            punch_in = params.get("punch_in", None)
+                            punch_out = params.get("punch_out", None)
+                            result = self._set_punch(punch_in, punch_out)
+                        elif command_type == "set_song_position":
+                            time_beats = params.get("time_beats", 0.0)
+                            result = self._set_song_position(time_beats)
+                        elif command_type == "jump_by":
+                            beats = params.get("beats", 0.0)
+                            result = self._jump_by(beats)
+                        elif command_type == "set_arrangement_loop":
+                            enabled = params.get("enabled", None)
+                            start = params.get("start", None)
+                            length = params.get("length", None)
+                            result = self._set_arrangement_loop(
+                                enabled, start, length)
+                        elif command_type == "jump_to_cue":
+                            direction = params.get("direction", "next")
+                            result = self._jump_to_cue(direction)
+                        elif command_type == "back_to_arrangement":
+                            result = self._back_to_arrangement()
+                        elif command_type == "re_enable_automation":
+                            result = self._re_enable_automation()
 
                         # Put the result in the queue
                         response_queue.put({"status": "success", "result": result})
@@ -488,6 +552,12 @@ class AbletonMCP(ControlSurface):
                 response["result"] = self._get_clip_notes(
                     track_index, clip_index, from_time, time_span,
                     from_pitch, pitch_span)
+            elif command_type == "get_scenes":
+                response["result"] = self._get_scenes()
+            elif command_type == "get_transport":
+                response["result"] = self._get_transport()
+            elif command_type == "get_cue_points":
+                response["result"] = self._get_cue_points()
             else:
                 response["status"] = "error"
                 response["message"] = "Unknown command: " + command_type
@@ -1518,7 +1588,303 @@ class AbletonMCP(ControlSurface):
         except Exception as e:
             self.log_message("Error stopping playback: " + str(e))
             raise
-    
+
+    # --- Scenes ---------------------------------------------------------
+
+    def _scene_at(self, scene_index):
+        """Return song.scenes[scene_index] or raise IndexError."""
+        scenes = self._song.scenes
+        if scene_index < 0 or scene_index >= len(scenes):
+            raise IndexError(
+                "Scene index %d out of range (0..%d)"
+                % (scene_index, len(scenes) - 1))
+        return scenes[scene_index]
+
+    def _scene_dict(self, scene, index):
+        info = {
+            "index": index,
+            "name": scene.name,
+            "is_empty": scene.is_empty,
+            "is_triggered": scene.is_triggered,
+        }
+        try:
+            info["color"] = scene.color
+        except Exception:
+            pass
+        try:
+            info["tempo"] = scene.tempo
+            info["tempo_enabled"] = scene.tempo_enabled
+        except Exception:
+            pass
+        try:
+            info["time_signature_numerator"] = scene.time_signature_numerator
+            info["time_signature_denominator"] = scene.time_signature_denominator
+        except Exception:
+            pass
+        return info
+
+    def _get_scenes(self):
+        """List all scenes in the session."""
+        try:
+            scenes = self._song.scenes
+            return {
+                "scene_count": len(scenes),
+                "scenes": [self._scene_dict(scenes[i], i)
+                           for i in range(len(scenes))],
+            }
+        except Exception as e:
+            self.log_message("Error getting scenes: " + str(e))
+            raise
+
+    def _fire_scene(self, scene_index):
+        """Launch a scene (fires all its clips)."""
+        try:
+            scene = self._scene_at(scene_index)
+            scene.fire()
+            return {"fired": scene_index}
+        except Exception as e:
+            self.log_message("Error firing scene: " + str(e))
+            raise
+
+    def _create_scene(self, index):
+        """Create a scene at index (-1 appends)."""
+        try:
+            self._song.create_scene(index)
+            return {"scene_count": len(self._song.scenes), "index": index}
+        except Exception as e:
+            self.log_message("Error creating scene: " + str(e))
+            raise
+
+    def _delete_scene(self, scene_index):
+        """Delete a scene."""
+        try:
+            # Validate range before delete (delete_scene takes the index).
+            self._scene_at(scene_index)
+            self._song.delete_scene(scene_index)
+            return {"scene_count": len(self._song.scenes)}
+        except Exception as e:
+            self.log_message("Error deleting scene: " + str(e))
+            raise
+
+    def _duplicate_scene(self, scene_index):
+        """Duplicate a scene (copy inserted after it)."""
+        try:
+            self._scene_at(scene_index)
+            self._song.duplicate_scene(scene_index)
+            return {"scene_count": len(self._song.scenes)}
+        except Exception as e:
+            self.log_message("Error duplicating scene: " + str(e))
+            raise
+
+    def _set_scene_name(self, scene_index, name):
+        """Rename a scene."""
+        try:
+            scene = self._scene_at(scene_index)
+            scene.name = name
+            return {"scene_index": scene_index, "name": scene.name}
+        except Exception as e:
+            self.log_message("Error setting scene name: " + str(e))
+            raise
+
+    def _set_scene_property(self, scene_index, prop, value):
+        """Set color / tempo / tempo_enabled / time_signature on a scene.
+        Values arrive already coerced from the server."""
+        try:
+            scene = self._scene_at(scene_index)
+            if prop == "color":
+                scene.color = int(value)
+            elif prop == "tempo":
+                scene.tempo = float(value)
+            elif prop == "tempo_enabled":
+                scene.tempo_enabled = bool(value)
+            elif prop == "time_signature":
+                # value is [numerator, denominator]
+                scene.time_signature_numerator = int(value[0])
+                scene.time_signature_denominator = int(value[1])
+            else:
+                raise ValueError("Unsupported scene property: %s" % prop)
+            return {"scene_index": scene_index, "property": prop, "value": value}
+        except Exception as e:
+            self.log_message("Error setting scene property: " + str(e))
+            raise
+
+    # --- Transport ------------------------------------------------------
+
+    def _continue_playback(self):
+        """Resume playback from the current position."""
+        try:
+            self._song.continue_playing()
+            return {"playing": self._song.is_playing}
+        except Exception as e:
+            self.log_message("Error continuing playback: " + str(e))
+            raise
+
+    def _get_transport(self):
+        """Read transport / arrangement state."""
+        try:
+            song = self._song
+            info = {
+                "is_playing": song.is_playing,
+                "current_song_time": song.current_song_time,
+                "tempo": song.tempo,
+                "signature_numerator": song.signature_numerator,
+                "signature_denominator": song.signature_denominator,
+                "metronome": song.metronome,
+                "loop": song.loop,
+                "loop_start": song.loop_start,
+                "loop_length": song.loop_length,
+                "record_mode": song.record_mode,
+                "punch_in": song.punch_in,
+                "punch_out": song.punch_out,
+            }
+            try:
+                info["session_record"] = song.session_record
+            except Exception:
+                pass
+            try:
+                info["song_length"] = song.song_length
+            except Exception:
+                pass
+            try:
+                info["back_to_arranger"] = song.back_to_arranger
+            except Exception:
+                pass
+            return info
+        except Exception as e:
+            self.log_message("Error getting transport: " + str(e))
+            raise
+
+    def _set_metronome(self, on):
+        """Toggle the metronome."""
+        try:
+            self._song.metronome = bool(on)
+            return {"metronome": self._song.metronome}
+        except Exception as e:
+            self.log_message("Error setting metronome: " + str(e))
+            raise
+
+    def _set_arrangement_record(self, on):
+        """Arm/disarm arrangement record (record_mode)."""
+        try:
+            self._song.record_mode = bool(on)
+            return {"record_mode": self._song.record_mode}
+        except Exception as e:
+            self.log_message("Error setting arrangement record: " + str(e))
+            raise
+
+    def _set_session_record(self, on):
+        """Toggle session record."""
+        try:
+            self._song.session_record = bool(on)
+            return {"session_record": self._song.session_record}
+        except Exception as e:
+            self.log_message("Error setting session record: " + str(e))
+            raise
+
+    def _set_punch(self, punch_in, punch_out):
+        """Set punch-in/out flags (only the provided ones)."""
+        try:
+            if punch_in is not None:
+                self._song.punch_in = bool(punch_in)
+            if punch_out is not None:
+                self._song.punch_out = bool(punch_out)
+            return {
+                "punch_in": self._song.punch_in,
+                "punch_out": self._song.punch_out,
+            }
+        except Exception as e:
+            self.log_message("Error setting punch: " + str(e))
+            raise
+
+    def _set_song_position(self, time_beats):
+        """Jump the playhead to an absolute beat position."""
+        try:
+            self._song.current_song_time = float(time_beats)
+            return {"current_song_time": self._song.current_song_time}
+        except Exception as e:
+            self.log_message("Error setting song position: " + str(e))
+            raise
+
+    def _jump_by(self, beats):
+        """Nudge the playhead by +/- beats."""
+        try:
+            self._song.jump_by(float(beats))
+            return {"current_song_time": self._song.current_song_time}
+        except Exception as e:
+            self.log_message("Error jumping by beats: " + str(e))
+            raise
+
+    # --- Arrangement ----------------------------------------------------
+
+    def _set_arrangement_loop(self, enabled, start, length):
+        """Set the arrangement loop brace (only the provided fields)."""
+        try:
+            song = self._song
+            if start is not None:
+                song.loop_start = float(start)
+            if length is not None:
+                song.loop_length = float(length)
+            if enabled is not None:
+                song.loop = bool(enabled)
+            return {
+                "loop": song.loop,
+                "loop_start": song.loop_start,
+                "loop_length": song.loop_length,
+            }
+        except Exception as e:
+            self.log_message("Error setting arrangement loop: " + str(e))
+            raise
+
+    def _get_cue_points(self):
+        """List arrangement cue points (locators)."""
+        try:
+            cues = self._song.cue_points
+            return {
+                "cue_count": len(cues),
+                "cue_points": [
+                    {"index": i, "name": cues[i].name, "time": cues[i].time}
+                    for i in range(len(cues))
+                ],
+            }
+        except Exception as e:
+            self.log_message("Error getting cue points: " + str(e))
+            raise
+
+    def _jump_to_cue(self, direction):
+        """Jump to the next/prev arrangement cue. direction is 'next' or 'prev'."""
+        try:
+            if direction == "next":
+                self._song.jump_to_next_cue()
+            elif direction == "prev":
+                self._song.jump_to_prev_cue()
+            else:
+                raise ValueError("direction must be 'next' or 'prev'")
+            return {
+                "direction": direction,
+                "current_song_time": self._song.current_song_time,
+            }
+        except Exception as e:
+            self.log_message("Error jumping to cue: " + str(e))
+            raise
+
+    def _back_to_arrangement(self):
+        """Re-engage the arrangement after launching session clips."""
+        try:
+            self._song.back_to_arranger = 0
+            return {"back_to_arranger": self._song.back_to_arranger}
+        except Exception as e:
+            self.log_message("Error returning to arrangement: " + str(e))
+            raise
+
+    def _re_enable_automation(self):
+        """Re-enable automation that was overridden."""
+        try:
+            self._song.re_enable_automation()
+            return {"re_enabled": True}
+        except Exception as e:
+            self.log_message("Error re-enabling automation: " + str(e))
+            raise
+
     def _get_browser_item(self, uri, path):
         """Get a browser item by URI or path"""
         try:
