@@ -1,7 +1,7 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Phase 3.1 (extended-note-API migration) live-verified — the legacy-note modal is GONE; note ops use Live 11 extended API + new modify_clip_notes. On branch `phase-3.1-extended-notes`, ready to PR + squash-merge.
-**Next action:** Push branch, PR, `gh pr merge --squash --delete-branch`, then plan Phase 4 (Devices & Racks).
+**Current focus:** Phase 4 (Devices & Racks) — ALL 7 tools live-verified (incl. the 2 live-found fixes: positional macro detection + chain is_enabled guard). Offline suite 66/66. Ready to PR + squash-merge.
+**Next action:** Push branch `phase-4-devices-racks`, PR, `gh pr merge --squash --delete-branch`, `git remote prune origin`. Then plan Phase 5 (Scenes, Transport, Arrangement). Phase 4b (device move + preset selection) remains deferred.
 
 ## Phases
 | Phase | Title | Status | Completed |
@@ -12,7 +12,8 @@
 | 2b | Routing (input/output/monitor) | Live-verified | 2026-05-24 |
 | 3 | Clip & MIDI Editing | Live-verified | 2026-05-24 |
 | 3.1 | Extended note API migration (+ modify_clip_notes) | Live-verified | 2026-05-25 |
-| 4 | Devices & Racks | Not started | |
+| 4 | Devices & Racks (info/delete/on-off/macros/chains) | Live-verified | 2026-05-25 |
+| 4b | Device move + preset selection (deferred) | Not started | |
 | 5 | Scenes, Transport, Arrangement | Not started | |
 | 6 | Automation Envelopes | Not started | |
 | 7 | Change Listeners (stretch) | Not started | |
@@ -111,6 +112,41 @@
   (changed only provided fields, note_id preserved, other notes untouched — no remove+re-add);
   bogus note_id rejected with "note_id(s) not found in clip: [...]".
 - clip_utils: +normalize_note (defaults/clamps) +NOTE_MOD_FIELDS; offline suite 43/43.
+
+## Phase 4 tools (Devices & Racks) — code complete, awaiting live verification
+- [x] device_utils.resolve_device_index / resolve_macro / normalize_chain_property /
+      validate_chain_property / coerce_chain_value / coerce_on_value
+      (offline unit tests: 22/22; total suite 65/65)
+- [x] get_device_info (live: Wavetable -> can_have_chains false, 93 params, is_on true;
+      "Basic Analog Bass" rack -> can_have_chains true, chain_count 1, is_on true. macro_count
+      now 16 after fix.)
+- [x] delete_device (live: deleted "Basic Analog Bass" from track 0 -> device_count 0, track empty; re-indexes)
+- [x] set_device_on (live: track 0 Wavetable off->on confirmed both ways incl. "on" string coercion; restored)
+- [x] get_rack_macros (live after fix: 16 macros incl. renamed Filter Cutoff/Drive/etc., positional macro_number)
+- [x] set_rack_macro (live after fix: by number 5->Drive=60, by custom name "Filter Cutoff"=100;
+      macro 99 rejected with full "1=Filter Cutoff..16=Macro 16" list)
+- [x] get_rack_chains (live: 1 chain "Analog" with 6 inner devices Analog/Comp/VinylDist/Delay/Delay/Reverb;
+      mute/solo/volume/panning surfaced)
+- [x] set_chain_property mute/solo (live: chain "Analog" mute false->true->false confirmed; restored)
+- [x] set_chain_property volume/panning guard (live after fix: chain "Analog" volume rejected with clean
+      "not settable (disabled by Live for this chain)"). Whether any rack chain exposes an *enabled*
+      volume/panning still TBD (re-probe on a multi-chain rack later).
+- **Deferred to Phase 4b:** device move (no LOM reorder API) + preset selection (browser re-load).
+- **Add device** already covered by existing load_instrument_or_effect (browser load) — not re-impl.
+
+### Live findings (2026-05-25)
+- **MACRO LAYOUT (important):** a rack's parameters are `Device On`(0), then the macros
+  (1..N), then `Chain Selector`(last). Macros may be RENAMED (e.g. "Basic Analog Bass" macros
+  1-8 = Filter Cutoff/Filter Reso/Filter Envelope/Space/Drive/Comp/Delay/Volume; 9-16 default
+  "Macro 9".."Macro 16"). Original name-prefix filter missed the renamed ones. FIXED: _rack_macros
+  now enumerates by POSITION (everything between Device On and Chain Selector) and tags each with
+  a 1-based macro_number; resolve_macro resolves a number positionally + a name by custom label.
+- **CHAIN MIXER:** chain.mixer_device.volume/panning can be `is_enabled == False` (seen on the
+  single-chain Analog rack chain) -> Live raises "Value cannot be set, the parameter is disabled".
+  Handler now pre-checks is_enabled and raises a clear message. mute/solo always work.
+- **load_instrument_or_effect HOT-SWAPS:** loading onto a track that already has an instrument
+  REPLACES it (track 1 Lead's Wavetable was replaced by the test rack). Restore via Live undo.
+- TBD: drum-rack (can_have_drum_pads) chain shape; multi-chain rack with enabled chain volume.
 
 ## Device parameter reachability notes
 - Wavetable: 93 automatable params exposed. Quantized params (Device On, Osc On,

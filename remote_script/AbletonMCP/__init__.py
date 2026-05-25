@@ -236,7 +236,9 @@ class AbletonMCP(ControlSurface):
                                  "remove_clip_notes", "set_clip_property",
                                  "set_clip_loop", "quantize_clip",
                                  "duplicate_clip", "delete_clip",
-                                 "modify_clip_notes"]:
+                                 "modify_clip_notes",
+                                 "delete_device", "set_device_on",
+                                 "set_rack_macro", "set_chain_property"]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
                 
@@ -366,6 +368,38 @@ class AbletonMCP(ControlSurface):
                             notes = params.get("notes", [])
                             result = self._modify_clip_notes(
                                 track_index, clip_index, notes)
+                        elif command_type == "delete_device":
+                            track_index = params.get("track_index", 0)
+                            device_index = params.get("device_index", 0)
+                            track_type = params.get("track_type", "regular")
+                            result = self._delete_device(
+                                track_index, device_index, track_type)
+                        elif command_type == "set_device_on":
+                            track_index = params.get("track_index", 0)
+                            device_index = params.get("device_index", 0)
+                            on = params.get("on", True)
+                            track_type = params.get("track_type", "regular")
+                            result = self._set_device_on(
+                                track_index, device_index, on, track_type)
+                        elif command_type == "set_rack_macro":
+                            track_index = params.get("track_index", 0)
+                            device_index = params.get("device_index", 0)
+                            parameter_index = params.get("parameter_index", 0)
+                            value = params.get("value", 0.0)
+                            track_type = params.get("track_type", "regular")
+                            result = self._set_rack_macro(
+                                track_index, device_index, parameter_index,
+                                value, track_type)
+                        elif command_type == "set_chain_property":
+                            track_index = params.get("track_index", 0)
+                            device_index = params.get("device_index", 0)
+                            chain_index = params.get("chain_index", 0)
+                            prop = params.get("property", "")
+                            value = params.get("value", None)
+                            track_type = params.get("track_type", "regular")
+                            result = self._set_chain_property(
+                                track_index, device_index, chain_index,
+                                prop, value, track_type)
 
                         # Put the result in the queue
                         response_queue.put({"status": "success", "result": result})
@@ -414,6 +448,24 @@ class AbletonMCP(ControlSurface):
                 track_index = params.get("track_index", 0)
                 device_index = params.get("device_index", 0)
                 response["result"] = self._get_device_parameters(track_index, device_index)
+            elif command_type == "get_device_info":
+                track_index = params.get("track_index", 0)
+                device_index = params.get("device_index", 0)
+                track_type = params.get("track_type", "regular")
+                response["result"] = self._get_device_info(
+                    track_index, device_index, track_type)
+            elif command_type == "get_rack_macros":
+                track_index = params.get("track_index", 0)
+                device_index = params.get("device_index", 0)
+                track_type = params.get("track_type", "regular")
+                response["result"] = self._get_rack_macros(
+                    track_index, device_index, track_type)
+            elif command_type == "get_rack_chains":
+                track_index = params.get("track_index", 0)
+                device_index = params.get("device_index", 0)
+                track_type = params.get("track_type", "regular")
+                response["result"] = self._get_rack_chains(
+                    track_index, device_index, track_type)
             elif command_type == "get_mixer":
                 track_index = params.get("track_index", 0)
                 track_type = params.get("track_type", "regular")
@@ -763,6 +815,218 @@ class AbletonMCP(ControlSurface):
             "parameter_index": parameter_index,
             "name": param.name,
             "value": param.value,
+        }
+
+    # ---- Phase 4: devices & racks -------------------------------------
+
+    def _resolve_device(self, track_index, device_index, track_type):
+        """Return (track, device) for a (track_index, device_index, track_type)."""
+        track = self._resolve_track(track_index, track_type)
+        if device_index < 0 or device_index >= len(track.devices):
+            raise IndexError("Device index out of range")
+        return track, track.devices[device_index]
+
+    def _rack_macros(self, device):
+        """Return list of {index, macro_number, name, value, min, max} for a
+        rack's macro params.
+
+        Macros are the device parameters between 'Device On' (index 0) and
+        'Chain Selector' (when present) — identified by POSITION, not name,
+        because macros may carry custom labels (e.g. 'Filter Cutoff') rather
+        than 'Macro N'.
+        """
+        macros = []
+        macro_number = 0
+        for p_index, param in enumerate(device.parameters):
+            name = str(param.name)
+            if name == "Device On":
+                continue
+            if name == "Chain Selector":
+                continue
+            macro_number += 1
+            macros.append({
+                "index": p_index,
+                "macro_number": macro_number,
+                "name": param.name,
+                "value": param.value,
+                "min": param.min,
+                "max": param.max,
+            })
+        return macros
+
+    def _get_device_info(self, track_index, device_index, track_type):
+        """Detailed info about a device, including rack macro/chain summary."""
+        track, device = self._resolve_device(track_index, device_index, track_type)
+        is_rack = bool(device.can_have_chains)
+        info = {
+            "track_index": track_index,
+            "track_type": track_type,
+            "device_index": device_index,
+            "name": device.name,
+            "class_name": device.class_name,
+            "type": self._get_device_type(device),
+            "is_active": device.is_active,
+            "can_have_chains": is_rack,
+            "can_have_drum_pads": bool(device.can_have_drum_pads),
+            "parameter_count": len(device.parameters),
+        }
+        # "Device On" is parameters[0] for standard devices.
+        try:
+            if len(device.parameters) > 0 and device.parameters[0].name == "Device On":
+                info["is_on"] = device.parameters[0].value >= 0.5
+        except Exception:
+            pass
+        if is_rack:
+            info["macro_count"] = len(self._rack_macros(device))
+            try:
+                info["chain_count"] = len(device.chains)
+            except Exception:
+                info["chain_count"] = 0
+        return info
+
+    def _delete_device(self, track_index, device_index, track_type):
+        """Delete a device from a track; remaining devices re-index."""
+        track, device = self._resolve_device(track_index, device_index, track_type)
+        name = device.name
+        track.delete_device(device_index)
+        return {
+            "track_index": track_index,
+            "track_type": track_type,
+            "deleted_device_index": device_index,
+            "deleted_device_name": name,
+            "device_count": len(track.devices),
+        }
+
+    def _set_device_on(self, track_index, device_index, on, track_type):
+        """Enable/disable a device via its 'Device On' parameter."""
+        track, device = self._resolve_device(track_index, device_index, track_type)
+        if len(device.parameters) == 0 or device.parameters[0].name != "Device On":
+            raise RuntimeError(
+                "Device '%s' has no 'Device On' parameter" % device.name)
+        param = device.parameters[0]
+        param.value = 1.0 if on else 0.0
+        return {
+            "track_index": track_index,
+            "track_type": track_type,
+            "device_index": device_index,
+            "name": device.name,
+            "is_on": param.value >= 0.5,
+        }
+
+    def _get_rack_macros(self, track_index, device_index, track_type):
+        """List macro controls of a rack device."""
+        track, device = self._resolve_device(track_index, device_index, track_type)
+        if not device.can_have_chains:
+            raise RuntimeError("Device '%s' is not a rack" % device.name)
+        return {
+            "track_index": track_index,
+            "track_type": track_type,
+            "device_index": device_index,
+            "device_name": device.name,
+            "macros": self._rack_macros(device),
+        }
+
+    def _set_rack_macro(self, track_index, device_index, parameter_index, value, track_type):
+        """Set a rack macro by its resolved device-parameter index, clamped."""
+        track, device = self._resolve_device(track_index, device_index, track_type)
+        if not device.can_have_chains:
+            raise RuntimeError("Device '%s' is not a rack" % device.name)
+        if parameter_index < 0 or parameter_index >= len(device.parameters):
+            raise IndexError("Macro parameter index out of range")
+        param = device.parameters[parameter_index]
+        v = float(value)
+        if v < param.min:
+            v = param.min
+        if v > param.max:
+            v = param.max
+        param.value = v
+        return {
+            "track_index": track_index,
+            "track_type": track_type,
+            "device_index": device_index,
+            "parameter_index": parameter_index,
+            "name": param.name,
+            "value": param.value,
+        }
+
+    def _get_rack_chains(self, track_index, device_index, track_type):
+        """List chains of a rack device with mute/solo + contained devices."""
+        track, device = self._resolve_device(track_index, device_index, track_type)
+        if not device.can_have_chains:
+            raise RuntimeError("Device '%s' is not a rack" % device.name)
+        chains = []
+        for c_index, chain in enumerate(device.chains):
+            chain_devices = []
+            try:
+                for d_index, d in enumerate(chain.devices):
+                    chain_devices.append({
+                        "index": d_index,
+                        "name": d.name,
+                        "type": self._get_device_type(d),
+                    })
+            except Exception:
+                pass
+            entry = {
+                "index": c_index,
+                "name": chain.name,
+            }
+            for attr in ("mute", "solo"):
+                try:
+                    entry[attr] = getattr(chain, attr)
+                except Exception:
+                    pass
+            try:
+                md = chain.mixer_device
+                entry["volume"] = md.volume.value
+                entry["panning"] = md.panning.value
+            except Exception:
+                pass
+            entry["devices"] = chain_devices
+            chains.append(entry)
+        return {
+            "track_index": track_index,
+            "track_type": track_type,
+            "device_index": device_index,
+            "device_name": device.name,
+            "chain_count": len(chains),
+            "chains": chains,
+        }
+
+    def _set_chain_property(self, track_index, device_index, chain_index, prop, value, track_type):
+        """Set mute/solo (bool) or volume/panning (clamped float) on a rack chain."""
+        track, device = self._resolve_device(track_index, device_index, track_type)
+        if not device.can_have_chains:
+            raise RuntimeError("Device '%s' is not a rack" % device.name)
+        if chain_index < 0 or chain_index >= len(device.chains):
+            raise IndexError("Chain index out of range")
+        chain = device.chains[chain_index]
+        if prop in ("mute", "solo"):
+            setattr(chain, prop, bool(value))
+            applied = getattr(chain, prop)
+        elif prop in ("volume", "panning"):
+            md = chain.mixer_device
+            param = md.volume if prop == "volume" else md.panning
+            if not param.is_enabled:
+                raise RuntimeError(
+                    "Chain '%s' %s is not settable (disabled by Live for this chain)"
+                    % (chain.name, prop))
+            v = float(value)
+            if v < param.min:
+                v = param.min
+            if v > param.max:
+                v = param.max
+            param.value = v
+            applied = param.value
+        else:
+            raise ValueError("Unsupported chain property: " + str(prop))
+        return {
+            "track_index": track_index,
+            "track_type": track_type,
+            "device_index": device_index,
+            "chain_index": chain_index,
+            "chain_name": chain.name,
+            "property": prop,
+            "value": applied,
         }
 
     def _create_midi_track(self, index):

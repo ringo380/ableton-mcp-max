@@ -21,6 +21,13 @@ from ableton_mcp_max.clip_utils import (
     normalize_note,
     NOTE_MOD_FIELDS,
 )
+from ableton_mcp_max.device_utils import (
+    resolve_macro,
+    normalize_chain_property,
+    validate_chain_property,
+    coerce_chain_value,
+    coerce_on_value,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -123,7 +130,9 @@ class AbletonConnection:
             "start_playback", "stop_playback", "load_instrument_or_effect",
             "replace_clip_notes", "remove_clip_notes", "set_clip_property",
             "set_clip_loop", "quantize_clip", "duplicate_clip", "delete_clip",
-            "modify_clip_notes"
+            "modify_clip_notes",
+            "delete_device", "set_device_on", "set_rack_macro",
+            "set_chain_property"
         ]
         
         try:
@@ -364,6 +373,240 @@ def set_device_parameter(
     except Exception as e:
         logger.error(f"Error setting device parameter: {str(e)}")
         return f"Error setting device parameter: {str(e)}"
+
+@mcp.tool()
+def get_device_info(
+    ctx: Context, track_index: int, device_index: int, track_type: str = "regular"
+) -> str:
+    """
+    Get detailed info about a device: class, type, on/off state, whether it is
+    a rack (can_have_chains) or drum rack (can_have_drum_pads), and a summary of
+    its macros and chains when it is a rack.
+
+    Parameters:
+    - track_index: index of the track
+    - device_index: index of the device on that track (0 = first device)
+    - track_type: 'regular' (default), 'return', or 'master'
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "get_device_info",
+            {
+                "track_index": track_index,
+                "device_index": device_index,
+                "track_type": track_type,
+            },
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting device info: {str(e)}")
+        return f"Error getting device info: {str(e)}"
+
+@mcp.tool()
+def delete_device(
+    ctx: Context, track_index: int, device_index: int, track_type: str = "regular"
+) -> str:
+    """
+    Delete a device from a track. Remaining devices re-index downward.
+
+    Parameters:
+    - track_index: index of the track
+    - device_index: index of the device to delete
+    - track_type: 'regular' (default), 'return', or 'master'
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "delete_device",
+            {
+                "track_index": track_index,
+                "device_index": device_index,
+                "track_type": track_type,
+            },
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error deleting device: {str(e)}")
+        return f"Error deleting device: {str(e)}"
+
+@mcp.tool()
+def set_device_on(
+    ctx: Context,
+    track_index: int,
+    device_index: int,
+    on: Union[bool, int, str],
+    track_type: str = "regular",
+) -> str:
+    """
+    Enable or disable a device (writes its 'Device On' parameter).
+
+    Parameters:
+    - track_index: index of the track
+    - device_index: index of the device
+    - on: true/false (also accepts on/off, 1/0, yes/no)
+    - track_type: 'regular' (default), 'return', or 'master'
+    """
+    try:
+        on_bool = coerce_on_value(on)
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "set_device_on",
+            {
+                "track_index": track_index,
+                "device_index": device_index,
+                "on": on_bool,
+                "track_type": track_type,
+            },
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting device on/off: {str(e)}")
+        return f"Error setting device on/off: {str(e)}"
+
+@mcp.tool()
+def get_rack_macros(
+    ctx: Context, track_index: int, device_index: int, track_type: str = "regular"
+) -> str:
+    """
+    List the macro controls of a rack device, each with its name, current value,
+    min, max, and the underlying device-parameter index.
+
+    Parameters:
+    - track_index: index of the track
+    - device_index: index of the rack device
+    - track_type: 'regular' (default), 'return', or 'master'
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "get_rack_macros",
+            {
+                "track_index": track_index,
+                "device_index": device_index,
+                "track_type": track_type,
+            },
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting rack macros: {str(e)}")
+        return f"Error getting rack macros: {str(e)}"
+
+@mcp.tool()
+def set_rack_macro(
+    ctx: Context,
+    track_index: int,
+    device_index: int,
+    macro: Union[int, str],
+    value: float,
+    track_type: str = "regular",
+) -> str:
+    """
+    Set a rack macro control value.
+
+    Parameters:
+    - track_index: index of the track
+    - device_index: index of the rack device
+    - macro: macro number (1-based int, e.g. 3) OR macro name (e.g. 'Macro 3')
+    - value: target value (clamped to the macro's min/max, typically 0..127)
+    - track_type: 'regular' (default), 'return', or 'master'
+    """
+    try:
+        ableton = get_ableton_connection()
+        # Fetch macro list to resolve macro->device-parameter index.
+        info = ableton.send_command(
+            "get_rack_macros",
+            {
+                "track_index": track_index,
+                "device_index": device_index,
+                "track_type": track_type,
+            },
+        )
+        macros = info.get("macros", [])
+        param_index = resolve_macro(macros, macro)
+        result = ableton.send_command(
+            "set_rack_macro",
+            {
+                "track_index": track_index,
+                "device_index": device_index,
+                "parameter_index": param_index,
+                "value": value,
+                "track_type": track_type,
+            },
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting rack macro: {str(e)}")
+        return f"Error setting rack macro: {str(e)}"
+
+@mcp.tool()
+def get_rack_chains(
+    ctx: Context, track_index: int, device_index: int, track_type: str = "regular"
+) -> str:
+    """
+    List the chains of a rack device, each with its name, mute/solo state, and
+    the devices it contains.
+
+    Parameters:
+    - track_index: index of the track
+    - device_index: index of the rack device
+    - track_type: 'regular' (default), 'return', or 'master'
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "get_rack_chains",
+            {
+                "track_index": track_index,
+                "device_index": device_index,
+                "track_type": track_type,
+            },
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting rack chains: {str(e)}")
+        return f"Error getting rack chains: {str(e)}"
+
+@mcp.tool()
+def set_chain_property(
+    ctx: Context,
+    track_index: int,
+    device_index: int,
+    chain_index: int,
+    property: str,
+    value: Union[bool, int, float, str],
+    track_type: str = "regular",
+) -> str:
+    """
+    Set a property on one chain of a rack device.
+
+    Parameters:
+    - track_index: index of the track
+    - device_index: index of the rack device
+    - chain_index: index of the chain within the rack (0 = first)
+    - property: 'mute' or 'solo' (bool) or 'volume' / 'panning' (float, clamped)
+    - value: bool for mute/solo; float for volume/panning
+    - track_type: 'regular' (default), 'return', or 'master'
+    """
+    try:
+        canonical = validate_chain_property(normalize_chain_property(property))
+        coerced = coerce_chain_value(canonical, value)
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "set_chain_property",
+            {
+                "track_index": track_index,
+                "device_index": device_index,
+                "chain_index": chain_index,
+                "property": canonical,
+                "value": coerced,
+                "track_type": track_type,
+            },
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting chain property: {str(e)}")
+        return f"Error setting chain property: {str(e)}"
 
 @mcp.tool()
 def get_mixer(ctx: Context, track_index: int, track_type: str = "regular") -> str:
