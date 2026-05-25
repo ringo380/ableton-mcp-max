@@ -46,6 +46,11 @@ from ableton_mcp_max.automation_utils import (
     coerce_resolution,
     normalize_breakpoints,
 )
+from ableton_mcp_max.listener_utils import (
+    build_descriptor,
+    coerce_max_events,
+    needs_device_resolution,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -2037,6 +2042,130 @@ def clear_all_automation(
     except Exception as e:
         logger.error(f"Error clearing all automation: {str(e)}")
         return f"Error clearing all automation: {str(e)}"
+
+
+# === Phase 7: Change Listeners (polling buffer) ==========================
+# Live's observer API is push-based; this MCP is request/response. So the
+# Remote Script attaches a real Live listener whose callback buffers each
+# change, and these tools register/poll/unregister/list. Claude drains events
+# on demand via poll_changes — there is no server push.
+
+@mcp.tool()
+def register_listener(
+    ctx: Context,
+    scope: str,
+    property: str,
+    track_index: int = None,
+    track_type: str = "regular",
+    device_index: int = None,
+    parameter: Union[int, str] = None,
+    clip_index: int = None,
+    scene_index: int = None,
+) -> str:
+    """
+    Attach a change listener to a Live object and start buffering its events.
+    Returns a listener_id to use with poll_changes / unregister_listener.
+
+    scope + property:
+    - transport: is_playing, current_song_time, tempo, metronome, record_mode,
+      session_record, loop  (current_song_time fires continuously during
+      playback — expect high event volume / dropped counts).
+    - mixer (needs track_index, optional track_type regular|return|master):
+      volume, pan, mute, solo, arm  (arm is regular-track only).
+    - clip: playing_status, name, notes, has_clip (need track_index + clip_index);
+      selected_scene (no selectors — observes the song view).
+    - device: value (needs track_index, device_index, parameter name-or-index).
+
+    Events are read on demand via poll_changes; nothing is pushed.
+    """
+    try:
+        # Resolve a device parameter name/index to a concrete index server-side.
+        parameter_index = None
+        if needs_device_resolution(scope, property):
+            if device_index is None:
+                raise ValueError("device listener requires device_index")
+            ableton = get_ableton_connection()
+            info = ableton.send_command(
+                "get_device_parameters",
+                {"track_index": track_index, "device_index": device_index},
+            )
+            parameter_index = resolve_parameter_index(
+                info.get("parameters", []),
+                parameter if parameter is not None else 0,
+            )
+        descriptor = build_descriptor(
+            scope, property,
+            track_index=track_index, track_type=track_type,
+            device_index=device_index, parameter_index=parameter_index,
+            clip_index=clip_index, scene_index=scene_index,
+        )
+        ableton = get_ableton_connection()
+        result = ableton.send_command("register_listener", {"descriptor": descriptor})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error registering listener: {str(e)}")
+        return f"Error registering listener: {str(e)}"
+
+
+@mcp.tool()
+def poll_changes(
+    ctx: Context,
+    listener_id: str = None,
+    max_events: int = None,
+) -> str:
+    """
+    Drain buffered change events. Omit listener_id to drain all listeners;
+    pass one to drain just that listener. max_events caps the count returned
+    per listener (oldest first); omit for all pending.
+
+    Each event: {listener_id, target, property, value, seq}. Per-listener
+    `dropped` counts events evicted because the buffer overflowed since the
+    last poll (poll often if a target is high-volume).
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "poll_changes",
+            {"listener_id": listener_id, "max_events": coerce_max_events(max_events)},
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error polling changes: {str(e)}")
+        return f"Error polling changes: {str(e)}"
+
+
+@mcp.tool()
+def unregister_listener(
+    ctx: Context,
+    listener_id: str = None,
+) -> str:
+    """
+    Detach a listener and discard its buffer. Omit listener_id to remove ALL
+    active listeners. Always detach listeners you no longer need.
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "unregister_listener", {"listener_id": listener_id})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error unregistering listener: {str(e)}")
+        return f"Error unregistering listener: {str(e)}"
+
+
+@mcp.tool()
+def list_listeners(ctx: Context) -> str:
+    """
+    List active change listeners with each one's target plus its buffer's
+    pending and dropped event counts.
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("list_listeners")
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error listing listeners: {str(e)}")
+        return f"Error listing listeners: {str(e)}"
 
 
 # Main execution

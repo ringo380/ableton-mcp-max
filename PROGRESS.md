@@ -1,7 +1,11 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Phase 6 (Automation Envelopes) — ALL 5 tools live-verified. Offline suite 114/114. Ready to PR + squash-merge.
-**Next action:** Push branch `feat/phase6-automation-envelopes`, PR, `gh pr merge --squash --delete-branch`, `git remote prune origin`. Then Phase 7 (Change Listeners, stretch) or Phase 4b (device move + preset selection, deferred).
+**Current focus:** Phase 7 (Change Listeners, polling buffer) — LIVE-VERIFIED 2026-05-25 on branch
+`feat/phase7-change-listeners`. Offline suite 140/140; both halves compile; all 6 listener scopes
+exercised live (results below). Branch is READY FOR PR.
+**Next action (resume here):** Commit the working tree (PROGRESS.md, server.py, remote script,
+listener_utils.py, tests), open PR → `gh pr merge --squash --delete-branch` →
+`git remote prune origin`. (gh login must be ringo380.) Then Phase 8 / 4b backlog.
 
 ## Phases
 | Phase | Title | Status | Completed |
@@ -16,7 +20,7 @@
 | 4b | Device move + preset selection (deferred) | Not started | |
 | 5 | Scenes, Transport, Arrangement | Live-verified | 2026-05-25 |
 | 6 | Automation Envelopes | Live-verified | 2026-05-25 |
-| 7 | Change Listeners (stretch) | Not started | |
+| 7 | Change Listeners (polling buffer) | Live-verified | 2026-05-25 |
 
 ## Phase 0 tools (parity, vendored) — live-verified (get_session_info + get_track_info confirmed; rest vendored unchanged from ahujasid)
 - [x] get_session_info, get_track_info, create_midi_track, set_track_name,
@@ -238,3 +242,54 @@
   without send_index, empty points list.
 - **No legacy modal / main-thread stall** on any automation write (unlike the old
   legacy-note API) — envelope writes go through schedule_message cleanly.
+
+## Phase 7 tools (Change Listeners — polling buffer) — CODE COMPLETE, awaiting live verify
+Approach: Live's observer API is push-based; this MCP is request/response. Remote Script attaches
+real Live listeners whose no-arg callbacks read the new value and append a change event to a
+bounded per-listener deque (LISTENER_BUFFER_MAX=512; overflow evicts oldest + bumps `dropped`).
+Claude drains on demand. Zero protocol changes. (Plan:
+`~/.claude/plans/let-s-plan-out-phase-nifty-widget.md`.)
+- [x] listener_utils.py (server-only pure helper): normalize_scope, normalize_listener_property
+      (alias folding), build_descriptor (canonical {target_kind, listener_method, remove_method,
+      readback, mixer_sub, selectors}; reuses mixer_utils track-type asymmetry), coerce_max_events,
+      needs_device_resolution. Offline tests 26 new → total suite 140/140.
+- [x] server.py: register_listener, poll_changes, unregister_listener, list_listeners (device-param
+      identifier resolved via get_device_parameters + param_utils, like _resolve_auto_target).
+- [x] remote_script: registry dict + threading.Lock + monotonic seq/id in __init__; register/
+      unregister are MUTATIONS (in the elif list + main_thread_task — Live add_/remove_*_listener
+      must run on main thread); poll/list are DIRECT reads (buffer-only, skip main thread); navigation
+      `_listener_target_object` per target_kind (song/song_view/track/track_mixer/clip/clip_slot/
+      device_param); `_make_listener_cb` factory + `_listener_emit` under lock; detach-all in disconnect.
+- Scopes wired: transport (is_playing, current_song_time [high-volume], tempo, metronome,
+  record_mode, session_record, loop), mixer (volume/pan/mute/solo/arm — arm regular-only),
+  clip (playing_status, name, notes, has_clip, selected_scene via song.view), device (param value).
+
+### Phase 7 live-verification results (2026-05-25 — ALL PASS)
+- [x] Transport: is_playing fired true (start) → false (stop); tempo fired 128 then 120 on set_tempo.
+      seq monotonic across listeners, dropped=0.
+- [x] Mixer: volume on track 0 (regular) fired 0.85→0.7 on set_mixer_property (restored 0.85).
+      arm on RETURN track 0 rejected at register time: "Property 'arm' not supported on return
+      tracks. Supported: crossfade_assign, mute, pan, send, solo, volume" (no Live mutation).
+- [x] Clip: playing_status on track0/slot0 fired true then false on fire_clip (clip is 0.44 beats so
+      it retriggered → two events). Stopped clip after.
+- [x] Device: loaded Analog onto empty MIDI track 1; register scope=device property=value
+      parameter="Volume" resolved to param[3]; set_device_parameter 0.7→0.5 fired value=0.5.
+      Scratch device deleted after (track 1 empty again).
+- [x] High-volume / dropped: current_song_time during playback hit the bounded deque ceiling —
+      pending capped at 512 with dropped climbing (393→774 across two polls). max_events=3 returned
+      exactly the 3 oldest (remaining 509). Confirms LISTENER_BUFFER_MAX=512 + oldest-eviction.
+- [x] list_listeners showed all 6 with target+pending+dropped; unregister_listener (no id) removed
+      all 6; subsequent list_listeners count 0 and poll_changes empty (no further accrual).
+- [x] Negatives: bad scope ("Unknown scope 'bogus_scope'. Valid: transport, mixer, clip, device"),
+      bad transport property ("Unknown transport property ... Valid: current_song_time, is_playing,
+      loop, metronome, record_mode, session_record, tempo"), mixer w/o track_index ("mixer listener
+      for 'volume' requires track_index") — all rejected server-side.
+
+### Phase 7 live findings (2026-05-25)
+- **listener_id is a simple monotonic "L<n>"** assigned per register; persists until unregister.
+- **`pending` caps at LISTENER_BUFFER_MAX (512); `dropped` is cumulative** since last drain of that
+  listener — high-volume targets (current_song_time) overflow fast, so poll often or expect drops.
+- **poll seq is a global monotonic counter** shared across listeners (not per-listener), so event
+  ordering is total across the whole registry.
+- **arm validation happens at REGISTER time** for return/master (reuses mixer_utils asymmetry), not
+  at poll — a rejected register never attaches a Live listener.
