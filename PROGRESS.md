@@ -41,18 +41,22 @@
 ## Phase 3 tools
 - [x] clip_utils.normalize_clip_property / validate_clip_property / coerce_clip_value /
       resolve_quantize_grid (offline unit tests: 24/24 pass; total suite 39/39)
-- [ ] get_clip_info (read; audio-only fields probed via try/except)
-- [ ] get_clip_notes (MIDI-only; get_notes arg order from_time,from_pitch,time_span,pitch_span; time_span<0→clip.length)
-- [ ] replace_clip_notes (MIDI-only; remove_notes(0,0,length,128) then set_notes)
-- [ ] remove_clip_notes (MIDI-only; window remove)
-- [ ] set_clip_property (generic; audio-only props rejected on MIDI both server + remote)
-- [ ] set_clip_loop (ordered dual-edge write; looping=-1 leaves unchanged)
-- [ ] quantize_clip (MIDI-only; grid=RecordingQuantization int — VALUES NEED LIVE CONFIRM)
-- [ ] duplicate_clip (clip_slot.duplicate_clip_to; default target=clip_index+1; empty-target guard)
-- [ ] delete_clip (clip_slot.delete_clip)
-- **Verify-live flags:** get_notes/remove_notes arg order; RecordingQuantization enum + grid int values
-  in clip_utils.QUANTIZE_GRID_MAP (incl. whether 1/4 exists); warp_mode int→mode mapping; gain 0–1↔dB;
-  duplicate_clip_to signature.
+- [x] get_clip_info (live: MIDI clip omits audio-only fields; verified on scratch + real clip)
+- [x] get_clip_notes (live: arg order CONFIRMED via time + pitch windows; time_span<0→clip.length)
+- [x] replace_clip_notes (live: clears then sets exactly the given notes, no leftovers)
+- [x] remove_clip_notes (live: partial window [1,3) removed middle 2, left out-of-window notes)
+- [x] set_clip_property (live: signature_numerator 4→3, looping→false, gain rejected on MIDI)
+- [x] set_clip_loop (live: window set + looping re-enabled; inverted end<start rejected w/ values)
+- [~] quantize_clip (live: enum INTS confirmed grid1=1/4 snap, grid3=1/8t snap; corrected grid NAME
+      map needs Claude Code restart to load — re-verify "1/8" snaps to 0.5 after restart)
+- [x] duplicate_clip (live: copied to default target slot+1; empty-target guard rejects occupied)
+- [x] delete_clip (live: both scratch slots emptied, slots remain; track 2 restored)
+- **Remaining live gaps:** (1) audio-clip properties (warping/warp_mode/gain/pitch_*) read+set on a
+  real AUDIO clip — none present in set (tracks 3/4 audio but empty); only the MIDI-rejection path
+  tested. (2) quantize grid NAME→int after restart.
+- **Note interaction (not a bug):** after set_clip_loop, clip.length reflects the loop length, so
+  get_clip_notes default scan (time_span=-1→clip.length) only covers the loop region. Pass explicit
+  from_time/time_span to scan beyond the loop.
 
 ## Routing reachability notes
 - All track types expose input_routing_type/channel + output_routing_type/channel.
@@ -67,6 +71,30 @@
   `/Applications/Ableton Live 11 Suite.app/Contents/App-Resources/MIDI Remote Scripts/AbletonMCP/`
   (original ahujasid script backed up to `AbletonMCP.bak.*` alongside it).
 - Requires: quit+reopen Live (load new handlers), restart Claude Code (load new tools).
+
+## Phase 3 live-verification notes
+- **get_clip_notes arg order CONFIRMED** = (from_time, from_pitch, time_span, pitch_span).
+  Time window [0,2) returned only early notes; from_pitch=65 returned only pitches >=65.
+- **get_clip_info**: MIDI clip omits audio-only fields (warp/gain/pitch) via try/except. Confirmed
+  on scratch clip + real "I Remember - Chords" clip.
+- **quantize_clip 1/4 CONFIRMED**: grid="1/4" -> enum int 1; note at 2.4 snapped to 2.0 (musically
+  correct). Confirms 1/4 exists and QUANTIZE_GRID_MAP ordering (none=0, 1/4=1, ...) is right.
+- **replace_clip_notes works** (clip correctly held only the new note afterward) BUT see dialog below.
+- **GOTCHA — Live 11 legacy-note-API modal**: any WRITE via legacy set_notes/remove_notes
+  (replace_clip_notes, remove_clip_notes, add_notes_to_clip, quantize) pops a modal
+  ("A custom MIDI Remote Script uses an older process to modify MIDI notes...") that BLOCKS the
+  Remote Script main thread -> our socket times out with "No data received" even though the edit
+  succeeds. Reads (get_notes) are unaffected. Short-term: user checks "Do not show again for this
+  device" + Proceed. PROPER FIX: migrate note writes to Live 11 extended API
+  (set_notes_extended/apply_note_modifications) — also preserves MPE/probability/release-velocity.
+  Recommend pulling this forward from a later phase.
+  - CONFIRMED the modal fires on EVERY legacy note write (per-write, not one-time) unless
+    "Do not show again for this device" is checked. clip.quantize does NOT trigger it (different
+    code path). So replace/remove/add-notes all block per call until the box is checked.
+- **quantize enum FIX (live-found)**: original QUANTIZE_GRID_MAP was wrong (had a nonexistent 1/4t,
+  off-by-one beyond 1/4). Corrected to none=0,1/4=1,1/8=2,1/8t=3,1/8+1/8t=4,1/16=5,1/16t=6,
+  1/16+1/16t=7,1/32=8 (confirmed: grid 1->1/4 snap, grid 3->1/8t snap). Fix is in clip_utils.py;
+  takes effect after the next Claude Code restart (server-imported module, no hot reload).
 
 ## Device parameter reachability notes
 - Wavetable: 93 automatable params exposed. Quantized params (Device On, Osc On,

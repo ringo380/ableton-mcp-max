@@ -42,19 +42,19 @@ _CLAMPS = {
 }
 
 # Friendly grid name -> Live.Song.RecordingQuantization enum int.
-# VALUES MUST BE VERIFIED LIVE -- the RecordingQuantization member ordering can
-# differ across Live versions. These follow the documented Live 11 ordering.
+# Values confirmed live against Live 11 Suite (2026-05-24): grid=1 snapped a note
+# to the 1/4 grid, grid=3 snapped to the 1/8-triplet grid. The enum has NO 1/4t
+# member -- after 1/4 it goes straight to 1/8.
 QUANTIZE_GRID_MAP = {
     "none": 0,
     "1/4": 1,
-    "1/4t": 2,
-    "1/8": 3,
-    "1/8t": 4,
-    "1/8+1/8t": 5,
-    "1/16": 6,
-    "1/16t": 7,
-    "1/16+1/16t": 8,
-    "1/32": 9,
+    "1/8": 2,
+    "1/8t": 3,
+    "1/8+1/8t": 4,
+    "1/16": 5,
+    "1/16t": 6,
+    "1/16+1/16t": 7,
+    "1/32": 8,
 }
 
 

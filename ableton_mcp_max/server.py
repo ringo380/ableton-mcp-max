@@ -804,7 +804,7 @@ def quantize_clip(
 
     Parameters:
     - track_index / clip_index: locate the clip
-    - grid: one of none, 1/4, 1/4t, 1/8, 1/8t, 1/8+1/8t, 1/16, 1/16t,
+    - grid: one of none, 1/4, 1/8, 1/8t, 1/8+1/8t, 1/16, 1/16t,
       1/16+1/16t, 1/32
     - amount: quantization strength 0.0-1.0 (default 1.0 = full snap)
     """

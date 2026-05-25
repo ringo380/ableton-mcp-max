@@ -91,6 +91,15 @@ def test_resolve_grid_known():
     assert resolve_quantize_grid("1/8T") == QUANTIZE_GRID_MAP["1/8t"]
 
 
+def test_resolve_grid_enum_ints_match_live():
+    # Confirmed live against Live 11 RecordingQuantization (no 1/4t member).
+    assert resolve_quantize_grid("none") == 0
+    assert resolve_quantize_grid("1/4") == 1
+    assert resolve_quantize_grid("1/8") == 2
+    assert resolve_quantize_grid("1/8t") == 3
+    assert resolve_quantize_grid("1/32") == 8
+
+
 def test_resolve_grid_unknown_raises_with_list():
     with pytest.raises(ValueError) as exc:
         resolve_quantize_grid("1/3")
