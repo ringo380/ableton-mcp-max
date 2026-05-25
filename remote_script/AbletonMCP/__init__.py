@@ -8,6 +8,7 @@ import json
 import threading
 import time
 import traceback
+import collections
 
 # Change queue import for Python 2
 try:
@@ -18,6 +19,10 @@ except ImportError:
 # Constants for socket communication
 DEFAULT_PORT = 9877
 HOST = "localhost"
+
+# Max buffered change-events per listener (Phase 7). Oldest are evicted on
+# overflow and counted in the listener's `dropped` total.
+LISTENER_BUFFER_MAX = 512
 
 def create_instance(c_instance):
     """Create and return the AbletonMCP script instance"""
@@ -39,7 +44,14 @@ class AbletonMCP(ControlSurface):
         
         # Cache the song reference for easier access
         self._song = self.song()
-        
+
+        # Phase 7: change-listener registry. Live's observer callbacks fire on
+        # the main thread and append events here; poll_changes drains them.
+        self._listeners = {}
+        self._listener_lock = threading.Lock()
+        self._listener_seq = 0          # monotonic event sequence
+        self._listener_id_counter = 0   # monotonic listener id
+
         # Start the socket server
         self.start_server()
         
@@ -52,7 +64,13 @@ class AbletonMCP(ControlSurface):
         """Called when Ableton closes or the control surface is removed"""
         self.log_message("AbletonMCP disconnecting...")
         self.running = False
-        
+
+        # Phase 7: detach any active change listeners so no callbacks dangle.
+        try:
+            self._unregister_listener(None)
+        except Exception as e:
+            self.log_message("Error detaching listeners on disconnect: " + str(e))
+
         # Stop the server
         if self.server:
             try:
@@ -249,7 +267,8 @@ class AbletonMCP(ControlSurface):
                                  "back_to_arrangement", "re_enable_automation",
                                  "set_automation", "clear_automation",
                                  "create_automation_envelope",
-                                 "clear_all_automation"]:
+                                 "clear_all_automation",
+                                 "register_listener", "unregister_listener"]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
                 
@@ -505,6 +524,12 @@ class AbletonMCP(ControlSurface):
                                 params.get("track_index", 0),
                                 params.get("clip_index", 0),
                                 params.get("clip_location", "session"))
+                        elif command_type == "register_listener":
+                            result = self._register_listener(
+                                params.get("descriptor", {}))
+                        elif command_type == "unregister_listener":
+                            result = self._unregister_listener(
+                                params.get("listener_id", None))
 
                         # Put the result in the queue
                         response_queue.put({"status": "success", "result": result})
@@ -613,6 +638,12 @@ class AbletonMCP(ControlSurface):
                     params.get("time_span", -1.0),
                     params.get("resolution", 16),
                 )
+            elif command_type == "poll_changes":
+                response["result"] = self._poll_changes(
+                    params.get("listener_id", None),
+                    params.get("max_events", None))
+            elif command_type == "list_listeners":
+                response["result"] = self._list_listeners()
             else:
                 response["status"] = "error"
                 response["message"] = "Unknown command: " + command_type
@@ -1373,6 +1404,208 @@ class AbletonMCP(ControlSurface):
         if not clip_slot.has_clip:
             raise Exception("No clip in slot")
         return clip_slot.clip
+
+    # --- Phase 7: change listeners --------------------------------------
+
+    def _json_safe(self, v):
+        """Coerce a property value to a JSON-serializable form."""
+        if v is None or isinstance(v, (bool, int, float, str)):
+            return v
+        return str(v)
+
+    def _listener_target_object(self, descriptor):
+        """Navigate to the Live object the listener attaches to (per the
+        canonical descriptor built server-side)."""
+        kind = descriptor["target_kind"]
+        sel = descriptor.get("selectors", {})
+        ttype = sel.get("track_type", "regular")
+        if kind == "song":
+            return self._song
+        if kind == "song_view":
+            return self._song.view
+        if kind == "track":
+            return self._resolve_track(sel["track_index"], ttype)
+        if kind == "track_mixer":
+            track = self._resolve_track(sel["track_index"], ttype)
+            sub = descriptor.get("mixer_sub")
+            if sub == "volume":
+                return track.mixer_device.volume
+            if sub == "panning":
+                return track.mixer_device.panning
+            raise Exception("Unknown mixer_sub: " + str(sub))
+        if kind in ("clip", "clip_slot"):
+            track = self._resolve_track(sel["track_index"], ttype)
+            ci = sel["clip_index"]
+            if ci < 0 or ci >= len(track.clip_slots):
+                raise IndexError("Clip index out of range")
+            slot = track.clip_slots[ci]
+            if kind == "clip_slot":
+                return slot
+            if not slot.has_clip:
+                raise Exception("No clip in slot")
+            return slot.clip
+        if kind == "device_param":
+            track = self._resolve_track(sel["track_index"], ttype)
+            di = sel["device_index"]
+            if di < 0 or di >= len(track.devices):
+                raise IndexError("Device index out of range")
+            device = track.devices[di]
+            pi = sel["parameter_index"]
+            if pi < 0 or pi >= len(device.parameters):
+                raise IndexError("Parameter index out of range")
+            return device.parameters[pi]
+        raise Exception("Unknown target_kind: " + str(kind))
+
+    def _listener_read_value(self, descriptor, target_obj):
+        """Read the current value for a fired listener (callbacks take no args,
+        so we read the live value here)."""
+        if (descriptor["target_kind"] == "song_view"
+                and descriptor["property"] == "selected_scene"):
+            scenes = list(self._song.scenes)
+            try:
+                return scenes.index(self._song.view.selected_scene)
+            except ValueError:
+                return -1
+        readback = descriptor.get("readback")
+        if readback is None:
+            return None
+        return self._json_safe(getattr(target_obj, readback))
+
+    def _listener_target_label(self, descriptor):
+        """Short human label for a listener target."""
+        sel = descriptor.get("selectors", {})
+        scope = descriptor["scope"]
+        prop = descriptor["property"]
+        kind = descriptor["target_kind"]
+        if kind in ("song", "song_view"):
+            return scope + "." + prop
+        if kind in ("track", "track_mixer"):
+            return "%s[%s].%s" % (sel.get("track_type", "regular"),
+                                  sel["track_index"], prop)
+        if kind in ("clip", "clip_slot"):
+            return "clip[%s/%s].%s" % (sel["track_index"], sel["clip_index"], prop)
+        if kind == "device_param":
+            return "device[%s/%s].param[%s]" % (
+                sel["track_index"], sel["device_index"], sel["parameter_index"])
+        return scope + "." + prop
+
+    def _listener_emit(self, listener_id, value):
+        """Append a change event to a listener's buffer (called from Live's
+        main thread by the observer callback)."""
+        with self._listener_lock:
+            entry = self._listeners.get(listener_id)
+            if entry is None:
+                return
+            self._listener_seq += 1
+            buf = entry["events"]
+            if buf.maxlen is not None and len(buf) == buf.maxlen:
+                entry["dropped"] += 1  # deque evicts the oldest on append
+            buf.append({
+                "listener_id": listener_id,
+                "target": entry["target"],
+                "property": entry["descriptor"]["property"],
+                "value": value,
+                "seq": self._listener_seq,
+            })
+
+    def _make_listener_cb(self, listener_id, descriptor, target_obj):
+        """Build a no-arg observer callback bound to one listener."""
+        def _cb():
+            try:
+                value = self._listener_read_value(descriptor, target_obj)
+            except Exception:
+                value = None
+            self._listener_emit(listener_id, value)
+        return _cb
+
+    def _register_listener(self, descriptor):
+        """Attach a Live listener and start buffering its change events."""
+        if not descriptor:
+            raise Exception("Missing listener descriptor")
+        target_obj = self._listener_target_object(descriptor)
+        method = descriptor["listener_method"]
+        if not hasattr(target_obj, method):
+            raise Exception("Target object has no " + method)
+        self._listener_id_counter += 1
+        listener_id = "L%d" % self._listener_id_counter
+        label = self._listener_target_label(descriptor)
+        cb = self._make_listener_cb(listener_id, descriptor, target_obj)
+        # Register the buffer BEFORE attaching so an immediate fire isn't lost.
+        with self._listener_lock:
+            self._listeners[listener_id] = {
+                "descriptor": descriptor,
+                "target": label,
+                "target_obj": target_obj,
+                "callback": cb,
+                "events": collections.deque(maxlen=LISTENER_BUFFER_MAX),
+                "dropped": 0,
+            }
+        getattr(target_obj, method)(cb)
+        return {"listener_id": listener_id, "target": label,
+                "property": descriptor["property"]}
+
+    def _unregister_listener(self, listener_id):
+        """Detach one listener (or all if listener_id is None) and drop its
+        buffer. Runs on the main thread (Live remove_*_listener requirement)."""
+        with self._listener_lock:
+            ids = ([listener_id] if listener_id
+                   else list(self._listeners.keys()))
+        removed = []
+        for lid in ids:
+            entry = self._listeners.get(lid)
+            if entry is None:
+                continue
+            try:
+                getattr(entry["target_obj"],
+                        entry["descriptor"]["remove_method"])(entry["callback"])
+            except Exception as e:
+                self.log_message("listener remove failed (" + str(lid) + "): "
+                                 + str(e))
+            with self._listener_lock:
+                self._listeners.pop(lid, None)
+            removed.append(lid)
+        return {"removed": removed, "count": len(removed)}
+
+    def _poll_changes(self, listener_id, max_events):
+        """Drain buffered events (one listener or all). Called on a client
+        thread; shares the lock with the main-thread emit."""
+        events = []
+        summary = []
+        with self._listener_lock:
+            ids = ([listener_id] if listener_id
+                   else list(self._listeners.keys()))
+            for lid in ids:
+                entry = self._listeners.get(lid)
+                if entry is None:
+                    continue
+                buf = entry["events"]
+                n = len(buf) if max_events is None else min(int(max_events), len(buf))
+                drained = [buf.popleft() for _ in range(n)]
+                dropped = entry["dropped"]
+                entry["dropped"] = 0
+                events.extend(drained)
+                summary.append({
+                    "listener_id": lid,
+                    "target": entry["target"],
+                    "drained": len(drained),
+                    "remaining": len(buf),
+                    "dropped": dropped,
+                })
+        return {"events": events, "listeners": summary}
+
+    def _list_listeners(self):
+        """Report active listeners with pending/dropped counts."""
+        with self._listener_lock:
+            items = []
+            for lid, entry in self._listeners.items():
+                items.append({
+                    "listener_id": lid,
+                    "target": entry["target"],
+                    "property": entry["descriptor"]["property"],
+                    "pending": len(entry["events"]),
+                    "dropped": entry["dropped"],
+                })
+        return {"listeners": items, "count": len(items)}
 
     def _resolve_auto_param(self, track_index, target_type, device_index,
                             parameter_index, mixer_property, send_index):
