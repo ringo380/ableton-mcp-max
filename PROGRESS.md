@@ -1,7 +1,7 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Phase 4 (Devices & Racks) — partially live-verified, then 2 live-found bugs fixed (macro detection + chain is_enabled), offline suite 66/66 green. Awaiting ONE MORE reinstall+dual-restart to re-verify the macro path + delete_device.
-**Next action:** `bash scripts/install_remote_script.sh`, quit/reopen Live (⌘Q), restart Claude Code; re-verify get_rack_macros/set_rack_macro (now positional) + delete_device on the scratch "Basic Analog Bass" rack still on track 1; then PR + squash-merge. NOTE: track 1 "Lead" Wavetable was replaced by load_instrument_or_effect (it hot-swaps the instrument) — user should ⌘Z in Live to restore the original Lead patch when done.
+**Current focus:** Phase 4 (Devices & Racks) — ALL 7 tools live-verified (incl. the 2 live-found fixes: positional macro detection + chain is_enabled guard). Offline suite 66/66. Ready to PR + squash-merge.
+**Next action:** Push branch `phase-4-devices-racks`, PR, `gh pr merge --squash --delete-branch`, `git remote prune origin`. Then plan Phase 5 (Scenes, Transport, Arrangement). Phase 4b (device move + preset selection) remains deferred.
 
 ## Phases
 | Phase | Title | Status | Completed |
@@ -12,7 +12,7 @@
 | 2b | Routing (input/output/monitor) | Live-verified | 2026-05-24 |
 | 3 | Clip & MIDI Editing | Live-verified | 2026-05-24 |
 | 3.1 | Extended note API migration (+ modify_clip_notes) | Live-verified | 2026-05-25 |
-| 4 | Devices & Racks (info/delete/on-off/macros/chains) | Code complete, awaiting live | |
+| 4 | Devices & Racks (info/delete/on-off/macros/chains) | Live-verified | 2026-05-25 |
 | 4b | Device move + preset selection (deferred) | Not started | |
 | 5 | Scenes, Transport, Arrangement | Not started | |
 | 6 | Automation Envelopes | Not started | |
@@ -120,16 +120,17 @@
 - [x] get_device_info (live: Wavetable -> can_have_chains false, 93 params, is_on true;
       "Basic Analog Bass" rack -> can_have_chains true, chain_count 1, is_on true. macro_count
       now 16 after fix.)
-- [ ] delete_device (re-verify on scratch rack after restart)
+- [x] delete_device (live: deleted "Basic Analog Bass" from track 0 -> device_count 0, track empty; re-indexes)
 - [x] set_device_on (live: track 0 Wavetable off->on confirmed both ways incl. "on" string coercion; restored)
-- [ ] get_rack_macros — RE-VERIFY after fix (was name-prefix; see finding below)
-- [ ] set_rack_macro — RE-VERIFY after fix (now positional macro_number)
+- [x] get_rack_macros (live after fix: 16 macros incl. renamed Filter Cutoff/Drive/etc., positional macro_number)
+- [x] set_rack_macro (live after fix: by number 5->Drive=60, by custom name "Filter Cutoff"=100;
+      macro 99 rejected with full "1=Filter Cutoff..16=Macro 16" list)
 - [x] get_rack_chains (live: 1 chain "Analog" with 6 inner devices Analog/Comp/VinylDist/Delay/Delay/Reverb;
       mute/solo/volume/panning surfaced)
 - [x] set_chain_property mute/solo (live: chain "Analog" mute false->true->false confirmed; restored)
-- [~] set_chain_property volume/panning — chain mixer volume reports "parameter is disabled" on this
-      single-chain rack even when unmuted. Now pre-checked with is_enabled -> clean error. Whether any
-      rack chain exposes an *enabled* volume/panning still TBD (re-probe on a multi-chain rack later).
+- [x] set_chain_property volume/panning guard (live after fix: chain "Analog" volume rejected with clean
+      "not settable (disabled by Live for this chain)"). Whether any rack chain exposes an *enabled*
+      volume/panning still TBD (re-probe on a multi-chain rack later).
 - **Deferred to Phase 4b:** device move (no LOM reorder API) + preset selection (browser re-load).
 - **Add device** already covered by existing load_instrument_or_effect (browser load) — not re-impl.
 
