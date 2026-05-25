@@ -1,7 +1,7 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Phase 5 (Scenes, Transport, Arrangement) — ALL 20 tools live-verified. Offline suite 93/93. Ready to PR + squash-merge.
-**Next action:** Push branch `feat/phase5-scenes-transport-arrangement`, PR, `gh pr merge --squash --delete-branch`, `git remote prune origin`. Then plan Phase 6 (Automation Envelopes). Phase 4b (device move + preset selection) remains deferred.
+**Current focus:** Phase 6 (Automation Envelopes) — ALL 5 tools live-verified. Offline suite 114/114. Ready to PR + squash-merge.
+**Next action:** Push branch `feat/phase6-automation-envelopes`, PR, `gh pr merge --squash --delete-branch`, `git remote prune origin`. Then Phase 7 (Change Listeners, stretch) or Phase 4b (device move + preset selection, deferred).
 
 ## Phases
 | Phase | Title | Status | Completed |
@@ -15,7 +15,7 @@
 | 4 | Devices & Racks (info/delete/on-off/macros/chains) | Live-verified | 2026-05-25 |
 | 4b | Device move + preset selection (deferred) | Not started | |
 | 5 | Scenes, Transport, Arrangement | Live-verified | 2026-05-25 |
-| 6 | Automation Envelopes | Not started | |
+| 6 | Automation Envelopes | Live-verified | 2026-05-25 |
 | 7 | Change Listeners (stretch) | Not started | |
 
 ## Phase 0 tools (parity, vendored) — live-verified (get_session_info + get_track_info confirmed; rest vendored unchanged from ahujasid)
@@ -200,3 +200,41 @@
 - **Per-scene time_signature cannot be reset to the -1 "inherit" sentinel** (numerator must be >=1):
   once set it's a permanent override. Live API limitation — set_scene_property can change it but not clear it.
 - **Live snaps scene color to its palette:** set color 16711680 stored as 16728642 (nearest entry).
+
+## Phase 6 tools (Automation Envelopes) — ALL live-verified 2026-05-25
+- [x] automation_utils.normalize_clip_location / normalize_target_type /
+      normalize_mixer_target / coerce_resolution / coerce_time / coerce_duration /
+      coerce_value / normalize_breakpoints (offline suite 114/114; 21 new)
+- [x] get_automation (live: sampled read; has_envelope false→true; windowed
+      from_time/time_span read confirmed; device + mixer targets)
+- [x] set_automation (live: single point + batch points list; auto-tile fix below)
+- [x] clear_automation (live: range clear + full-envelope clear)
+- [x] create_automation_envelope (live: created true then false — idempotent)
+- [x] clear_all_automation (live: wiped Macro 1 + Track Volume envelopes → has_envelope false)
+- Targets verified: device param by NAME ("Macro 1" on an Instrument Rack — confirms
+  macros automate through the device path), mixer "volume" → "Track Volume",
+  mixer "send" send_index=0 → "A-Reverb".
+
+### Phase 6 live findings (2026-05-25)
+- **insert_step needs duration > 0 — duration=0 is a NO-OP.** Live's
+  AutomationEnvelope.insert_step(time, duration, value) writes a FLAT segment
+  [time, time+duration); a zero-width step creates the envelope but holds no value
+  (read back 0). There are NO linear ramps in the LOM — flat tiles are the only
+  write primitive (a multi-point list draws a staircase, not a ramp).
+- **FIX (live-found, in `_set_automation`): auto-tile zero/negative durations.** Points
+  are sorted by time; a point with duration<=0 fills to the NEXT point's time (last
+  point fills to clip.length; 1/32-beat fallback if that gap is <=0). So
+  `set_automation(time=0, value=64)` now holds 64 across the whole clip, and a bare
+  `points` list (no durations) draws the obvious staircase. Verified: value-only point
+  held 64 over [0,4]; staircase 20/80/127 tiled at [0,1.5)/[1.5,3)/[3,4).
+- **value_at_time left-edge boundary:** sampling at the EXACT start of a step returns
+  the PRE-step value (e.g. t=0.0 reads 0 even when a step starts at 0). Samples inside
+  the step are correct. Cosmetic; sample slightly inside a region to see its value.
+- **Arrangement path:** `track.arrangement_clips` EXISTS and indexes (a bad index
+  returns our clean "Arrangement clip index out of range", not AttributeError). The
+  resolver is proven; full read/write on an arrangement clip not exercised (the test
+  set had none) — re-verify when an arrangement clip is present.
+- Negatives all clean server-side (no Live mutation): bad clip_location, mixer "send"
+  without send_index, empty points list.
+- **No legacy modal / main-thread stall** on any automation write (unlike the old
+  legacy-note API) — envelope writes go through schedule_message cleanly.
