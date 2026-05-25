@@ -93,7 +93,12 @@ set_automation(track_index, clip_index, target_type="device",
   loops `insert_step(time, duration, value)` once per point.
 - Accepts **either** a single `{time, value, duration}` (top-level args) **or**
   `points=[{time, value, duration?}, ...]` for a batch curve in one main-thread task.
-- `duration=0` = single breakpoint. Server validates via
+- **`duration` semantics (corrected after live verification):** Live's `insert_step`
+  writes a FLAT segment `[time, time+duration)` and `duration=0` is a no-op (there are
+  no linear ramps in the LOM). So the handler **auto-tiles** any `duration<=0`: a point
+  holds until the next point's time (the last point fills to `clip.length`; tiny
+  fallback if that gap is non-positive). A bare value-only point therefore holds across
+  the clip, and a bare `points` list draws a staircase. Server validates via
   `automation_utils.normalize_breakpoints` before sending.
 - Returns `{... target info, points_written}`.
 
