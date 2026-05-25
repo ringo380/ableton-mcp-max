@@ -1455,11 +1455,28 @@ class AbletonMCP(ControlSurface):
         env = clip.automation_envelope(param)
         if env is None:
             env = clip.create_automation_envelope(param)
+        # insert_step writes a FLAT segment [time, time+duration); a 0 duration
+        # is a no-op in Live. So auto-tile zero/negative durations: a point
+        # holds until the next point's time (the last point fills to clip end).
+        clip_len = clip.length
+        ordered = sorted(breakpoints, key=lambda b: float(b["time"]))
         count = 0
-        for bp in breakpoints:
-            env.insert_step(
-                float(bp["time"]), float(bp["duration"]), float(bp["value"]))
+        n = len(ordered)
+        i = 0
+        while i < n:
+            bp = ordered[i]
+            t = float(bp["time"])
+            dur = float(bp["duration"])
+            if dur <= 0:
+                if i + 1 < n:
+                    dur = float(ordered[i + 1]["time"]) - t
+                else:
+                    dur = clip_len - t
+                if dur <= 0:
+                    dur = 0.03125  # 1/32-beat fallback so the value registers
+            env.insert_step(t, dur, float(bp["value"]))
             count = count + 1
+            i = i + 1
         return {
             "clip_location": clip_location,
             "track_index": track_index,
