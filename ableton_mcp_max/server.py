@@ -13,6 +13,12 @@ from ableton_mcp_max.routing_utils import (
     normalize_routing_property,
     validate_routing_property,
 )
+from ableton_mcp_max.clip_utils import (
+    normalize_clip_property,
+    validate_clip_property,
+    coerce_clip_value,
+    resolve_quantize_grid,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -112,7 +118,9 @@ class AbletonConnection:
             "create_midi_track", "create_audio_track", "set_track_name",
             "create_clip", "add_notes_to_clip", "set_clip_name",
             "set_tempo", "fire_clip", "stop_clip", "set_device_parameter",
-            "start_playback", "stop_playback", "load_instrument_or_effect"
+            "start_playback", "stop_playback", "load_instrument_or_effect",
+            "replace_clip_notes", "remove_clip_notes", "set_clip_property",
+            "set_clip_loop", "quantize_clip", "duplicate_clip", "delete_clip"
         ]
         
         try:
@@ -582,6 +590,289 @@ def set_clip_name(ctx: Context, track_index: int, clip_index: int, name: str) ->
     except Exception as e:
         logger.error(f"Error setting clip name: {str(e)}")
         return f"Error setting clip name: {str(e)}"
+
+# --- Phase 3: Clip & MIDI editing ---
+
+@mcp.tool()
+def get_clip_info(ctx: Context, track_index: int, clip_index: int) -> str:
+    """
+    Read properties of a clip. Audio-only fields (warping, warp_mode, gain,
+    gain_display_string, pitch_coarse, pitch_fine) appear only on audio clips.
+
+    Parameters:
+    - track_index: index of the track containing the clip
+    - clip_index: index of the clip slot containing the clip
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "get_clip_info",
+            {"track_index": track_index, "clip_index": clip_index},
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting clip info: {str(e)}")
+        return f"Error getting clip info: {str(e)}"
+
+@mcp.tool()
+def get_clip_notes(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    from_time: float = 0.0,
+    time_span: float = -1.0,
+    from_pitch: int = 0,
+    pitch_span: int = 128,
+) -> str:
+    """
+    Read MIDI notes from a clip (MIDI clips only). Returns a list of note dicts
+    {pitch, start_time, duration, velocity, mute}.
+
+    Parameters:
+    - track_index / clip_index: locate the clip
+    - from_time: start of the time window in beats (default 0.0)
+    - time_span: length of the window in beats; -1 (default) = whole clip length
+    - from_pitch: lowest pitch to include (default 0)
+    - pitch_span: number of pitches to include (default 128 = all)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "get_clip_notes",
+            {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "from_time": from_time,
+                "time_span": time_span,
+                "from_pitch": from_pitch,
+                "pitch_span": pitch_span,
+            },
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting clip notes: {str(e)}")
+        return f"Error getting clip notes: {str(e)}"
+
+@mcp.tool()
+def replace_clip_notes(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    notes: List[Dict[str, Union[int, float, bool]]],
+) -> str:
+    """
+    Replace ALL notes in a MIDI clip with the given notes (clears existing notes
+    first, then adds these). MIDI clips only.
+
+    Parameters:
+    - track_index / clip_index: locate the clip
+    - notes: list of note dicts, each with pitch, start_time, duration, velocity, mute
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "replace_clip_notes",
+            {"track_index": track_index, "clip_index": clip_index, "notes": notes},
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error replacing clip notes: {str(e)}")
+        return f"Error replacing clip notes: {str(e)}"
+
+@mcp.tool()
+def remove_clip_notes(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    from_time: float = 0.0,
+    time_span: float = -1.0,
+    from_pitch: int = 0,
+    pitch_span: int = 128,
+) -> str:
+    """
+    Remove MIDI notes within a time/pitch window from a clip (MIDI clips only).
+    Defaults remove every note in the clip.
+
+    Parameters:
+    - track_index / clip_index: locate the clip
+    - from_time: start of the time window in beats (default 0.0)
+    - time_span: length of the window in beats; -1 (default) = whole clip length
+    - from_pitch: lowest pitch to include (default 0)
+    - pitch_span: number of pitches to include (default 128 = all)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "remove_clip_notes",
+            {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "from_time": from_time,
+                "time_span": time_span,
+                "from_pitch": from_pitch,
+                "pitch_span": pitch_span,
+            },
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error removing clip notes: {str(e)}")
+        return f"Error removing clip notes: {str(e)}"
+
+@mcp.tool()
+def set_clip_property(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    property: str,
+    value: Union[int, float, str, bool],
+) -> str:
+    """
+    Set a single clip property. Audio-only properties are rejected on MIDI clips.
+
+    Parameters:
+    - track_index / clip_index: locate the clip
+    - property: one of looping, loop_start, loop_end, start_marker, end_marker,
+      signature_numerator, signature_denominator, warping, warp_mode, gain,
+      pitch_coarse, pitch_fine (aliases accepted: loop, pitch, detune, warp, ...)
+    - value: bools take 0/1/true/false; gain is 0.0-1.0 (clamped); pitch_coarse
+      is -48..48 semitones, pitch_fine -50..50 cents (clamped); others are
+      floats/ints. To edit the loop window safely use set_clip_loop instead.
+    """
+    try:
+        canonical = normalize_clip_property(property)
+        coerced = coerce_clip_value(canonical, value)
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "set_clip_property",
+            {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "property": canonical,
+                "value": coerced,
+            },
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting clip property: {str(e)}")
+        return f"Error setting clip property: {str(e)}"
+
+@mcp.tool()
+def set_clip_loop(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    loop_start: float,
+    loop_end: float,
+    looping: int = -1,
+) -> str:
+    """
+    Set a clip's loop window (both edges written in the correct order to avoid an
+    invalid intermediate state) and optionally toggle looping.
+
+    Parameters:
+    - track_index / clip_index: locate the clip
+    - loop_start / loop_end: loop bounds in beats (loop_end must exceed loop_start)
+    - looping: -1 (default) leaves looping unchanged; 0 disables, 1 enables
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "set_clip_loop",
+            {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "loop_start": loop_start,
+                "loop_end": loop_end,
+                "looping": looping,
+            },
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting clip loop: {str(e)}")
+        return f"Error setting clip loop: {str(e)}"
+
+@mcp.tool()
+def quantize_clip(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    grid: str,
+    amount: float = 1.0,
+) -> str:
+    """
+    Quantize the notes of a MIDI clip to a grid (MIDI clips only).
+
+    Parameters:
+    - track_index / clip_index: locate the clip
+    - grid: one of none, 1/4, 1/8, 1/8t, 1/8+1/8t, 1/16, 1/16t,
+      1/16+1/16t, 1/32
+    - amount: quantization strength 0.0-1.0 (default 1.0 = full snap)
+    """
+    try:
+        grid_value = resolve_quantize_grid(grid)
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "quantize_clip",
+            {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "grid": grid_value,
+                "amount": amount,
+            },
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error quantizing clip: {str(e)}")
+        return f"Error quantizing clip: {str(e)}"
+
+@mcp.tool()
+def duplicate_clip(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    target_clip_index: int = -1,
+) -> str:
+    """
+    Duplicate a clip into another clip slot on the same track (no scene inserted).
+
+    Parameters:
+    - track_index / clip_index: locate the source clip
+    - target_clip_index: destination slot; -1 (default) = clip_index + 1. The
+      target slot must be empty.
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "duplicate_clip",
+            {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "target_clip_index": target_clip_index,
+            },
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error duplicating clip: {str(e)}")
+        return f"Error duplicating clip: {str(e)}"
+
+@mcp.tool()
+def delete_clip(ctx: Context, track_index: int, clip_index: int) -> str:
+    """
+    Delete the clip in a clip slot (the slot itself remains, now empty).
+
+    Parameters:
+    - track_index / clip_index: locate the clip
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "delete_clip",
+            {"track_index": track_index, "clip_index": clip_index},
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error deleting clip: {str(e)}")
+        return f"Error deleting clip: {str(e)}"
 
 @mcp.tool()
 def set_tempo(ctx: Context, tempo: float) -> str:
