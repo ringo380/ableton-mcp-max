@@ -1947,9 +1947,12 @@ def create_cue_point(ctx: Context, time: float) -> str:
     """
     Create a cue point (locator) on the Arrangement at the given time.
 
-    No-ops (returns created=false) if a cue already exists at that time, so it
-    never accidentally removes an existing marker. Live may snap the cue to the
-    current grid — verify the actual time with get_cue_points.
+    Live's only cue API toggles a marker at the playhead, and playhead writes
+    settle asynchronously, so this is orchestrated as separate commands: read
+    the current playhead, move it to `time`, toggle a cue there, then restore
+    the playhead. No-ops (created=false) if a cue already exists at `time`, so
+    it never removes an existing marker. Verify the actual time (Live may snap
+    to the grid) with get_cue_points.
 
     Parameters:
     - time: Position in beats (>= 0).
@@ -1957,7 +1960,14 @@ def create_cue_point(ctx: Context, time: float) -> str:
     try:
         value = coerce_time(time)
         ableton = get_ableton_connection()
-        result = ableton.send_command("create_cue_point", {"time": value})
+        # Capture the current playhead (settled read) so we can restore it.
+        transport = ableton.send_command("get_transport", {})
+        original = transport.get("current_song_time", 0.0)
+        # Move the playhead (separate command → settles before the toggle).
+        ableton.send_command("set_song_position", {"time_beats": value})
+        result = ableton.send_command("create_cue_at_playhead", {})
+        # Restore the playhead.
+        ableton.send_command("set_song_position", {"time_beats": original})
         return json.dumps(result, indent=2)
     except Exception as e:
         logger.error(f"Error creating cue point: {str(e)}")
@@ -1968,38 +1978,32 @@ def delete_cue_point(ctx: Context, index: int) -> str:
     """
     Delete a cue point (locator) by its index (as listed by get_cue_points).
 
+    Orchestrated as separate commands (same reason as create_cue_point): look
+    up the cue's time, move the playhead there, toggle it off, restore the
+    playhead.
+
     Parameters:
     - index: Index into the ordered cue-point list (>= 0).
     """
     try:
         idx = coerce_index(index)
         ableton = get_ableton_connection()
-        result = ableton.send_command("delete_cue_point", {"index": idx})
+        cues = ableton.send_command("get_cue_points", {})
+        cue_list = cues.get("cue_points", [])
+        if idx >= len(cue_list):
+            n = len(cue_list)
+            return ("Error: Cue index out of range (0..%d)" % (n - 1)
+                    if n else "Error: No cue points to delete")
+        target_time = cue_list[idx]["time"]
+        transport = ableton.send_command("get_transport", {})
+        original = transport.get("current_song_time", 0.0)
+        ableton.send_command("set_song_position", {"time_beats": target_time})
+        result = ableton.send_command("delete_cue_at_playhead", {})
+        ableton.send_command("set_song_position", {"time_beats": original})
         return json.dumps(result, indent=2)
     except Exception as e:
         logger.error(f"Error deleting cue point: {str(e)}")
         return f"Error deleting cue point: {str(e)}"
-
-@mcp.tool()
-def set_cue_point_name(ctx: Context, index: int, name: str) -> str:
-    """
-    Rename a cue point (locator) by its index (as listed by get_cue_points).
-
-    Parameters:
-    - index: Index into the ordered cue-point list (>= 0).
-    - name: New name for the locator.
-    """
-    try:
-        idx = coerce_index(index)
-        ableton = get_ableton_connection()
-        result = ableton.send_command("set_cue_point_name", {
-            "index": idx,
-            "name": name,
-        })
-        return json.dumps(result, indent=2)
-    except Exception as e:
-        logger.error(f"Error renaming cue point: {str(e)}")
-        return f"Error renaming cue point: {str(e)}"
 
 @mcp.tool()
 def get_arrangement_clips(ctx: Context, track_index: int) -> str:
