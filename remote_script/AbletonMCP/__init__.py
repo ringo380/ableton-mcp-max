@@ -574,6 +574,10 @@ class AbletonMCP(ControlSurface):
             elif command_type == "get_browser_items_at_path":
                 path = params.get("path", "")
                 response["result"] = self.get_browser_items_at_path(path)
+            elif command_type == "get_browser_presets":
+                path = params.get("path", "")
+                max_depth = params.get("max_depth", 6)
+                response["result"] = self.get_browser_presets(path, max_depth)
             elif command_type == "get_device_parameters":
                 track_index = params.get("track_index", 0)
                 device_index = params.get("device_index", 0)
@@ -2780,5 +2784,121 @@ class AbletonMCP(ControlSurface):
             
         except Exception as e:
             self.log_message("Error getting browser items at path: {0}".format(str(e)))
+            self.log_message(traceback.format_exc())
+            raise
+
+    def get_browser_presets(self, path, max_depth=6):
+        """
+        Recursively list loadable presets under a browser path.
+
+        Args:
+            path: Path in the format "category/folder/subfolder" (same grammar
+                  as get_browser_items_at_path); category is one of instruments,
+                  sounds, drums, audio_effects, midi_effects, or any available
+                  browser attribute.
+            max_depth: How many levels of children to descend (preset trees are
+                  shallow; keeps pathological recursion bounded).
+
+        Returns:
+            {"path", "count", "presets": [{"name", "relative_path", "uri"}, ...]}
+            on success, or the same {error, available_categories|...} envelope as
+            get_browser_items_at_path on a path miss.
+        """
+        try:
+            app = self.application()
+            if not app:
+                raise RuntimeError("Could not access Live application")
+            if not hasattr(app, 'browser') or app.browser is None:
+                raise RuntimeError("Browser is not available in the Live application")
+
+            browser_attrs = [attr for attr in dir(app.browser) if not attr.startswith('_')]
+
+            # Parse the path and locate the start node (mirrors
+            # get_browser_items_at_path's root-category + path-walk logic).
+            path_parts = path.split("/")
+            if not path_parts:
+                raise ValueError("Invalid path")
+
+            root_category = path_parts[0].lower()
+            current_item = None
+            if root_category == "instruments" and hasattr(app.browser, 'instruments'):
+                current_item = app.browser.instruments
+            elif root_category == "sounds" and hasattr(app.browser, 'sounds'):
+                current_item = app.browser.sounds
+            elif root_category == "drums" and hasattr(app.browser, 'drums'):
+                current_item = app.browser.drums
+            elif root_category == "audio_effects" and hasattr(app.browser, 'audio_effects'):
+                current_item = app.browser.audio_effects
+            elif root_category == "midi_effects" and hasattr(app.browser, 'midi_effects'):
+                current_item = app.browser.midi_effects
+            else:
+                found = False
+                for attr in browser_attrs:
+                    if attr.lower() == root_category:
+                        try:
+                            current_item = getattr(app.browser, attr)
+                            found = True
+                            break
+                        except Exception as e:
+                            self.log_message("Error accessing browser attribute {0}: {1}".format(attr, str(e)))
+                if not found:
+                    return {
+                        "path": path,
+                        "error": "Unknown or unavailable category: {0}".format(root_category),
+                        "available_categories": browser_attrs,
+                        "presets": []
+                    }
+
+            for i in range(1, len(path_parts)):
+                part = path_parts[i]
+                if not part:
+                    continue
+                if not hasattr(current_item, 'children'):
+                    return {
+                        "path": path,
+                        "error": "Item at '{0}' has no children".format('/'.join(path_parts[:i])),
+                        "presets": []
+                    }
+                found = False
+                for child in current_item.children:
+                    if hasattr(child, 'name') and child.name.lower() == part.lower():
+                        current_item = child
+                        found = True
+                        break
+                if not found:
+                    return {
+                        "path": path,
+                        "error": "Path part '{0}' not found".format(part),
+                        "presets": []
+                    }
+
+            # Recursively collect loadable leaves.
+            presets = []
+
+            def walk(node, rel_parts, depth):
+                if depth > max_depth:
+                    return
+                if not hasattr(node, 'children'):
+                    return
+                for child in node.children:
+                    cname = child.name if hasattr(child, 'name') else "Unknown"
+                    loadable = hasattr(child, 'is_loadable') and child.is_loadable
+                    has_kids = hasattr(child, 'children') and bool(child.children)
+                    if loadable:
+                        presets.append({
+                            "name": cname,
+                            "relative_path": "/".join(rel_parts + [cname]),
+                            "uri": child.uri if hasattr(child, 'uri') else None,
+                        })
+                    if has_kids:
+                        walk(child, rel_parts + [cname], depth + 1)
+
+            walk(current_item, [], 0)
+
+            self.log_message("Found {0} presets under path: {1}".format(len(presets), path))
+            return {"path": path, "count": len(presets), "presets": presets}
+
+        except Exception as e:
+            self.log_message("Error getting browser presets: {0}".format(str(e)))
             self.log_message(traceback.format_exc())
             raise

@@ -1,11 +1,14 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Phase 7 (Change Listeners, polling buffer) — LIVE-VERIFIED 2026-05-25 on branch
-`feat/phase7-change-listeners`. Offline suite 140/140; both halves compile; all 6 listener scopes
-exercised live (results below). Branch is READY FOR PR.
-**Next action (resume here):** Commit the working tree (PROGRESS.md, server.py, remote script,
-listener_utils.py, tests), open PR → `gh pr merge --squash --delete-branch` →
-`git remote prune origin`. (gh login must be ringo380.) Then Phase 8 / 4b backlog.
+**Current focus:** Phase 4b (Preset Selection) — CODE COMPLETE on branch
+`feat/phase4b-preset-selection`, AWAITING LIVE VERIFICATION. Offline suite 150/150; both halves
+compile; remote script reinstalled + Live bounced (new `get_browser_presets` handler loaded).
+Device-move DROPPED as infeasible (no LOM clipboard/reorder API in Live 11).
+**Next action (resume here):** RESTART CLAUDE CODE to load the two new server tools
+(`list_device_presets`, `load_preset` arrive as deferred tools → `ToolSearch
+select:mcp__AbletonMCPMax__list_device_presets,mcp__AbletonMCPMax__load_preset`). Then run the
+Phase 4b live-verification sequence (plan §Verification), record results below, open PR →
+`gh pr merge --squash --delete-branch` → `git remote prune origin`. (gh login must be ringo380.)
 
 ## Phases
 | Phase | Title | Status | Completed |
@@ -17,7 +20,7 @@ listener_utils.py, tests), open PR → `gh pr merge --squash --delete-branch` �
 | 3 | Clip & MIDI Editing | Live-verified | 2026-05-24 |
 | 3.1 | Extended note API migration (+ modify_clip_notes) | Live-verified | 2026-05-25 |
 | 4 | Devices & Racks (info/delete/on-off/macros/chains) | Live-verified | 2026-05-25 |
-| 4b | Device move + preset selection (deferred) | Not started | |
+| 4b | Preset selection (device-move dropped: no LOM API) | Code complete | |
 | 5 | Scenes, Transport, Arrangement | Live-verified | 2026-05-25 |
 | 6 | Automation Envelopes | Live-verified | 2026-05-25 |
 | 7 | Change Listeners (polling buffer) | Live-verified | 2026-05-25 |
@@ -151,6 +154,28 @@ listener_utils.py, tests), open PR → `gh pr merge --squash --delete-branch` �
 - **load_instrument_or_effect HOT-SWAPS:** loading onto a track that already has an instrument
   REPLACES it (track 1 Lead's Wavetable was replaced by the test rack). Restore via Live undo.
 - TBD: drum-rack (can_have_drum_pads) chain shape; multi-chain rack with enabled chain volume.
+
+## Phase 4b tools (Preset Selection) — CODE COMPLETE, awaiting live verification
+Scope settled this session: **device move/reorder DROPPED as infeasible** — Live 11's LOM exposes
+no device copy/paste/reorder API (`Track` has only `delete_device`; no `move_device`/clipboard).
+The only technically-possible route was a fragile osascript Cmd+C/Cmd+V keystroke hack (Live must be
+frontmost, UI-focus + timing dependent, breaks the socket/LOM architecture) — explicitly rejected.
+Revisit if/when the project targets Live 12.
+- [x] preset_utils.py (server-only pure helper): `match_preset` (exact → case-insensitive →
+      unique substring; ValueError listing available loadable names on miss/ambiguous/empty),
+      `split_preset_path` (full path → (parent, leaf); ValueError on single-segment).
+      Offline tests +10 → total suite 150/150.
+- [x] remote_script: new READ command `get_browser_presets(path, max_depth=6)` — reuses
+      get_browser_items_at_path's root-category + path-walk, then recursively collects loadable
+      leaves ({name, relative_path, uri}). Read-only (direct dispatch, NOT in mutation list /
+      main_thread_task). Returns same {error, available_categories} envelope on path miss.
+- [x] server.py tools (build both): `list_device_presets(path, max_depth=6)` →
+      get_browser_presets; `load_preset(track_index, path, name=None)` → server-only orchestration
+      (get_browser_items_at_path → match_preset → load_browser_item; NO remote-script change of its
+      own). load_preset HOT-SWAPS like load_instrument_or_effect. (2 tools cover all 3 requested
+      capabilities — load-by-name and load-.adv/.adg are the same browser-item/load_browser_item op.)
+- Plan: `~/.claude/plans/let-s-work-on-phase-expressive-catmull.md`.
+- **Live verification:** PENDING (needs Claude Code restart to load the two new server tools).
 
 ## Device parameter reachability notes
 - Wavetable: 93 automatable params exposed. Quantized params (Device On, Osc On,
