@@ -51,6 +51,10 @@ from ableton_mcp_max.listener_utils import (
     coerce_max_events,
     needs_device_resolution,
 )
+from ableton_mcp_max.preset_utils import (
+    match_recursive_preset,
+    split_preset_path,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -1810,6 +1814,129 @@ def load_drum_kit(ctx: Context, track_index: int, rack_uri: str, kit_path: str) 
     except Exception as e:
         logger.error(f"Error loading drum kit: {str(e)}")
         return f"Error loading drum kit: {str(e)}"
+
+@mcp.tool()
+def list_device_presets(ctx: Context, path: str, max_depth: int = 6,
+                        limit: int = 100) -> str:
+    """
+    Recursively list loadable presets under a browser path.
+
+    Use this to discover presets for a device/category without knowing their
+    cryptic URIs, then load one with load_preset (pass a preset's `name` or its
+    `relative_path` — load_preset searches subfolders, so either works).
+
+    Parameters:
+    - path: Browser path like 'instruments/Wavetable' or 'audio_effects/Reverb'
+            (same grammar as get_browser_items_at_path; category is one of
+            instruments, sounds, drums, audio_effects, midi_effects).
+    - max_depth: How many levels of subfolders to descend (default 6).
+    - limit: Max presets to return (default 100). Factory devices can expose
+            hundreds; the result is truncated past this to stay within size
+            limits — narrow `path` to a subfolder or raise `limit` for more.
+
+    Returns JSON {path, count, returned, truncated, presets:[{name,
+    relative_path, uri}, ...]}. `count` is the full total; `presets` holds at
+    most `limit` of them.
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_browser_presets", {
+            "path": path,
+            "max_depth": max_depth,
+        })
+        if "error" in result and "available_categories" in result:
+            error = result.get("error", "")
+            available_cats = result.get("available_categories", [])
+            return (f"Error: {error}\n"
+                   f"Available browser categories: {', '.join(available_cats)}")
+        if "error" in result:
+            return f"Error: {result.get('error')}"
+
+        presets = result.get("presets", [])
+        total = result.get("count", len(presets))
+        shown = presets[:limit] if limit and limit > 0 else presets
+        truncated = len(shown) < total
+        payload = {
+            "path": result.get("path", path),
+            "count": total,
+            "returned": len(shown),
+            "truncated": truncated,
+            "presets": shown,
+        }
+        out = json.dumps(payload, separators=(",", ":"))
+        if truncated:
+            out += (f"\n\nShowing first {len(shown)} of {total} presets. Narrow "
+                    f"`path` to a subfolder or raise `limit` to see the rest.")
+        return out
+    except Exception as e:
+        logger.error(f"Error listing device presets: {str(e)}")
+        return f"Error listing device presets: {str(e)}"
+
+@mcp.tool()
+def load_preset(ctx: Context, track_index: int, path: str, name: str = None) -> str:
+    """
+    Load a preset onto a track by readable name/path (no URI required).
+
+    Works for any loadable browser item, including instrument/effect presets
+    (.adv) and rack/group presets (.adg). Loading onto a track that already
+    holds an instrument HOT-SWAPS (replaces) it, matching Live's behavior.
+
+    Parameters:
+    - track_index: The index of the (regular) track to load onto.
+    - path: If `name` is given, the folder to search (e.g.
+            'instruments/Wavetable') — subfolders are searched recursively. If
+            `name` is omitted, the full path to a single preset (e.g.
+            'instruments/Wavetable/Ambient & Evolving/Dark Swarm.adg').
+    - name: Optional preset name OR relative_path (as shown by
+            list_device_presets) to match under `path`. Matched exact, then
+            case-insensitive, then unique substring, across name and
+            relative_path. Note factory preset names include their file
+            extension (e.g. 'Dark Swarm.adg').
+
+    Tip: run list_device_presets first, then pass a preset's `name` or
+    `relative_path` here (it resolves nested presets, so either works).
+    """
+    try:
+        ableton = get_ableton_connection()
+
+        if name is None:
+            folder, leaf = split_preset_path(path)
+        else:
+            folder, leaf = path, name
+
+        # Resolve recursively so a leaf surfaced by list_device_presets loads
+        # even when it lives in a subfolder under `folder`.
+        presets_result = ableton.send_command("get_browser_presets", {
+            "path": folder,
+        })
+        if "error" in presets_result:
+            available_cats = presets_result.get("available_categories")
+            if available_cats:
+                return (f"Error: {presets_result.get('error')}\n"
+                       f"Available browser categories: {', '.join(available_cats)}")
+            return f"Error: {presets_result.get('error')}"
+
+        presets = presets_result.get("presets", [])
+        chosen = match_recursive_preset(presets, leaf)
+        uri = chosen.get("uri")
+        if not uri:
+            return f"Preset '{chosen.get('name')}' has no loadable URI."
+
+        label = chosen.get("relative_path") or chosen.get("name")
+        load_result = ableton.send_command("load_browser_item", {
+            "track_index": track_index,
+            "item_uri": uri,
+        })
+        if load_result.get("loaded", False):
+            return (f"Loaded preset '{label}' (uri '{uri}') "
+                   f"on track {track_index}.")
+        return f"Failed to load preset '{label}' (uri '{uri}')."
+    except ValueError as e:
+        # match_recursive_preset / split_preset_path failures (clean messages).
+        return f"Error: {str(e)}"
+    except Exception as e:
+        logger.error(f"Error loading preset: {str(e)}")
+        return f"Error loading preset: {str(e)}"
 
 def _resolve_auto_target(ableton, track_index, target_type, device_index,
                          parameter, mixer_property, send_index):
