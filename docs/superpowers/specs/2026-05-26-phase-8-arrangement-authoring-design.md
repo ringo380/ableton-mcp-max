@@ -1,7 +1,25 @@
 # ableton-mcp-max — Phase 8: Arrangement Authoring (Design)
 
 **Created:** 2026-05-26
-**Status:** Approved (design) — pending implementation plan
+**Status:** Implemented + live-verified 2026-05-26 (see amendments below)
+
+## Post-implementation amendments (driven by live LOM behavior)
+
+- **`set_cue_point_name` DROPPED.** `CuePoint.name` is read-only in the Live 11
+  LOM (assignment raises "can't set attribute"). Shipped tool count is **5, not 6**.
+- **`create_cue_point` / `delete_cue_point` redesigned.** The one-handler
+  move→toggle→restore below does NOT work: `current_song_time` writes are async
+  and don't settle within a single `main_thread_task`, so `set_or_delete_cue()`
+  fires at the stale playhead and toggles the wrong cue. They now orchestrate
+  **separate** socket commands (read playhead → `set_song_position` → toggle at
+  the settled playhead via `_create_cue_at_playhead`/`_delete_cue_at_playhead` →
+  restore playhead). The remote handler names below (`_create_cue_point`,
+  `_delete_cue_point`, `_set_cue_point_name`) were replaced accordingly.
+
+The rest of the design (arrangement-clip tools, `arrangement_utils`) shipped as
+written. Live results recorded in PROGRESS.md.
+
+---
 
 ## Goal
 
