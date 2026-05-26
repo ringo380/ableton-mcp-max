@@ -48,6 +48,63 @@ def match_preset(items, name):
     )
 
 
+def _format_names(names, cap=30):
+    """Join names for an error message, capping a long list with a tail count."""
+    names = [str(n) for n in names]
+    if len(names) <= cap:
+        return ", ".join(names)
+    return ", ".join(names[:cap]) + " ... (+%d more)" % (len(names) - cap)
+
+
+def match_recursive_preset(presets, query):
+    """Resolve `query` against a recursive preset list to a single preset dict.
+
+    `presets` is the list returned by the remote `get_browser_presets` command:
+    each dict has 'name', 'relative_path' (e.g. 'Bass/Talking Bass.adv') and
+    'uri'. Unlike `match_preset`, this searches the whole subtree, so a leaf
+    name surfaced by list_device_presets resolves even when it lives in a
+    subfolder. `query` is matched against BOTH 'name' and 'relative_path':
+      1. exact match (name or relative_path)
+      2. case-insensitive exact match (name or relative_path)
+      3. unique case-insensitive substring match (name or relative_path)
+
+    Returns the matching dict. Raises ValueError (listing available presets,
+    capped) on no match, an ambiguous substring, or an empty list.
+    """
+    if not presets:
+        raise ValueError("No loadable presets at this path.")
+
+    q = str(query)
+    for p in presets:
+        if p.get("name") == q or p.get("relative_path") == q:
+            return p
+
+    ql = q.strip().lower()
+    for p in presets:
+        if (str(p.get("name", "")).lower() == ql
+                or str(p.get("relative_path", "")).lower() == ql):
+            return p
+
+    subs = [
+        p for p in presets
+        if ql in str(p.get("name", "")).lower()
+        or ql in str(p.get("relative_path", "")).lower()
+    ]
+    if len(subs) == 1:
+        return subs[0]
+
+    labels = [p.get("relative_path") or p.get("name") for p in presets]
+    if len(subs) > 1:
+        matches = [p.get("relative_path") or p.get("name") for p in subs]
+        raise ValueError(
+            "Preset '%s' is ambiguous; matches: %s"
+            % (query, _format_names(matches))
+        )
+    raise ValueError(
+        "Preset '%s' not found. Available: %s" % (query, _format_names(labels))
+    )
+
+
 def split_preset_path(path):
     """Split a full browser path into (parent_path, leaf_name).
 
