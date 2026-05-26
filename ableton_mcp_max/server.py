@@ -55,6 +55,10 @@ from ableton_mcp_max.preset_utils import (
     match_recursive_preset,
     split_preset_path,
 )
+from ableton_mcp_max.arrangement_utils import (
+    coerce_time,
+    coerce_index,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -1937,6 +1941,141 @@ def load_preset(ctx: Context, track_index: int, path: str, name: str = None) -> 
     except Exception as e:
         logger.error(f"Error loading preset: {str(e)}")
         return f"Error loading preset: {str(e)}"
+
+@mcp.tool()
+def create_cue_point(ctx: Context, time: float) -> str:
+    """
+    Create a cue point (locator) on the Arrangement at the given time.
+
+    No-ops (returns created=false) if a cue already exists at that time, so it
+    never accidentally removes an existing marker. Live may snap the cue to the
+    current grid — verify the actual time with get_cue_points.
+
+    Parameters:
+    - time: Position in beats (>= 0).
+    """
+    try:
+        value = coerce_time(time)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("create_cue_point", {"time": value})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error creating cue point: {str(e)}")
+        return f"Error creating cue point: {str(e)}"
+
+@mcp.tool()
+def delete_cue_point(ctx: Context, index: int) -> str:
+    """
+    Delete a cue point (locator) by its index (as listed by get_cue_points).
+
+    Parameters:
+    - index: Index into the ordered cue-point list (>= 0).
+    """
+    try:
+        idx = coerce_index(index)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("delete_cue_point", {"index": idx})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error deleting cue point: {str(e)}")
+        return f"Error deleting cue point: {str(e)}"
+
+@mcp.tool()
+def set_cue_point_name(ctx: Context, index: int, name: str) -> str:
+    """
+    Rename a cue point (locator) by its index (as listed by get_cue_points).
+
+    Parameters:
+    - index: Index into the ordered cue-point list (>= 0).
+    - name: New name for the locator.
+    """
+    try:
+        idx = coerce_index(index)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_cue_point_name", {
+            "index": idx,
+            "name": name,
+        })
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error renaming cue point: {str(e)}")
+        return f"Error renaming cue point: {str(e)}"
+
+@mcp.tool()
+def get_arrangement_clips(ctx: Context, track_index: int) -> str:
+    """
+    List the clips on a track's Arrangement timeline.
+
+    Parameters:
+    - track_index: Index of the track.
+
+    Returns JSON {track_index, count, clips:[{index, name, start_time,
+    end_time, length, is_midi_clip}, ...]}.
+    """
+    try:
+        idx = coerce_index(track_index)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_arrangement_clips", {
+            "track_index": idx,
+        })
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting arrangement clips: {str(e)}")
+        return f"Error getting arrangement clips: {str(e)}"
+
+@mcp.tool()
+def duplicate_clip_to_arrangement(ctx: Context, track_index: int,
+                                  source_slot_index: int,
+                                  destination_time: float) -> str:
+    """
+    Place a Session-slot clip onto the same track's Arrangement timeline.
+
+    The source clip is taken from a Session clip slot on the SAME track and
+    duplicated onto that track's Arrangement at destination_time.
+
+    Parameters:
+    - track_index: Index of the track.
+    - source_slot_index: Session clip-slot index on that track (must hold a clip).
+    - destination_time: Arrangement position in beats (>= 0).
+    """
+    try:
+        t_idx = coerce_index(track_index)
+        s_idx = coerce_index(source_slot_index)
+        dest = coerce_time(destination_time)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("duplicate_clip_to_arrangement", {
+            "track_index": t_idx,
+            "source_slot_index": s_idx,
+            "destination_time": dest,
+        })
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error duplicating clip to arrangement: {str(e)}")
+        return f"Error duplicating clip to arrangement: {str(e)}"
+
+@mcp.tool()
+def delete_arrangement_clip(ctx: Context, track_index: int,
+                            clip_index: int) -> str:
+    """
+    Delete a clip from a track's Arrangement timeline.
+
+    Parameters:
+    - track_index: Index of the track.
+    - clip_index: Index into get_arrangement_clips' list (>= 0). Deleting
+      re-indexes the remaining clips — re-read after.
+    """
+    try:
+        t_idx = coerce_index(track_index)
+        c_idx = coerce_index(clip_index)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("delete_arrangement_clip", {
+            "track_index": t_idx,
+            "clip_index": c_idx,
+        })
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error deleting arrangement clip: {str(e)}")
+        return f"Error deleting arrangement clip: {str(e)}"
 
 def _resolve_auto_target(ableton, track_index, target_type, device_index,
                          parameter, mixer_property, send_index):
