@@ -269,8 +269,8 @@ class AbletonMCP(ControlSurface):
                                  "create_automation_envelope",
                                  "clear_all_automation",
                                  "register_listener", "unregister_listener",
-                                 "create_cue_point", "delete_cue_point",
-                                 "set_cue_point_name",
+                                 "create_cue_at_playhead",
+                                 "delete_cue_at_playhead",
                                  "duplicate_clip_to_arrangement",
                                  "delete_arrangement_clip"]:
                 # Use a thread-safe approach with a response queue
@@ -534,16 +534,10 @@ class AbletonMCP(ControlSurface):
                         elif command_type == "unregister_listener":
                             result = self._unregister_listener(
                                 params.get("listener_id", None))
-                        elif command_type == "create_cue_point":
-                            time = params.get("time", 0.0)
-                            result = self._create_cue_point(time)
-                        elif command_type == "delete_cue_point":
-                            index = params.get("index", 0)
-                            result = self._delete_cue_point(index)
-                        elif command_type == "set_cue_point_name":
-                            index = params.get("index", 0)
-                            name = params.get("name", "")
-                            result = self._set_cue_point_name(index, name)
+                        elif command_type == "create_cue_at_playhead":
+                            result = self._create_cue_at_playhead()
+                        elif command_type == "delete_cue_at_playhead":
+                            result = self._delete_cue_at_playhead()
                         elif command_type == "duplicate_clip_to_arrangement":
                             track_index = params.get("track_index", 0)
                             source_slot_index = params.get("source_slot_index", 0)
@@ -2382,64 +2376,48 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error returning to arrangement: " + str(e))
             raise
 
-    def _create_cue_point(self, time):
-        """Create a cue point (locator) at `time` beats. set_or_delete_cue()
-        toggles at current_song_time, so move the playhead there, toggle, and
-        restore. Pre-check existing cues to avoid toggling an existing marker
-        OFF."""
+    def _create_cue_at_playhead(self):
+        """Create a cue point at the CURRENT playhead position via
+        set_or_delete_cue(). The server positions the playhead in a separate,
+        already-settled command first (current_song_time writes are async and
+        do NOT settle within one task). No-ops if a cue already sits here, so
+        the toggle never deletes an existing marker."""
         try:
-            t = float(time)
+            pos = self._song.current_song_time
             cues = self._song.cue_points
             for i in range(len(cues)):
-                if abs(cues[i].time - t) <= 1e-6:
+                if abs(cues[i].time - pos) <= 1e-6:
                     return {"created": False, "reason": "exists",
                             "index": i, "time": cues[i].time}
-            saved = self._song.current_song_time
-            self._song.current_song_time = t
             self._song.set_or_delete_cue()
-            self._song.current_song_time = saved
-            # Echo the actual (possibly grid-snapped) cue; tolerate snapping.
             cues = self._song.cue_points
             for i in range(len(cues)):
-                if abs(cues[i].time - t) <= 0.5:
+                if abs(cues[i].time - pos) <= 1e-6:
                     return {"created": True, "index": i, "time": cues[i].time}
-            return {"created": True, "index": -1, "time": t}
+            return {"created": True, "index": -1, "time": pos}
         except Exception as e:
-            self.log_message("Error creating cue point: " + str(e))
+            self.log_message("Error creating cue at playhead: " + str(e))
             raise
 
-    def _delete_cue_point(self, index):
-        """Delete the cue at `index` by toggling set_or_delete_cue at its time."""
+    def _delete_cue_at_playhead(self):
+        """Delete the cue at the CURRENT playhead position via
+        set_or_delete_cue(). The server positions the playhead to the target
+        cue's time in a separate, settled command first. No-ops if no cue sits
+        here (so the toggle never creates one)."""
         try:
+            pos = self._song.current_song_time
             cues = self._song.cue_points
-            n = len(cues)
-            if index < 0 or index >= n:
-                if n == 0:
-                    raise IndexError("No cue points to delete")
-                raise IndexError("Cue index out of range (0..%d)" % (n - 1))
-            target_time = cues[index].time
-            saved = self._song.current_song_time
-            self._song.current_song_time = float(target_time)
+            found = -1
+            for i in range(len(cues)):
+                if abs(cues[i].time - pos) <= 1e-6:
+                    found = i
+                    break
+            if found < 0:
+                return {"deleted": False, "reason": "absent", "time": pos}
             self._song.set_or_delete_cue()
-            self._song.current_song_time = saved
-            return {"deleted": True, "index": index, "time": target_time}
+            return {"deleted": True, "index": found, "time": pos}
         except Exception as e:
-            self.log_message("Error deleting cue point: " + str(e))
-            raise
-
-    def _set_cue_point_name(self, index, name):
-        """Rename the cue at `index`."""
-        try:
-            cues = self._song.cue_points
-            n = len(cues)
-            if index < 0 or index >= n:
-                if n == 0:
-                    raise IndexError("No cue points")
-                raise IndexError("Cue index out of range (0..%d)" % (n - 1))
-            cues[index].name = name
-            return {"index": index, "name": cues[index].name}
-        except Exception as e:
-            self.log_message("Error setting cue point name: " + str(e))
+            self.log_message("Error deleting cue at playhead: " + str(e))
             raise
 
     def _get_arrangement_clips(self, track_index):
