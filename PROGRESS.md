@@ -192,10 +192,13 @@ Revisit if/when the project targets Live 12.
   InstrumentGroupDevice rack); negative match → clean error listing available names; delete_device →
   device_count 0 (restore). NOTE: a scratch MIDI track was left in the open project (no delete_track
   tool) — remove via Live undo.
-- **POST-FIX (recursive load_preset + list cap): offline only** (preset_utils unit tests, suite
-  158/158). Live re-verification of the fixed by-name/by-relative_path load path is PENDING a Claude
-  Code restart (server.py edited; MCP server loads at session start — remote script unchanged, no Live
-  bounce needed).
+- **POST-FIX LIVE-VERIFIED (2026-05-26, after Claude Code restart, scratch MIDI track):** the exact
+  pre-fix failure now works — load_preset(track, 'instruments/Wavetable', name='Dark Swarm.adg') →
+  loaded 'Ambient & Evolving/Dark Swarm.adg'; relative_path substring ('Bass/Talking') → uniquely
+  resolved 'Bass/Talking 808 Bass.adg'; hot-swap confirmed (get_device_info → InstrumentGroupDevice);
+  list cap: limit=3 → {count:419, returned:3, truncated:true}+hint, default limit=100 → returned:100
+  WITHOUT overrunning the MCP token limit (pre-fix 419-dump errored at 76KB). delete_device restore OK.
+  Offline suite 158/158.
 
 ## Device parameter reachability notes
 - Wavetable: 93 automatable params exposed. Quantized params (Device On, Osc On,
