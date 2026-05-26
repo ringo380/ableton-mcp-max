@@ -268,7 +268,11 @@ class AbletonMCP(ControlSurface):
                                  "set_automation", "clear_automation",
                                  "create_automation_envelope",
                                  "clear_all_automation",
-                                 "register_listener", "unregister_listener"]:
+                                 "register_listener", "unregister_listener",
+                                 "create_cue_point", "delete_cue_point",
+                                 "set_cue_point_name",
+                                 "duplicate_clip_to_arrangement",
+                                 "delete_arrangement_clip"]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
                 
@@ -530,6 +534,27 @@ class AbletonMCP(ControlSurface):
                         elif command_type == "unregister_listener":
                             result = self._unregister_listener(
                                 params.get("listener_id", None))
+                        elif command_type == "create_cue_point":
+                            time = params.get("time", 0.0)
+                            result = self._create_cue_point(time)
+                        elif command_type == "delete_cue_point":
+                            index = params.get("index", 0)
+                            result = self._delete_cue_point(index)
+                        elif command_type == "set_cue_point_name":
+                            index = params.get("index", 0)
+                            name = params.get("name", "")
+                            result = self._set_cue_point_name(index, name)
+                        elif command_type == "duplicate_clip_to_arrangement":
+                            track_index = params.get("track_index", 0)
+                            source_slot_index = params.get("source_slot_index", 0)
+                            destination_time = params.get("destination_time", 0.0)
+                            result = self._duplicate_clip_to_arrangement(
+                                track_index, source_slot_index, destination_time)
+                        elif command_type == "delete_arrangement_clip":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            result = self._delete_arrangement_clip(
+                                track_index, clip_index)
 
                         # Put the result in the queue
                         response_queue.put({"status": "success", "result": result})
@@ -628,6 +653,9 @@ class AbletonMCP(ControlSurface):
                 response["result"] = self._get_transport()
             elif command_type == "get_cue_points":
                 response["result"] = self._get_cue_points()
+            elif command_type == "get_arrangement_clips":
+                response["result"] = self._get_arrangement_clips(
+                    params.get("track_index", 0))
             elif command_type == "get_automation":
                 response["result"] = self._get_automation(
                     params.get("track_index", 0),
@@ -2352,6 +2380,153 @@ class AbletonMCP(ControlSurface):
             return {"back_to_arranger": self._song.back_to_arranger}
         except Exception as e:
             self.log_message("Error returning to arrangement: " + str(e))
+            raise
+
+    def _create_cue_point(self, time):
+        """Create a cue point (locator) at `time` beats. set_or_delete_cue()
+        toggles at current_song_time, so move the playhead there, toggle, and
+        restore. Pre-check existing cues to avoid toggling an existing marker
+        OFF."""
+        try:
+            t = float(time)
+            cues = self._song.cue_points
+            for i in range(len(cues)):
+                if abs(cues[i].time - t) <= 1e-6:
+                    return {"created": False, "reason": "exists",
+                            "index": i, "time": cues[i].time}
+            saved = self._song.current_song_time
+            self._song.current_song_time = t
+            self._song.set_or_delete_cue()
+            self._song.current_song_time = saved
+            # Echo the actual (possibly grid-snapped) cue; tolerate snapping.
+            cues = self._song.cue_points
+            for i in range(len(cues)):
+                if abs(cues[i].time - t) <= 0.5:
+                    return {"created": True, "index": i, "time": cues[i].time}
+            return {"created": True, "index": -1, "time": t}
+        except Exception as e:
+            self.log_message("Error creating cue point: " + str(e))
+            raise
+
+    def _delete_cue_point(self, index):
+        """Delete the cue at `index` by toggling set_or_delete_cue at its time."""
+        try:
+            cues = self._song.cue_points
+            n = len(cues)
+            if index < 0 or index >= n:
+                if n == 0:
+                    raise IndexError("No cue points to delete")
+                raise IndexError("Cue index out of range (0..%d)" % (n - 1))
+            target_time = cues[index].time
+            saved = self._song.current_song_time
+            self._song.current_song_time = float(target_time)
+            self._song.set_or_delete_cue()
+            self._song.current_song_time = saved
+            return {"deleted": True, "index": index, "time": target_time}
+        except Exception as e:
+            self.log_message("Error deleting cue point: " + str(e))
+            raise
+
+    def _set_cue_point_name(self, index, name):
+        """Rename the cue at `index`."""
+        try:
+            cues = self._song.cue_points
+            n = len(cues)
+            if index < 0 or index >= n:
+                if n == 0:
+                    raise IndexError("No cue points")
+                raise IndexError("Cue index out of range (0..%d)" % (n - 1))
+            cues[index].name = name
+            return {"index": index, "name": cues[index].name}
+        except Exception as e:
+            self.log_message("Error setting cue point name: " + str(e))
+            raise
+
+    def _get_arrangement_clips(self, track_index):
+        """List the clips placed on a track's Arrangement timeline."""
+        try:
+            tracks = self._song.tracks
+            if track_index < 0 or track_index >= len(tracks):
+                raise IndexError(
+                    "Track index out of range (0..%d)" % (len(tracks) - 1))
+            track = tracks[track_index]
+            clips = track.arrangement_clips
+            out = []
+            for i in range(len(clips)):
+                c = clips[i]
+                out.append({
+                    "index": i,
+                    "name": c.name,
+                    "start_time": c.start_time,
+                    "end_time": c.end_time,
+                    "length": c.length,
+                    "is_midi_clip": c.is_midi_clip,
+                })
+            return {"track_index": track_index, "count": len(out), "clips": out}
+        except Exception as e:
+            self.log_message("Error getting arrangement clips: " + str(e))
+            raise
+
+    def _duplicate_clip_to_arrangement(self, track_index, source_slot_index,
+                                       destination_time):
+        """Place a same-track Session-slot clip onto the Arrangement timeline."""
+        try:
+            tracks = self._song.tracks
+            if track_index < 0 or track_index >= len(tracks):
+                raise IndexError(
+                    "Track index out of range (0..%d)" % (len(tracks) - 1))
+            track = tracks[track_index]
+            slots = track.clip_slots
+            if source_slot_index < 0 or source_slot_index >= len(slots):
+                raise IndexError(
+                    "Slot index out of range (0..%d)" % (len(slots) - 1))
+            slot = slots[source_slot_index]
+            if not slot.has_clip:
+                raise ValueError(
+                    "No clip in session slot %d on track %d"
+                    % (source_slot_index, track_index))
+            new_clip = track.duplicate_clip_to_arrangement(
+                slot.clip, float(destination_time))
+            info = None
+            if new_clip is not None:
+                info = {
+                    "name": new_clip.name,
+                    "start_time": new_clip.start_time,
+                    "end_time": new_clip.end_time,
+                }
+            return {
+                "track_index": track_index,
+                "source_slot_index": source_slot_index,
+                "destination_time": float(destination_time),
+                "placed": True,
+                "new_clip": info,
+            }
+        except Exception as e:
+            self.log_message("Error duplicating clip to arrangement: " + str(e))
+            raise
+
+    def _delete_arrangement_clip(self, track_index, clip_index):
+        """Delete a clip from a track's Arrangement timeline."""
+        try:
+            tracks = self._song.tracks
+            if track_index < 0 or track_index >= len(tracks):
+                raise IndexError(
+                    "Track index out of range (0..%d)" % (len(tracks) - 1))
+            track = tracks[track_index]
+            clips = track.arrangement_clips
+            n = len(clips)
+            if clip_index < 0 or clip_index >= n:
+                if n == 0:
+                    raise IndexError(
+                        "No arrangement clips on track %d" % track_index)
+                raise IndexError(
+                    "Arrangement clip index out of range (0..%d)" % (n - 1))
+            name = clips[clip_index].name
+            track.delete_clip(clips[clip_index])
+            return {"track_index": track_index, "clip_index": clip_index,
+                    "deleted": True, "name": name}
+        except Exception as e:
+            self.log_message("Error deleting arrangement clip: " + str(e))
             raise
 
     def _re_enable_automation(self):
