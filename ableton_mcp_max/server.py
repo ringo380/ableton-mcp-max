@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, List, Union
 
 from ableton_mcp_max.param_utils import resolve_parameter_index
+from ableton_mcp_max.track_utils import coerce_create_index, coerce_track_index
 from ableton_mcp_max.mixer_utils import normalize_property, validate_property
 from ableton_mcp_max.routing_utils import (
     normalize_routing_property,
@@ -801,6 +802,127 @@ def set_track_name(ctx: Context, track_index: int, name: str) -> str:
     except Exception as e:
         logger.error(f"Error setting track name: {str(e)}")
         return f"Error setting track name: {str(e)}"
+
+
+@mcp.tool()
+def create_audio_track(ctx: Context, index: int = -1) -> str:
+    """
+    Create a new audio track.
+
+    Parameters:
+    - index: Insert position (-1 = end of list)
+    """
+    try:
+        resolved = coerce_create_index(index)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("create_audio_track", {"index": resolved})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error creating audio track: {str(e)}")
+        return f"Error creating audio track: {str(e)}"
+
+
+@mcp.tool()
+def create_return_track(ctx: Context) -> str:
+    """
+    Create a new return track (added at the end of the return-track list).
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("create_return_track", {})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error creating return track: {str(e)}")
+        return f"Error creating return track: {str(e)}"
+
+
+@mcp.tool()
+def delete_track(ctx: Context, index: int) -> str:
+    """
+    Delete the regular (audio/MIDI) track at the given index. Remaining tracks
+    re-index; re-read get_session_info afterward.
+
+    Parameters:
+    - index: The index of the track to delete
+    """
+    try:
+        resolved = coerce_track_index(index)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("delete_track", {"index": resolved})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error deleting track: {str(e)}")
+        return f"Error deleting track: {str(e)}"
+
+
+@mcp.tool()
+def delete_return_track(ctx: Context, index: int) -> str:
+    """
+    Delete the return track at the given index. Remaining return tracks
+    re-index; re-read get_session_info afterward.
+
+    Parameters:
+    - index: The index of the return track to delete
+    """
+    try:
+        resolved = coerce_track_index(index)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("delete_return_track", {"index": resolved})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error deleting return track: {str(e)}")
+        return f"Error deleting return track: {str(e)}"
+
+
+@mcp.tool()
+def duplicate_track(ctx: Context, index: int) -> str:
+    """
+    Duplicate the regular track at the given index. Live inserts the copy and
+    selects it; the returned new_index is the copy's position.
+
+    Parameters:
+    - index: The index of the track to duplicate
+    """
+    try:
+        resolved = coerce_track_index(index)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("duplicate_track", {"index": resolved})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error duplicating track: {str(e)}")
+        return f"Error duplicating track: {str(e)}"
+
+
+@mcp.tool()
+def undo(ctx: Context) -> str:
+    """
+    Undo the last action. WARNING: this walks Live's GLOBAL undo stack — it can
+    undo actions the user performed by hand, not just MCP changes. No-op (clean
+    result) if there is nothing to undo.
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("undo", {})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error performing undo: {str(e)}")
+        return f"Error performing undo: {str(e)}"
+
+
+@mcp.tool()
+def redo(ctx: Context) -> str:
+    """
+    Redo the last undone action. Operates on Live's global undo stack. No-op
+    (clean result) if there is nothing to redo.
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("redo", {})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error performing redo: {str(e)}")
+        return f"Error performing redo: {str(e)}"
+
 
 @mcp.tool()
 def create_clip(ctx: Context, track_index: int, clip_index: int, length: float = 4.0) -> str:
