@@ -272,7 +272,10 @@ class AbletonMCP(ControlSurface):
                                  "create_cue_at_playhead",
                                  "delete_cue_at_playhead",
                                  "duplicate_clip_to_arrangement",
-                                 "delete_arrangement_clip"]:
+                                 "delete_arrangement_clip",
+                                 "create_audio_track", "create_return_track",
+                                 "delete_track", "delete_return_track",
+                                 "duplicate_track", "undo", "redo"]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
                 
@@ -549,6 +552,24 @@ class AbletonMCP(ControlSurface):
                             clip_index = params.get("clip_index", 0)
                             result = self._delete_arrangement_clip(
                                 track_index, clip_index)
+                        elif command_type == "create_audio_track":
+                            index = params.get("index", -1)
+                            result = self._create_audio_track(index)
+                        elif command_type == "create_return_track":
+                            result = self._create_return_track()
+                        elif command_type == "delete_track":
+                            index = params.get("index", 0)
+                            result = self._delete_track(index)
+                        elif command_type == "delete_return_track":
+                            index = params.get("index", 0)
+                            result = self._delete_return_track(index)
+                        elif command_type == "duplicate_track":
+                            index = params.get("index", 0)
+                            result = self._duplicate_track(index)
+                        elif command_type == "undo":
+                            result = self._undo()
+                        elif command_type == "redo":
+                            result = self._redo()
 
                         # Put the result in the queue
                         response_queue.put({"status": "success", "result": result})
@@ -1229,8 +1250,71 @@ class AbletonMCP(ControlSurface):
         except Exception as e:
             self.log_message("Error creating MIDI track: " + str(e))
             raise
-    
-    
+
+    def _create_audio_track(self, index):
+        """Create a new audio track at index (-1 = end)."""
+        try:
+            self._song.create_audio_track(index)
+            new_index = len(self._song.tracks) - 1 if index == -1 else index
+            new_track = self._song.tracks[new_index]
+            return {"index": new_index, "name": new_track.name}
+        except Exception as e:
+            self.log_message("Error creating audio track: " + str(e))
+            raise Exception("Could not create audio track (Live limit reached?): " + str(e))
+
+    def _create_return_track(self):
+        """Create a new return track at the end."""
+        try:
+            self._song.create_return_track()
+            new_index = len(self._song.return_tracks) - 1
+            new_track = self._song.return_tracks[new_index]
+            return {"index": new_index, "name": new_track.name}
+        except Exception as e:
+            self.log_message("Error creating return track: " + str(e))
+            raise Exception("Could not create return track (Live limit reached?): " + str(e))
+
+    def _delete_track(self, index):
+        """Delete the regular track at index; return remaining count."""
+        if index < 0 or index >= len(self._song.tracks):
+            raise Exception("Track index out of range (0..%d)" % (len(self._song.tracks) - 1,))
+        self._song.delete_track(index)
+        return {"deleted": True, "remaining_count": len(self._song.tracks)}
+
+    def _delete_return_track(self, index):
+        """Delete the return track at index; return remaining count."""
+        if index < 0 or index >= len(self._song.return_tracks):
+            raise Exception("Return track index out of range (0..%d)" % (len(self._song.return_tracks) - 1,))
+        self._song.delete_return_track(index)
+        return {"deleted": True, "remaining_count": len(self._song.return_tracks)}
+
+    def _duplicate_track(self, index):
+        """Duplicate the regular track at index; Live selects the new track."""
+        if index < 0 or index >= len(self._song.tracks):
+            raise Exception("Track index out of range (0..%d)" % (len(self._song.tracks) - 1,))
+        self._song.duplicate_track(index)
+        new_track = self._song.view.selected_track
+        new_index = list(self._song.tracks).index(new_track)
+        return {"new_index": new_index, "name": new_track.name}
+
+    def _undo(self):
+        """Undo the last action in Live's global undo stack (no-op if empty)."""
+        if not self._song.can_undo:
+            return {"undone": False, "reason": "nothing to undo",
+                    "can_undo": False, "can_redo": self._song.can_redo}
+        self._song.undo()
+        return {"undone": True, "can_undo": self._song.can_undo,
+                "can_redo": self._song.can_redo}
+
+    def _redo(self):
+        """Redo the last undone action (no-op if nothing to redo)."""
+        if not self._song.can_redo:
+            return {"redone": False, "reason": "nothing to redo",
+                    "can_undo": self._song.can_undo, "can_redo": False}
+        self._song.redo()
+        return {"redone": True, "can_undo": self._song.can_undo,
+                "can_redo": self._song.can_redo}
+
+
     def _set_track_name(self, track_index, name):
         """Set the name of a track"""
         try:
