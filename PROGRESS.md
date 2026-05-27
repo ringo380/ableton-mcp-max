@@ -1,14 +1,12 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Phase 4b (Preset Selection) — CODE COMPLETE on branch
-`feat/phase4b-preset-selection`, AWAITING LIVE VERIFICATION. Offline suite 150/150; both halves
-compile; remote script reinstalled + Live bounced (new `get_browser_presets` handler loaded).
-Device-move DROPPED as infeasible (no LOM clipboard/reorder API in Live 11).
-**Next action (resume here):** RESTART CLAUDE CODE to load the two new server tools
-(`list_device_presets`, `load_preset` arrive as deferred tools → `ToolSearch
-select:mcp__AbletonMCPMax__list_device_presets,mcp__AbletonMCPMax__load_preset`). Then run the
-Phase 4b live-verification sequence (plan §Verification), record results below, open PR →
-`gh pr merge --squash --delete-branch` → `git remote prune origin`. (gh login must be ringo380.)
+**Current focus:** Phase 8 (Arrangement Authoring) — LIVE-VERIFIED 2026-05-26 on branch
+`feat/phase8-arrangement-authoring`. Offline suite 172/172; both halves compile; all 5 tools
+exercised live (cue create/delete/idempotence + arrangement clip read/place/delete + negatives).
+Cue rename DROPPED (CuePoint.name read-only in LOM); cue create/delete redesigned to orchestrate
+across settled commands (in-task playhead writes are async). Branch READY FOR PR.
+**Next action (resume here):** open PR → review → `gh pr merge --squash --delete-branch` →
+`git remote prune origin`. (gh login must be ringo380.)
 
 ## Phases
 | Phase | Title | Status | Completed |
@@ -20,10 +18,11 @@ Phase 4b live-verification sequence (plan §Verification), record results below,
 | 3 | Clip & MIDI Editing | Live-verified | 2026-05-24 |
 | 3.1 | Extended note API migration (+ modify_clip_notes) | Live-verified | 2026-05-25 |
 | 4 | Devices & Racks (info/delete/on-off/macros/chains) | Live-verified | 2026-05-25 |
-| 4b | Preset selection (device-move dropped: no LOM API) | Code complete | |
+| 4b | Preset selection (device-move dropped: no LOM API) | Live-verified | 2026-05-26 |
 | 5 | Scenes, Transport, Arrangement | Live-verified | 2026-05-25 |
 | 6 | Automation Envelopes | Live-verified | 2026-05-25 |
 | 7 | Change Listeners (polling buffer) | Live-verified | 2026-05-25 |
+| 8 | Arrangement Authoring (cue CRUD + arrangement clips) | Live-verified | 2026-05-26 |
 
 ## Phase 0 tools (parity, vendored) — live-verified (get_session_info + get_track_info confirmed; rest vendored unchanged from ahujasid)
 - [x] get_session_info, get_track_info, create_midi_track, set_track_name,
@@ -341,3 +340,42 @@ Claude drains on demand. Zero protocol changes. (Plan:
   ordering is total across the whole registry.
 - **arm validation happens at REGISTER time** for return/master (reuses mixer_utils asymmetry), not
   at poll — a rejected register never attaches a Live listener.
+
+## Phase 8 tools (Arrangement Authoring) — ALL live-verified 2026-05-26
+Extends Phase 5 from cue reads/navigation into cue + arrangement-clip editing. Pure helper
+`arrangement_utils.py` (coerce_time, coerce_index, cue_exists_at; offline tests +14 → suite 172/172).
+- **Cue points (2 — rename DROPPED):**
+  - [x] create_cue_point(time) — server orchestrates get_transport → set_song_position(time) →
+        create_cue_at_playhead → restore playhead. Live: created cue@16 alongside existing
+        locator1@32 + locator2@64 (none disturbed), playhead restored to 8; re-call → created:false
+        reason:exists (idempotent, never deletes).
+  - [x] delete_cue_point(index) — server looks up cues[index].time → set_song_position → toggle off →
+        restore. Live: removed cue@16, other two survived, playhead restored; index 999 → clean
+        server-side "out of range (0..1)".
+  - **set_cue_point_name DROPPED:** `CuePoint.name` is READ-ONLY in the Live 11 LOM ("can't set
+        attribute"). Locator names are UI-only; no API write path.
+- **Arrangement clips (3):**
+  - [x] get_arrangement_clips(track_index) — Live: count:0 baseline; lists index/name/start_time/
+        end_time/length/is_midi_clip.
+  - [x] duplicate_clip_to_arrangement(track_index, source_slot_index, destination_time) — Live:
+        placed a session clip at beats 0 then 8, returns new_clip{name,start,end} (destination_time
+        confirmed in BEATS); empty source slot → clean "No clip in session slot N on track M".
+  - [x] delete_arrangement_clip(track_index, clip_index) — Live: deleted + remaining clips re-index
+        (clip@8 became index 0); index 999 → clean "out of range".
+- Spec: `docs/superpowers/specs/2026-05-26-phase-8-arrangement-authoring-design.md`;
+  Plan: `docs/superpowers/plans/2026-05-26-phase-8-arrangement-authoring.md`.
+
+### Phase 8 live findings (2026-05-26) — design changes driven by live behavior
+- **In-task `current_song_time` writes are async (Phase 5 gotcha, confirmed harder here):** the
+  original one-handler move→toggle→restore for cues FAILED — `set_or_delete_cue()` fired at the
+  STALE playhead position, deleting the wrong cue (test: create_cue_point(16) with playhead at 64
+  deleted locator2@64 and created nothing). Fix: split into separate socket commands; the playhead
+  settles BETWEEN commands. Handlers `_create_cue_at_playhead`/`_delete_cue_at_playhead` now operate
+  only at the already-settled playhead; the server does the positioning + restore.
+- **`set_or_delete_cue()` takes NO time arg** — it toggles at the playhead; there is no create-at-
+  arbitrary-time call. Pre-check cue_points to decide create vs. (avoid) delete.
+- **CuePoint.name read-only** → rename infeasible (dropped). New cues get Live's auto-name ("1","2").
+- **cue_points list is insertion-ordered, not time-sorted** (index 2 can be at an earlier time than
+  index 0) — index is stable for delete; don't assume chronological order.
+- **duplicate_clip_to_arrangement returns the new Clip** and re-reads of arrangement_clips within the
+  same task reflect it (unlike song-position). delete_clip(clip) re-indexes the list.
