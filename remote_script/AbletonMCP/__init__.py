@@ -809,12 +809,17 @@ class AbletonMCP(ControlSurface):
                 "is_midi_track": track.has_midi_input,
                 "mute": track.mute,
                 "solo": track.solo,
-                "arm": track.arm,
                 "volume": track.mixer_device.volume.value,
                 "panning": track.mixer_device.panning.value,
                 "clip_slots": clip_slots,
                 "devices": devices
             }
+            # arm is regular-track-only: group tracks (like return/master) raise
+            # "Master and Return Tracks have no 'Arm' state!" — read defensively.
+            try:
+                result["arm"] = track.arm
+            except Exception:
+                pass
             # Phase 10: group-track folding state (probed defensively).
             for attr in ("is_foldable", "is_grouped", "fold_state"):
                 try:
