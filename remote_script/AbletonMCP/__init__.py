@@ -3079,20 +3079,30 @@ class AbletonMCP(ControlSurface):
             
             # Check if this is a browser with root categories
             if hasattr(browser_or_item, 'instruments'):
-                # Check all main categories
-                categories = [
-                    browser_or_item.instruments,
-                    browser_or_item.sounds,
-                    browser_or_item.drums,
-                    browser_or_item.audio_effects,
-                    browser_or_item.midi_effects
-                ]
-                
+                # Check all main categories. user_library/packs/current_project
+                # are essential for loading User Library presets (.adv/.adg) and
+                # were previously omitted, so those URIs were never found.
+                categories = []
+                for attr in ('instruments', 'sounds', 'drums', 'audio_effects',
+                             'midi_effects', 'user_library', 'packs',
+                             'current_project', 'clips', 'samples'):
+                    if hasattr(browser_or_item, attr):
+                        try:
+                            categories.append(getattr(browser_or_item, attr))
+                        except Exception:
+                            pass
+                # user_folders (browser "Places") is a list of BrowserItems.
+                if hasattr(browser_or_item, 'user_folders'):
+                    try:
+                        categories.extend(list(browser_or_item.user_folders))
+                    except Exception:
+                        pass
+
                 for category in categories:
                     item = self._find_browser_item_by_uri(category, uri, max_depth, current_depth + 1)
                     if item:
                         return item
-                
+
                 return None
             
             # Check if this item has children
