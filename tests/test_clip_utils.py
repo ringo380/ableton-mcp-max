@@ -139,3 +139,26 @@ def test_normalize_note_clamps():
     assert n2["pitch"] == 0
     assert n2["probability"] == 0.0
     assert n2["release_velocity"] == 0.0
+
+
+# --- Phase 10: clip launch settings (valid on both midi and audio) ---
+def test_launch_props_normalize_and_aliases():
+    assert normalize_clip_property("launchmode") == "launch_mode"
+    assert normalize_clip_property("Launch Quant") == "launch_quantization"
+    assert normalize_clip_property("velamount") == "velocity_amount"
+    assert normalize_clip_property("legato") == "legato"
+
+
+def test_launch_props_valid_on_both_kinds():
+    for kind in ("midi", "audio"):
+        for prop in ("launch_mode", "launch_quantization", "legato",
+                     "velocity_amount"):
+            assert validate_clip_property(kind, prop) == prop
+
+
+def test_launch_value_coercion_types():
+    assert coerce_clip_value("launch_mode", "3") == 3
+    assert coerce_clip_value("launch_quantization", 2.0) == 2
+    assert coerce_clip_value("legato", "true") is True
+    assert coerce_clip_value("legato", 0) is False
+    assert coerce_clip_value("velocity_amount", "0.5") == 0.5

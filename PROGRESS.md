@@ -1,12 +1,13 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Phase 9 (Track Lifecycle & Undo/Redo) — LIVE-VERIFIED 2026-05-27 on branch
-`feat/phase9-track-lifecycle`. Offline suite 183/183; both halves compile; all 7 new tools
-exercised live (create audio+return, duplicate, delete both types w/ re-index, undo/redo round-trip,
-server-side + handler-side negatives). `create_midi_track` already had `index` (parity, no change).
-Branch READY FOR PR.
-**Next action (resume here):** open PR → review → `gh pr merge --squash --delete-branch` →
-`git remote prune origin`. (gh login must be ringo380.)
+**Current focus:** Phase 10 (Global Feel/Quant, Clip Launch Settings, View/Selection & Folding) —
+CODE COMPLETE on branch `feat/phase10-feel-launch-view`, awaiting live verification. Offline suite
+202/202; both halves compile; server imports. 10 new tools + extended reads (get_transport +7,
+get_track_info +3, get_clip_info +4). Warp-marker editing + follow-actions dropped (no Live 11 LOM).
+Capture/recording deferred by user.
+**Next action (resume here):** install remote script + bounce Live + restart Claude Code → live-verify
+all 3 groups + resolve enum-confirmation TODO → record findings here → PR →
+`gh pr merge --squash --delete-branch` → `git remote prune origin`. (gh login must be ringo380.)
 
 ## Phases
 | Phase | Title | Status | Completed |
@@ -24,6 +25,7 @@ Branch READY FOR PR.
 | 7 | Change Listeners (polling buffer) | Live-verified | 2026-05-25 |
 | 8 | Arrangement Authoring (cue CRUD + arrangement clips) | Live-verified | 2026-05-26 |
 | 9 | Track Lifecycle (create/delete/duplicate) & Undo/Redo | Live-verified | 2026-05-27 |
+| 10 | Global Feel/Quant, Clip Launch Settings, View/Selection & Folding | Code complete | 2026-05-27 |
 
 ## Phase 0 tools (parity, vendored) — live-verified (get_session_info + get_track_info confirmed; rest vendored unchanged from ahujasid)
 - [x] get_session_info, get_track_info, create_midi_track, set_track_name,
@@ -416,3 +418,39 @@ track type (1:1 with LOM), per design.
   hand-edits; the can_undo precheck only prevents erroring on an empty stack, it does not scope to MCP.
 - **duplicate_track selects the new track**, so `song.view.selected_track` is a reliable in-task source
   for new_index/name (LOM duplicate_track itself returns None).
+
+## Phase 10 tools (Global Feel/Quant, Clip Launch, View/Selection & Folding) — CODE COMPLETE, awaiting live verify
+Gap-audit phase. Two candidates dropped as infeasible in Live 11: **warp-marker editing**
+(`Clip.warp_markers` read-only; no add/remove/move_warp_marker methods) and **follow actions**
+(`follow_action*` absent from 11.0.0 LOM). Capture/recording (capture_midi/capture_and_insert_scene/
+trigger_session_record/stop_all_clips/tap_tempo) is feasible but DEFERRED by user. Offline suite +19 → 202.
+- **Group A — global feel/quant (`transport_utils.py`, 5 tools):**
+  - [ ] set_groove_amount(amount) — Song.groove_amount, 0–1 clamp.
+  - [ ] set_swing_amount(amount) — Song.swing_amount, 0–1 clamp.
+  - [ ] set_clip_trigger_quantization(value) — Live.Song.Quantization int OR name
+        (CLIP_TRIGGER_QUANTIZATION_MAP: none/8_bars/.../1/32; PROVISIONAL — confirm enum live).
+  - [ ] set_midi_recording_quantization(value) — Live.Song.RecordingQuantization int OR name
+        (reuses live-confirmed clip_utils.QUANTIZE_GRID_MAP).
+  - [ ] set_nudge(direction, active) — Song.nudge_up/nudge_down bools.
+  - get_transport extended (+7 reads): groove_amount, swing_amount, clip_trigger_quantization,
+    midi_recording_quantization, count_in_duration (READ-ONLY), nudge_up, nudge_down.
+- **Group B — clip launch settings (extends set_clip_property/get_clip_info, NO new tool):**
+  - [ ] launch_mode (int 0=Trigger/1=Gate/2=Toggle/3=Repeat — confirm live),
+        launch_quantization (int enum — confirm live), legato (bool), velocity_amount (float).
+        Valid on BOTH midi & audio (general Clip props; handler audio-only gate unchanged).
+- **Group C — view/selection & folding (`view_utils.py`, 6 tools):**
+  - [ ] set_selected_track(track_index, track_type=regular) — Song.View.selected_track.
+  - [ ] set_selected_scene(scene_index) — Song.View.selected_scene.
+  - [ ] set_detail_clip(track_index, clip_slot_index) — Song.View.detail_clip (slot must hold clip).
+  - [ ] set_highlighted_clip_slot(track_index, scene_index) — Song.View.highlighted_clip_slot.
+  - [ ] set_track_fold(track_index, folded) — Track.fold_state (1/0; guarded by is_foldable).
+  - [ ] get_view_selection() — selected track index/name, selected scene index, detail_clip name,
+        highlighted-slot has_clip.
+  - get_track_info extended (+3 reads): is_foldable, is_grouped, fold_state.
+- Spec: `docs/superpowers/specs/2026-05-27-phase-10-feel-launch-view-design.md`;
+  Plan: `docs/superpowers/plans/2026-05-27-phase-10-feel-launch-view.md`.
+
+### Phase 10 ENUM-CONFIRMATION TODO (resolve at live verify; int path always works)
+- Live.Song.Quantization ordering (clip_trigger_quantization) vs CLIP_TRIGGER_QUANTIZATION_MAP.
+- Live.Clip.LaunchQuantization ordering; launch_mode int meanings (0–3).
+- fold_state int vs bool (handler writes 1/0).

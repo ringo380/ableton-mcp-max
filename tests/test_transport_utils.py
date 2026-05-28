@@ -6,6 +6,10 @@ from ableton_mcp_max.transport_utils import (
     coerce_jump_beats,
     coerce_loop_fields,
     coerce_punch_fields,
+    coerce_unit_float,
+    resolve_clip_trigger_quantization,
+    resolve_midi_recording_quantization,
+    normalize_nudge_direction,
 )
 
 
@@ -112,3 +116,61 @@ def test_punch_fields_partial():
 def test_punch_fields_both_none_raises():
     with pytest.raises(ValueError):
         coerce_punch_fields(None, None)
+
+
+# Phase 10 — global feel / quantization -----------------------------------
+
+def test_unit_float_clamps():
+    assert coerce_unit_float(0.5) == 0.5
+    assert coerce_unit_float(-1) == 0.0
+    assert coerce_unit_float(2) == 1.0
+    assert coerce_unit_float("0.25") == 0.25
+
+
+def test_unit_float_non_numeric_raises():
+    with pytest.raises(ValueError):
+        coerce_unit_float("nope")
+
+
+def test_clip_trigger_quant_int_passthrough():
+    assert resolve_clip_trigger_quantization(7) == 7
+    assert resolve_clip_trigger_quantization("4") == 4
+
+
+def test_clip_trigger_quant_by_name():
+    assert resolve_clip_trigger_quantization("none") == 0
+    assert resolve_clip_trigger_quantization("1_bar") == 4
+    assert resolve_clip_trigger_quantization("1/16") == 11
+
+
+def test_clip_trigger_quant_bad_name_raises_with_list():
+    with pytest.raises(ValueError) as exc:
+        resolve_clip_trigger_quantization("nope")
+    assert "1_bar" in str(exc.value)
+
+
+def test_clip_trigger_quant_bool_rejected():
+    with pytest.raises(ValueError):
+        resolve_clip_trigger_quantization(True)
+
+
+def test_midi_rec_quant_int_and_name():
+    assert resolve_midi_recording_quantization(2) == 2
+    assert resolve_midi_recording_quantization("none") == 0
+    assert resolve_midi_recording_quantization("1/4") == 1
+    assert resolve_midi_recording_quantization("1/8") == 2
+
+
+def test_midi_rec_quant_bad_name_raises():
+    with pytest.raises(ValueError):
+        resolve_midi_recording_quantization("8_bars")
+
+
+def test_nudge_direction():
+    assert normalize_nudge_direction("Up") == "up"
+    assert normalize_nudge_direction("DOWN") == "down"
+
+
+def test_nudge_direction_bad_raises():
+    with pytest.raises(ValueError):
+        normalize_nudge_direction("sideways")

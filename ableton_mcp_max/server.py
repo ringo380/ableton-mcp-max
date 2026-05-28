@@ -39,6 +39,14 @@ from ableton_mcp_max.transport_utils import (
     coerce_jump_beats,
     coerce_loop_fields,
     coerce_punch_fields,
+    coerce_unit_float,
+    resolve_clip_trigger_quantization,
+    resolve_midi_recording_quantization,
+    normalize_nudge_direction,
+)
+from ableton_mcp_max.view_utils import (
+    normalize_track_type,
+    coerce_index as coerce_view_index,
 )
 from ableton_mcp_max.automation_utils import (
     normalize_clip_location,
@@ -169,7 +177,11 @@ class AbletonConnection:
             "set_scene_name", "set_scene_property", "continue_playback",
             "set_metronome", "set_arrangement_record", "set_session_record",
             "set_punch", "set_song_position", "jump_by", "set_arrangement_loop",
-            "jump_to_cue", "back_to_arrangement", "re_enable_automation"
+            "jump_to_cue", "back_to_arrangement", "re_enable_automation",
+            "set_groove_amount", "set_swing_amount",
+            "set_clip_trigger_quantization", "set_midi_recording_quantization",
+            "set_nudge", "set_selected_track", "set_selected_scene",
+            "set_detail_clip", "set_highlighted_clip_slot", "set_track_fold",
         ]
         
         try:
@@ -347,6 +359,128 @@ def get_track_info(ctx: Context, track_index: int) -> str:
     except Exception as e:
         logger.error(f"Error getting track info from Ableton: {str(e)}")
         return f"Error getting track info: {str(e)}"
+
+@mcp.tool()
+def get_view_selection(ctx: Context) -> str:
+    """Read the current Live view selection: selected track (index/name/type),
+    selected scene (index), whether a detail clip is shown, and the highlighted
+    Session clip slot (track + scene coordinates)."""
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_view_selection")
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting view selection: {str(e)}")
+        return f"Error getting view selection: {str(e)}"
+
+@mcp.tool()
+def set_selected_track(
+    ctx: Context, track_index: int, track_type: str = "regular"
+) -> str:
+    """
+    Select a track in the Session/Arrangement view.
+
+    Parameters:
+    - track_index: index within its collection (0-based)
+    - track_type: "regular" (default), "return", or "master" (master ignores index)
+    """
+    try:
+        ttype = normalize_track_type(track_type)
+        idx = coerce_view_index(track_index) if ttype != "master" else 0
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "set_selected_track", {"track_index": idx, "track_type": ttype}
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting selected track: {str(e)}")
+        return f"Error setting selected track: {str(e)}"
+
+@mcp.tool()
+def set_selected_scene(ctx: Context, scene_index: int) -> str:
+    """
+    Select a scene in the Session view.
+
+    Parameters:
+    - scene_index: index of the scene (0-based)
+    """
+    try:
+        idx = coerce_view_index(scene_index)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_selected_scene", {"scene_index": idx})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting selected scene: {str(e)}")
+        return f"Error setting selected scene: {str(e)}"
+
+@mcp.tool()
+def set_detail_clip(ctx: Context, track_index: int, clip_slot_index: int) -> str:
+    """
+    Show a Session clip in Live's Detail (clip) view.
+
+    Parameters:
+    - track_index: index of the (regular) track
+    - clip_slot_index: index of the clip slot; the slot must contain a clip
+    """
+    try:
+        t = coerce_view_index(track_index)
+        s = coerce_view_index(clip_slot_index)
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "set_detail_clip", {"track_index": t, "clip_slot_index": s}
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting detail clip: {str(e)}")
+        return f"Error setting detail clip: {str(e)}"
+
+@mcp.tool()
+def set_highlighted_clip_slot(
+    ctx: Context, track_index: int, scene_index: int
+) -> str:
+    """
+    Highlight a Session clip slot (defined by a regular track + scene).
+
+    Parameters:
+    - track_index: index of the (regular) track
+    - scene_index: index of the scene (the clip slot row)
+    """
+    try:
+        t = coerce_view_index(track_index)
+        s = coerce_view_index(scene_index)
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "set_highlighted_clip_slot", {"track_index": t, "scene_index": s}
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting highlighted clip slot: {str(e)}")
+        return f"Error setting highlighted clip slot: {str(e)}"
+
+@mcp.tool()
+def set_track_fold(
+    ctx: Context, track_index: int, folded: Union[bool, int, str]
+) -> str:
+    """
+    Fold or unfold a group track (collapse/expand its contained tracks).
+
+    Parameters:
+    - track_index: index of the (regular) track; must be a group track (foldable)
+    - folded: true to fold (collapse), false to unfold (true/false, on/off, 1/0)
+
+    Rejected cleanly if the track is not a group track.
+    """
+    try:
+        idx = coerce_view_index(track_index)
+        value = coerce_on_value(folded)
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "set_track_fold", {"track_index": idx, "folded": value}
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting track fold: {str(e)}")
+        return f"Error setting track fold: {str(e)}"
 
 @mcp.tool()
 def get_device_parameters(ctx: Context, track_index: int, device_index: int) -> str:
@@ -1184,9 +1318,13 @@ def set_clip_property(
     - track_index / clip_index: locate the clip
     - property: one of looping, loop_start, loop_end, start_marker, end_marker,
       signature_numerator, signature_denominator, warping, warp_mode, gain,
-      pitch_coarse, pitch_fine (aliases accepted: loop, pitch, detune, warp, ...)
+      pitch_coarse, pitch_fine, and the launch settings launch_mode,
+      launch_quantization, legato, velocity_amount (valid on MIDI and audio).
+      Aliases accepted: loop, pitch, detune, warp, launchmode, launchquant, velamount, ...
     - value: bools take 0/1/true/false; gain is 0.0-1.0 (clamped); pitch_coarse
-      is -48..48 semitones, pitch_fine -50..50 cents (clamped); others are
+      is -48..48 semitones, pitch_fine -50..50 cents (clamped); launch_mode (int
+      0=Trigger,1=Gate,2=Toggle,3=Repeat) and launch_quantization (int) are enum
+      indices; legato is a bool; velocity_amount is a float; others are
       floats/ints. To edit the loop window safely use set_clip_loop instead.
     """
     try:
@@ -1569,7 +1707,9 @@ def set_scene_property(
 def get_transport(ctx: Context) -> str:
     """Get transport / arrangement state: is_playing, current_song_time, tempo,
     time signature, metronome, arrangement loop (on/start/length), record_mode,
-    session_record, punch_in/out."""
+    session_record, punch_in/out, and (Phase 10) groove_amount, swing_amount,
+    clip_trigger_quantization, midi_recording_quantization, count_in_duration
+    (read-only), nudge_up, nudge_down."""
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("get_transport")
@@ -1577,6 +1717,119 @@ def get_transport(ctx: Context) -> str:
     except Exception as e:
         logger.error(f"Error getting transport: {str(e)}")
         return f"Error getting transport: {str(e)}"
+
+@mcp.tool()
+def set_groove_amount(ctx: Context, amount: Union[float, int, str]) -> str:
+    """
+    Set the global groove amount (how strongly clip grooves are applied).
+
+    Parameters:
+    - amount: 0.0-1.0 (clamped). Live displays this as 0-100%.
+
+    Note: the returned dict can be stale (song-property-write lag); confirm via
+    get_transport.
+    """
+    try:
+        value = coerce_unit_float(amount, "groove_amount")
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_groove_amount", {"value": value})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting groove amount: {str(e)}")
+        return f"Error setting groove amount: {str(e)}"
+
+@mcp.tool()
+def set_swing_amount(ctx: Context, amount: Union[float, int, str]) -> str:
+    """
+    Set the global swing amount applied when adding/quantizing notes.
+
+    Parameters:
+    - amount: 0.0-1.0 (clamped).
+
+    Note: confirm via get_transport (song-property-write lag).
+    """
+    try:
+        value = coerce_unit_float(amount, "swing_amount")
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_swing_amount", {"value": value})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting swing amount: {str(e)}")
+        return f"Error setting swing amount: {str(e)}"
+
+@mcp.tool()
+def set_clip_trigger_quantization(
+    ctx: Context, value: Union[int, str]
+) -> str:
+    """
+    Set the global Session clip-launch quantization.
+
+    Parameters:
+    - value: an int 0-13 (Live.Song.Quantization) or a name: none, 8_bars,
+      4_bars, 2_bars, 1_bar, 1/2, 1/2t, 1/4, 1/4t, 1/8, 1/8t, 1/16, 1/16t, 1/32.
+
+    Note: confirm via get_transport (song-property-write lag).
+    """
+    try:
+        resolved = resolve_clip_trigger_quantization(value)
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "set_clip_trigger_quantization", {"value": resolved}
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting clip trigger quantization: {str(e)}")
+        return f"Error setting clip trigger quantization: {str(e)}"
+
+@mcp.tool()
+def set_midi_recording_quantization(
+    ctx: Context, value: Union[int, str]
+) -> str:
+    """
+    Set the global MIDI-recording quantization.
+
+    Parameters:
+    - value: an int (Live.Song.RecordingQuantization) or a name: none, 1/4, 1/8,
+      1/8t, 1/8+1/8t, 1/16, 1/16t, 1/16+1/16t, 1/32.
+
+    Note: confirm via get_transport (song-property-write lag).
+    """
+    try:
+        resolved = resolve_midi_recording_quantization(value)
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "set_midi_recording_quantization", {"value": resolved}
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting MIDI recording quantization: {str(e)}")
+        return f"Error setting MIDI recording quantization: {str(e)}"
+
+@mcp.tool()
+def set_nudge(
+    ctx: Context, direction: str, active: Union[bool, int, str]
+) -> str:
+    """
+    Hold or release a tempo-nudge button (temporarily speeds up / slows down to
+    re-align with an external source).
+
+    Parameters:
+    - direction: "up" or "down"
+    - active: true to press/hold, false to release (true/false, on/off, 1/0)
+
+    Note: confirm via get_transport (song-property-write lag).
+    """
+    try:
+        canon = normalize_nudge_direction(direction)
+        value = coerce_on_value(active)
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "set_nudge", {"direction": canon, "active": value}
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error setting nudge: {str(e)}")
+        return f"Error setting nudge: {str(e)}"
 
 @mcp.tool()
 def continue_playback(ctx: Context) -> str:
