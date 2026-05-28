@@ -1,13 +1,12 @@
 # ableton-mcp-max — Progress
 
 **Current focus:** Phase 10 (Global Feel/Quant, Clip Launch Settings, View/Selection & Folding) —
-CODE COMPLETE on branch `feat/phase10-feel-launch-view`, awaiting live verification. Offline suite
-202/202; both halves compile; server imports. 10 new tools + extended reads (get_transport +7,
-get_track_info +3, get_clip_info +4). Warp-marker editing + follow-actions dropped (no Live 11 LOM).
-Capture/recording deferred by user.
-**Next action (resume here):** install remote script + bounce Live + restart Claude Code → live-verify
-all 3 groups + resolve enum-confirmation TODO → record findings here → PR →
-`gh pr merge --squash --delete-branch` → `git remote prune origin`. (gh login must be ringo380.)
+LIVE-VERIFIED 2026-05-27 on branch `feat/phase10-feel-launch-view`. Offline suite 202/202; both
+halves compile; server imports. 10 new tools + extended reads (get_transport +7, get_track_info +3,
+get_clip_info +4) all exercised live (3 groups + negatives). Warp-marker editing + follow-actions
+dropped (no Live 11 LOM); capture/recording deferred by user. Branch READY FOR PR.
+**Next action (resume here):** push → open PR → `gh pr merge --squash --delete-branch` →
+`git remote prune origin`. (gh login must be ringo380.)
 
 ## Phases
 | Phase | Title | Status | Completed |
@@ -25,7 +24,7 @@ all 3 groups + resolve enum-confirmation TODO → record findings here → PR �
 | 7 | Change Listeners (polling buffer) | Live-verified | 2026-05-25 |
 | 8 | Arrangement Authoring (cue CRUD + arrangement clips) | Live-verified | 2026-05-26 |
 | 9 | Track Lifecycle (create/delete/duplicate) & Undo/Redo | Live-verified | 2026-05-27 |
-| 10 | Global Feel/Quant, Clip Launch Settings, View/Selection & Folding | Code complete | 2026-05-27 |
+| 10 | Global Feel/Quant, Clip Launch Settings, View/Selection & Folding | Live-verified | 2026-05-27 |
 
 ## Phase 0 tools (parity, vendored) — live-verified (get_session_info + get_track_info confirmed; rest vendored unchanged from ahujasid)
 - [x] get_session_info, get_track_info, create_midi_track, set_track_name,
@@ -419,38 +418,52 @@ track type (1:1 with LOM), per design.
 - **duplicate_track selects the new track**, so `song.view.selected_track` is a reliable in-task source
   for new_index/name (LOM duplicate_track itself returns None).
 
-## Phase 10 tools (Global Feel/Quant, Clip Launch, View/Selection & Folding) — CODE COMPLETE, awaiting live verify
+## Phase 10 tools (Global Feel/Quant, Clip Launch, View/Selection & Folding) — ALL live-verified 2026-05-27
 Gap-audit phase. Two candidates dropped as infeasible in Live 11: **warp-marker editing**
 (`Clip.warp_markers` read-only; no add/remove/move_warp_marker methods) and **follow actions**
 (`follow_action*` absent from 11.0.0 LOM). Capture/recording (capture_midi/capture_and_insert_scene/
 trigger_session_record/stop_all_clips/tap_tempo) is feasible but DEFERRED by user. Offline suite +19 → 202.
 - **Group A — global feel/quant (`transport_utils.py`, 5 tools):**
-  - [ ] set_groove_amount(amount) — Song.groove_amount, 0–1 clamp.
-  - [ ] set_swing_amount(amount) — Song.swing_amount, 0–1 clamp.
-  - [ ] set_clip_trigger_quantization(value) — Live.Song.Quantization int OR name
-        (CLIP_TRIGGER_QUANTIZATION_MAP: none/8_bars/.../1/32; PROVISIONAL — confirm enum live).
-  - [ ] set_midi_recording_quantization(value) — Live.Song.RecordingQuantization int OR name
-        (reuses live-confirmed clip_utils.QUANTIZE_GRID_MAP).
-  - [ ] set_nudge(direction, active) — Song.nudge_up/nudge_down bools.
-  - get_transport extended (+7 reads): groove_amount, swing_amount, clip_trigger_quantization,
-    midi_recording_quantization, count_in_duration (READ-ONLY), nudge_up, nudge_down.
+  - [x] set_groove_amount(amount) — live: 1.0→0.5→1.0 confirmed via get_transport. 0–1 clamp.
+  - [x] set_swing_amount(amount) — live: 0.0→0.5→0.0 confirmed. 0–1 clamp.
+  - [x] set_clip_trigger_quantization(value) — live: name "1/4"→7 confirmed; default read=4 (1_bar).
+        Confirms CLIP_TRIGGER_QUANTIZATION_MAP matches standard Live.Song.Quantization ordering.
+        Bad name → clean server-side error listing all options + "(or an int 0-13)".
+  - [x] set_midi_recording_quantization(value) — live: name "1/8"→2 confirmed (matches QUANTIZE_GRID_MAP).
+  - [x] set_nudge(direction, active) — live: up true→false confirmed via get_transport nudge_up flag.
+  - [x] get_transport extended (+7 reads): groove_amount, swing_amount, clip_trigger_quantization,
+        midi_recording_quantization, count_in_duration (READ-ONLY, read 0), nudge_up, nudge_down — all present.
 - **Group B — clip launch settings (extends set_clip_property/get_clip_info, NO new tool):**
-  - [ ] launch_mode (int 0=Trigger/1=Gate/2=Toggle/3=Repeat — confirm live),
-        launch_quantization (int enum — confirm live), legato (bool), velocity_amount (float).
-        Valid on BOTH midi & audio (general Clip props; handler audio-only gate unchanged).
+  - [x] launch_mode/launch_quantization/legato/velocity_amount — live on a scratch MIDI clip (track 6):
+        launch_mode=3, launch_quantization=2, legato=true, velamount alias→velocity_amount=0.5; all
+        read back via get_clip_info. NOT rejected as audio-only (confirms valid on MIDI). Also read on
+        an audio clip (track 0). Scratch clip deleted after.
 - **Group C — view/selection & folding (`view_utils.py`, 6 tools):**
-  - [ ] set_selected_track(track_index, track_type=regular) — Song.View.selected_track.
-  - [ ] set_selected_scene(scene_index) — Song.View.selected_scene.
-  - [ ] set_detail_clip(track_index, clip_slot_index) — Song.View.detail_clip (slot must hold clip).
-  - [ ] set_highlighted_clip_slot(track_index, scene_index) — Song.View.highlighted_clip_slot.
-  - [ ] set_track_fold(track_index, folded) — Track.fold_state (1/0; guarded by is_foldable).
-  - [ ] get_view_selection() — selected track index/name, selected scene index, detail_clip name,
-        highlighted-slot has_clip.
-  - get_track_info extended (+3 reads): is_foldable, is_grouped, fold_state.
+  - [x] set_selected_track — live: regular track 0, AND return 0 ("A-Reverb") confirmed; restored to track 6.
+  - [x] set_selected_scene — live: scene 1 set (later re-coupled to 0 by highlighted-slot, see findings).
+  - [x] set_detail_clip — live: track 0/slot 0 → detail_clip "FHP_DARK SYNTH3_C"; empty slot (track 6) →
+        clean "No clip in slot 0 on track 6".
+  - [x] set_highlighted_clip_slot — live: track 0/scene 0 → has_clip true.
+  - [x] set_track_fold — NEGATIVE only (no group track in set): track 0 → clean "not a group track
+        (not foldable)". fold_state positive (1/0 write) UNTESTED — re-verify on a set with a group track.
+  - [x] get_view_selection() — live: selected track index/name, scene index, detail_clip name,
+        highlighted-slot has_clip all returned.
+  - [x] get_track_info extended (+3 reads): is_foldable/is_grouped present on all tracks read;
+        fold_state omitted on non-foldable tracks (getattr raised → defensive skip).
 - Spec: `docs/superpowers/specs/2026-05-27-phase-10-feel-launch-view-design.md`;
   Plan: `docs/superpowers/plans/2026-05-27-phase-10-feel-launch-view.md`.
 
-### Phase 10 ENUM-CONFIRMATION TODO (resolve at live verify; int path always works)
-- Live.Song.Quantization ordering (clip_trigger_quantization) vs CLIP_TRIGGER_QUANTIZATION_MAP.
-- Live.Clip.LaunchQuantization ordering; launch_mode int meanings (0–3).
-- fold_state int vs bool (handler writes 1/0).
+### Phase 10 live findings (2026-05-27)
+- **Quantization enums CONFIRMED:** clip_trigger_quantization default reads 4 = `1_bar`; name "1/4"→7.
+  This matches the standard Live.Song.Quantization ordering encoded in CLIP_TRIGGER_QUANTIZATION_MAP
+  (none=0, 8/4/2_bars=1/2/3, 1_bar=4, 1/2=5, ... 1/4=7, ... 1/32=13). midi_recording_quantization "1/8"→2
+  matches the already-confirmed clip_utils.QUANTIZE_GRID_MAP. **launch_mode/launch_quantization ints
+  round-trip** (set 3/2, read 3/2); exact UI labels not visually confirmed but the int path is reliable.
+- **detail_clip read couples to the highlighted slot:** in a batch, calling set_highlighted_clip_slot
+  AFTER set_detail_clip transiently cleared detail_clip (read null); setting detail_clip alone reads back
+  correctly. Highlighting a slot also re-selects its track+scene (so a prior set_selected_scene gets
+  overridden). Set these LAST / individually if you need the read to stick. Setters themselves are reliable.
+- **fold_state int-vs-bool still OPEN:** the test set has no group track, so only the clean non-foldable
+  rejection was exercised; the handler writes 1/0. Re-verify the positive on a set containing a group track.
+- **Song-property-write lag (Phase 5) did NOT bite Group A here** — get_transport read back the new
+  groove/swing/quant/nudge values correctly on the first follow-up read. Still prefer the separate read.
