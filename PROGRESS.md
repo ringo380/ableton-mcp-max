@@ -1,12 +1,22 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Phase 10 (Global Feel/Quant, Clip Launch Settings, View/Selection & Folding) —
-LIVE-VERIFIED 2026-05-27 on branch `feat/phase10-feel-launch-view`. Offline suite 202/202; both
-halves compile; server imports. 10 new tools + extended reads (get_transport +7, get_track_info +3,
-get_clip_info +4) all exercised live (3 groups + negatives). Warp-marker editing + follow-actions
-dropped (no Live 11 LOM); capture/recording deferred by user. Branch READY FOR PR.
-**Next action (resume here):** push → open PR → `gh pr merge --squash --delete-branch` →
-`git remote prune origin`. (gh login must be ringo380.)
+**Current focus:** Phase 10 MERGED 2026-05-27 as #11 (`b0ae416` on `main`). Offline suite 202/202;
+both halves compile; server imports. 10 new tools + extended reads (get_transport +7,
+get_track_info +3, get_clip_info +4) live-verified. Warp-marker editing + follow-actions dropped
+(no Live 11 LOM); capture/recording deferred by user.
+**Phase 10 FULLY CLOSED 2026-05-27:** `set_track_fold` positive `fold_state` write live-verified on
+a manually-created group track ("3-Group", idx 2) — bool true/false, int 1/0 all round-trip and the
+fold was visually confirmed (group collapsed in Live); non-foldable grouped child (idx 3) rejected
+cleanly. (Live LOM has no group-creation API — group track must be made by hand via ⌘G.)
+**Bug found + FIXED 2026-05-27 (NOT Phase 10 scope):** `get_track_info` used to CRASH on any group
+track with `"Master and Return Tracks have no 'Arm' state!"` — the vendored Phase 0 handler read
+`track.arm` unconditionally; group tracks (like return/master) have no arm state. Fixed by reading
+`arm` defensively (try/except, key omitted when unavailable) in `_get_track_info`
+(remote_script `__init__.py`). Live-verified post-bounce: group track (idx 2) returns cleanly with
+no `arm` key + fold fields; regular track still includes `arm`. Remote-Script-only change (reinstalled
++ Live bounced; no Claude restart needed). UNCOMMITTED.
+**Next action (resume here):** commit the get_track_info fix (+ PROGRESS/memory); then decide
+Phase 11 (capture/recording is the deferred candidate). (gh login must be ringo380.)
 
 ## Phases
 | Phase | Title | Status | Completed |
@@ -444,8 +454,9 @@ trigger_session_record/stop_all_clips/tap_tempo) is feasible but DEFERRED by use
   - [x] set_detail_clip — live: track 0/slot 0 → detail_clip "FHP_DARK SYNTH3_C"; empty slot (track 6) →
         clean "No clip in slot 0 on track 6".
   - [x] set_highlighted_clip_slot — live: track 0/scene 0 → has_clip true.
-  - [x] set_track_fold — NEGATIVE only (no group track in set): track 0 → clean "not a group track
-        (not foldable)". fold_state positive (1/0 write) UNTESTED — re-verify on a set with a group track.
+  - [x] set_track_fold — FULLY verified (2026-05-27): negative (non-group → clean "not a group track")
+        AND positive on hand-made group track "3-Group" (idx 2): bool true/false + int 1/0 round-trip,
+        fold visually confirmed collapsed in Live. (Group tracks need ⌘G by hand — no LOM create API.)
   - [x] get_view_selection() — live: selected track index/name, scene index, detail_clip name,
         highlighted-slot has_clip all returned.
   - [x] get_track_info extended (+3 reads): is_foldable/is_grouped present on all tracks read;
@@ -463,7 +474,11 @@ trigger_session_record/stop_all_clips/tap_tempo) is feasible but DEFERRED by use
   AFTER set_detail_clip transiently cleared detail_clip (read null); setting detail_clip alone reads back
   correctly. Highlighting a slot also re-selects its track+scene (so a prior set_selected_scene gets
   overridden). Set these LAST / individually if you need the read to stick. Setters themselves are reliable.
-- **fold_state int-vs-bool still OPEN:** the test set has no group track, so only the clean non-foldable
-  rejection was exercised; the handler writes 1/0. Re-verify the positive on a set containing a group track.
+- **fold_state CLOSED (2026-05-27):** verified on a hand-made group track ("3-Group", idx 2) — bool
+  true/false AND int 1/0 both round-trip; fold visually confirmed in Live; non-foldable grouped child
+  (idx 3) rejected cleanly. Group tracks can't be created via LOM (no API) — make via ⌘G by hand.
+  CAVEAT: `get_track_info` crashes on group tracks (reads `.arm`, which group tracks lack) — separate
+  pre-existing bug, see header. fold_state verification used the setter's own echo + visual check, not
+  get_track_info.
 - **Song-property-write lag (Phase 5) did NOT bite Group A here** — get_transport read back the new
   groove/swing/quant/nudge values correctly on the first follow-up read. Still prefer the separate read.
