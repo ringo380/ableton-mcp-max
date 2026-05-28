@@ -5,7 +5,7 @@ import json
 import logging
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Dict, Any, List, Union
+from typing import AsyncIterator, Dict, Any, List, Optional, Union
 
 from ableton_mcp_max.param_utils import resolve_parameter_index
 from ableton_mcp_max.track_utils import coerce_create_index, coerce_track_index
@@ -43,6 +43,9 @@ from ableton_mcp_max.transport_utils import (
     resolve_clip_trigger_quantization,
     resolve_midi_recording_quantization,
     normalize_nudge_direction,
+    resolve_capture_destination,
+    resolve_capture_mode,
+    coerce_record_length,
 )
 from ableton_mcp_max.view_utils import (
     normalize_track_type,
@@ -1709,7 +1712,8 @@ def get_transport(ctx: Context) -> str:
     time signature, metronome, arrangement loop (on/start/length), record_mode,
     session_record, punch_in/out, and (Phase 10) groove_amount, swing_amount,
     clip_trigger_quantization, midi_recording_quantization, count_in_duration
-    (read-only), nudge_up, nudge_down."""
+    (read-only), nudge_up, nudge_down, and (Phase 11) can_capture_midi,
+    is_counting_in, session_record_status (all read-only)."""
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("get_transport")
@@ -1830,6 +1834,122 @@ def set_nudge(
     except Exception as e:
         logger.error(f"Error setting nudge: {str(e)}")
         return f"Error setting nudge: {str(e)}"
+
+# === Capture & Recording (Phase 11) =======================================
+
+@mcp.tool()
+def capture_midi(ctx: Context, destination: str = "auto") -> str:
+    """
+    Capture recently played MIDI material from audible tracks into a clip
+    (Live's "Capture MIDI"). Needs material to capture — check can_capture_midi
+    (via get_transport) first.
+
+    Parameters:
+    - destination: "auto" (Session or Arrangement depending on the visible view),
+      "session", or "arrangement".
+
+    Note: confirm the captured clip via get_session_info / get_clip_info — the
+    returned dict can be stale (song-property-write lag). Raises a limitation
+    error if capturing into Session would need a new scene that can't be created.
+    """
+    try:
+        name = resolve_capture_destination(destination)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("capture_midi", {"destination": name})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error capturing MIDI: {str(e)}")
+        return f"Error capturing MIDI: {str(e)}"
+
+@mcp.tool()
+def capture_and_insert_scene(ctx: Context, mode: str = "all") -> str:
+    """
+    Capture the currently playing clips and insert them as a new scene after the
+    selected scene. Needs clips currently playing.
+
+    Parameters:
+    - mode: "all" (the only Live.Song.CaptureMode value).
+
+    Note: confirm the new scene via get_scenes (song-property-write lag). Raises a
+    runtime error if creating the scene would exceed Live's limitations.
+    """
+    try:
+        name = resolve_capture_mode(mode)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("capture_and_insert_scene", {"mode": name})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error capturing scene: {str(e)}")
+        return f"Error capturing scene: {str(e)}"
+
+@mcp.tool()
+def trigger_session_record(
+    ctx: Context, record_length: Union[float, int, str, None] = None
+) -> str:
+    """
+    Trigger a new Session recording (records into armed tracks' clip slots).
+    Arming/recording auto-starts playback — stop promptly in tests.
+
+    Parameters:
+    - record_length: optional fixed length in beats (> 0). Omit for an
+      open-ended recording (Live's default).
+
+    Note: confirm via get_transport (session_record / song-property-write lag).
+    """
+    try:
+        length = coerce_record_length(record_length)
+        params = {}
+        if length is not None:
+            params["record_length"] = length
+        ableton = get_ableton_connection()
+        result = ableton.send_command("trigger_session_record", params)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error triggering session record: {str(e)}")
+        return f"Error triggering session record: {str(e)}"
+
+@mcp.tool()
+def stop_all_clips(
+    ctx: Context,
+    track_index: Optional[int] = None,
+    quantized: Union[bool, int, str] = True,
+) -> str:
+    """
+    Stop playing clips. With no track_index, stops all clips in the set while the
+    song keeps playing; with track_index, stops only that track's running and
+    triggered clips.
+
+    Parameters:
+    - track_index: optional 0-based regular-track index. Omit to stop all tracks.
+    - quantized: honor global launch quantization (true) or stop immediately
+      (false). Default true.
+    """
+    try:
+        params = {"quantized": coerce_on_value(quantized)}
+        if track_index is not None:
+            params["track_index"] = coerce_track_index(track_index)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("stop_all_clips", params)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error stopping all clips: {str(e)}")
+        return f"Error stopping all clips: {str(e)}"
+
+@mcp.tool()
+def tap_tempo(ctx: Context) -> str:
+    """
+    Trigger Live's tap-tempo (one tap). Call repeatedly in time to set a tempo;
+    a single tap nudges the tempo toward the tap interval.
+
+    Note: confirm the resulting tempo via get_transport.
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("tap_tempo")
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error tapping tempo: {str(e)}")
+        return f"Error tapping tempo: {str(e)}"
 
 @mcp.tool()
 def continue_playback(ctx: Context) -> str:

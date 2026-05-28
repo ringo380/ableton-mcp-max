@@ -281,7 +281,10 @@ class AbletonMCP(ControlSurface):
                                  "set_midi_recording_quantization", "set_nudge",
                                  "set_selected_track", "set_selected_scene",
                                  "set_detail_clip", "set_highlighted_clip_slot",
-                                 "set_track_fold"]:
+                                 "set_track_fold",
+                                 "capture_midi", "capture_and_insert_scene",
+                                 "trigger_session_record", "stop_all_clips",
+                                 "tap_tempo"]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
                 
@@ -609,6 +612,21 @@ class AbletonMCP(ControlSurface):
                             result = self._set_track_fold(
                                 params.get("track_index", 0),
                                 params.get("folded", False))
+                        elif command_type == "capture_midi":
+                            result = self._capture_midi(
+                                params.get("destination", "auto"))
+                        elif command_type == "capture_and_insert_scene":
+                            result = self._capture_and_insert_scene(
+                                params.get("mode", "all"))
+                        elif command_type == "trigger_session_record":
+                            result = self._trigger_session_record(
+                                params.get("record_length", None))
+                        elif command_type == "stop_all_clips":
+                            result = self._stop_all_clips(
+                                params.get("track_index", None),
+                                params.get("quantized", True))
+                        elif command_type == "tap_tempo":
+                            result = self._tap_tempo()
 
                         # Put the result in the queue
                         response_queue.put({"status": "success", "result": result})
@@ -2389,9 +2407,12 @@ class AbletonMCP(ControlSurface):
             except Exception:
                 pass
             # Phase 10: global feel / quantization.
+            # Phase 11: capture / recording state (all read-only).
             for key in ("groove_amount", "swing_amount",
                         "clip_trigger_quantization", "midi_recording_quantization",
-                        "count_in_duration", "nudge_up", "nudge_down"):
+                        "count_in_duration", "nudge_up", "nudge_down",
+                        "can_capture_midi", "is_counting_in",
+                        "session_record_status"):
                 try:
                     info[key] = getattr(song, key)
                 except Exception:
@@ -2460,6 +2481,69 @@ class AbletonMCP(ControlSurface):
             return {"direction": direction, "active": value}
         except Exception as e:
             self.log_message("Error setting nudge: " + str(e))
+            raise
+
+    def _capture_midi(self, destination):
+        """Capture recently played MIDI material. destination is a name
+        ('auto'|'session'|'arrangement') resolved here to the Live enum int.
+        Read-back may lag — confirm via a follow-up read."""
+        try:
+            dest_enum = getattr(Live.Song.CaptureDestination, destination)
+            self._song.capture_midi(dest_enum)
+            return {"captured": True, "destination": destination}
+        except Exception as e:
+            self.log_message("Error capturing MIDI: " + str(e))
+            raise
+
+    def _capture_and_insert_scene(self, mode):
+        """Capture currently playing clips into a new scene. mode is a name
+        ('all') resolved here to the Live enum int."""
+        try:
+            mode_enum = getattr(Live.Song.CaptureMode, mode)
+            self._song.capture_and_insert_scene(mode_enum)
+            return {"captured": True, "mode": mode}
+        except Exception as e:
+            self.log_message("Error capturing scene: " + str(e))
+            raise
+
+    def _trigger_session_record(self, record_length):
+        """Trigger a new Session recording. record_length (beats) optional;
+        omit for Live's open-ended default."""
+        try:
+            if record_length is None:
+                self._song.trigger_session_record()
+            else:
+                self._song.trigger_session_record(float(record_length))
+            return {"triggered": True, "record_length": record_length}
+        except Exception as e:
+            self.log_message("Error triggering session record: " + str(e))
+            raise
+
+    def _stop_all_clips(self, track_index, quantized):
+        """Stop all playing clips (track_index None) or one track's clips."""
+        try:
+            quant = bool(quantized)
+            if track_index is None:
+                self._song.stop_all_clips(quant)
+                return {"stopped": True, "scope": "song", "quantized": quant}
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError(
+                    "Track index out of range (0..%d)"
+                    % (len(self._song.tracks) - 1,))
+            self._song.tracks[track_index].stop_all_clips(quant)
+            return {"stopped": True, "scope": "track",
+                    "track_index": track_index, "quantized": quant}
+        except Exception as e:
+            self.log_message("Error stopping all clips: " + str(e))
+            raise
+
+    def _tap_tempo(self):
+        """Trigger Live's tap-tempo (one tap)."""
+        try:
+            self._song.tap_tempo()
+            return {"tapped": True, "tempo": self._song.tempo}
+        except Exception as e:
+            self.log_message("Error tapping tempo: " + str(e))
             raise
 
     def _set_selected_track(self, track_index, track_type):
