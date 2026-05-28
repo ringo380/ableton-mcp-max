@@ -1,22 +1,11 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Phase 10 MERGED 2026-05-27 as #11 (`b0ae416` on `main`). Offline suite 202/202;
-both halves compile; server imports. 10 new tools + extended reads (get_transport +7,
-get_track_info +3, get_clip_info +4) live-verified. Warp-marker editing + follow-actions dropped
-(no Live 11 LOM); capture/recording deferred by user.
-**Phase 10 FULLY CLOSED 2026-05-27:** `set_track_fold` positive `fold_state` write live-verified on
-a manually-created group track ("3-Group", idx 2) — bool true/false, int 1/0 all round-trip and the
-fold was visually confirmed (group collapsed in Live); non-foldable grouped child (idx 3) rejected
-cleanly. (Live LOM has no group-creation API — group track must be made by hand via ⌘G.)
-**Bug found + FIXED 2026-05-27 (NOT Phase 10 scope):** `get_track_info` used to CRASH on any group
-track with `"Master and Return Tracks have no 'Arm' state!"` — the vendored Phase 0 handler read
-`track.arm` unconditionally; group tracks (like return/master) have no arm state. Fixed by reading
-`arm` defensively (try/except, key omitted when unavailable) in `_get_track_info`
-(remote_script `__init__.py`). Live-verified post-bounce: group track (idx 2) returns cleanly with
-no `arm` key + fold fields; regular track still includes `arm`. Remote-Script-only change (reinstalled
-+ Live bounced; no Claude restart needed). UNCOMMITTED.
-**Next action (resume here):** commit the get_track_info fix (+ PROGRESS/memory); then decide
-Phase 11 (capture/recording is the deferred candidate). (gh login must be ringo380.)
+**Current focus:** Phase 11 (Capture & Recording) ALL LIVE-VERIFIED 2026-05-27 on branch
+`phase-11-capture-recording` — awaiting commit + PR. Offline suite 210/210; both halves compile;
+server imports. 5 new tools (capture_midi, capture_and_insert_scene, trigger_session_record,
+stop_all_clips, tap_tempo) + get_transport +3 reads (can_capture_midi, is_counting_in,
+session_record_status). The get_track_info group-track arm fix shipped earlier as PR #12 (`0929f57`).
+**Next action (resume here):** commit Phase 11 + PR → squash-merge. (gh login must be ringo380.)
 
 ## Phases
 | Phase | Title | Status | Completed |
@@ -35,6 +24,7 @@ Phase 11 (capture/recording is the deferred candidate). (gh login must be ringo3
 | 8 | Arrangement Authoring (cue CRUD + arrangement clips) | Live-verified | 2026-05-26 |
 | 9 | Track Lifecycle (create/delete/duplicate) & Undo/Redo | Live-verified | 2026-05-27 |
 | 10 | Global Feel/Quant, Clip Launch Settings, View/Selection & Folding | Live-verified | 2026-05-27 |
+| 11 | Capture & Recording (capture_midi/scene, session record, stop-all, tap-tempo) | Live-verified | 2026-05-27 |
 
 ## Phase 0 tools (parity, vendored) — live-verified (get_session_info + get_track_info confirmed; rest vendored unchanged from ahujasid)
 - [x] get_session_info, get_track_info, create_midi_track, set_track_name,
@@ -482,3 +472,37 @@ trigger_session_record/stop_all_clips/tap_tempo) is feasible but DEFERRED by use
   get_track_info.
 - **Song-property-write lag (Phase 5) did NOT bite Group A here** — get_transport read back the new
   groove/swing/quant/nudge values correctly on the first follow-up read. Still prefer the separate read.
+
+## Phase 11 tools (Capture & Recording) — ALL live-verified 2026-05-27
+Closes the capture/recording set deferred during the Phase 10 gap-audit. All 5 LOM calls confirmed in
+11.0.0.xml (Song methods). Pure helper additions in `transport_utils.py` (offline suite +8 → 210).
+- **5 tools (all song-level mutations):**
+  - [x] capture_midi(destination="auto") — live: with NO material → safe no-op (captured:true, nothing
+        created); all 3 destinations (auto/session/arrangement) resolve via getattr + execute. POSITIVE
+        test: user played MIDI into an armed scratch track → can_capture_midi flipped true →
+        capture_midi("session") created an 8.0-beat MIDI clip in the armed track's slot. Scratch track deleted.
+  - [x] capture_and_insert_scene(mode="all") — live: fired track-0 audio clip (playing) → captured a new
+        NON-empty scene inserted at index 1 (after selected scene 0); scene_count 9→10. Captured scene deleted.
+  - [x] trigger_session_record(record_length=4) — live: on an armed scratch MIDI track → auto-started
+        playback AND created a clip of EXACTLY 4.0 beats (fixed-length recording finished, clip looping).
+        Scratch track deleted. record_length=0 rejected server-side ("must be > 0").
+  - [x] stop_all_clips(track_index=None, quantized=True) — live: song-level (fire clip → stop-all,
+        quantized=false → clip stopped, song keeps playing) AND track-scoped (track_index=0 → scope:track).
+        Negatives: track_index=99 → handler "Track index out of range (0..7)"; track_index=-5 → server-side
+        "Index must be >= 0" (no socket call).
+  - [x] tap_tempo() — live: executes cleanly (tapped:true, tempo echoed). A SINGLE tap does NOT change
+        tempo (Live needs successive taps to compute an interval) — call repeatedly in time to set tempo.
+- **get_transport +3 reads:** can_capture_midi, is_counting_in, session_record_status — all present (live:
+  can_capture_midi false at rest, flipped true after playing MIDI; session_record_status int 0).
+- **Enum handling:** CaptureDestination/CaptureMode int values are UNDOCUMENTED in the LOM, so the server
+  validates the NAME (transport_utils.resolve_capture_destination/resolve_capture_mode — return the name,
+  not an int) and the Remote Script resolves it via getattr(Live.Song.CaptureDestination, name). Deliberate
+  deviation from the usual "send ints" convention; keeps the enum source-of-truth in Live.
+- **transport_utils helpers:** resolve_capture_destination (None→auto), resolve_capture_mode (None→all),
+  coerce_record_length (None→omit; else float >0). stop_all_clips reuses coerce_on_value +
+  track_utils.coerce_track_index.
+- Spec: `docs/superpowers/specs/2026-05-27-phase-11-capture-recording-design.md`;
+  Plan: `docs/superpowers/plans/2026-05-27-phase-11-capture-recording.md`.
+- **Live-test reminders:** confirm effects via SEPARATE follow-up reads (song-property-write lag);
+  capture tools do nothing on an empty blank set (need playing material); clean up captured clips/scenes
+  + restore the set; stop session-record promptly (auto-starts playback).

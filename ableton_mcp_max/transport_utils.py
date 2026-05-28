@@ -238,3 +238,58 @@ def normalize_nudge_direction(value):
     raise ValueError(
         "Unknown nudge direction '%s'. Valid: up, down" % (value,)
     )
+
+
+# --- Phase 11: capture & recording ----------------------------------------
+
+# CaptureDestination / CaptureMode member NAMES (Live.Song.CaptureDestination /
+# Live.Song.CaptureMode). The enum INTEGER values are undocumented in the LOM, so
+# the server validates the name and the Remote Script resolves it to the Live enum
+# via getattr — keeping the int source-of-truth in Live itself.
+CAPTURE_DESTINATION_NAMES = ("auto", "session", "arrangement")
+CAPTURE_MODE_NAMES = ("all",)
+
+
+def resolve_capture_destination(value):
+    """Validate a capture destination name (case-insensitive) and return the
+    canonical lowercase name. None -> 'auto'. Raises ValueError otherwise."""
+    if value is None:
+        return "auto"
+    key = str(value).strip().lower()
+    if key in CAPTURE_DESTINATION_NAMES:
+        return key
+    raise ValueError(
+        "Unknown capture destination '%s'. Valid: %s"
+        % (value, ", ".join(CAPTURE_DESTINATION_NAMES))
+    )
+
+
+def resolve_capture_mode(value):
+    """Validate a capture mode name (case-insensitive) and return the canonical
+    lowercase name. None -> 'all'. Raises ValueError otherwise."""
+    if value is None:
+        return "all"
+    key = str(value).strip().lower()
+    if key in CAPTURE_MODE_NAMES:
+        return key
+    raise ValueError(
+        "Unknown capture mode '%s'. Valid: %s"
+        % (value, ", ".join(CAPTURE_MODE_NAMES))
+    )
+
+
+def coerce_record_length(value):
+    """Coerce a session-record length (in beats) to a positive float, or None to
+    omit (Live then uses its open-ended default). Raises ValueError if non-numeric
+    or <= 0."""
+    if value is None:
+        return None
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(
+            "Record length must be a number (beats) or omitted; got '%s'" % (value,)
+        )
+    if out <= 0:
+        raise ValueError("Record length must be > 0; got %s" % (out,))
+    return out

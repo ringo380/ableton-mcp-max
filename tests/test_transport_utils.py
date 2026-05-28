@@ -10,6 +10,9 @@ from ableton_mcp_max.transport_utils import (
     resolve_clip_trigger_quantization,
     resolve_midi_recording_quantization,
     normalize_nudge_direction,
+    resolve_capture_destination,
+    resolve_capture_mode,
+    coerce_record_length,
 )
 
 
@@ -174,3 +177,49 @@ def test_nudge_direction():
 def test_nudge_direction_bad_raises():
     with pytest.raises(ValueError):
         normalize_nudge_direction("sideways")
+
+
+# Phase 11 — capture & recording ------------------------------------------
+
+def test_capture_destination_default_and_names():
+    assert resolve_capture_destination(None) == "auto"
+    assert resolve_capture_destination("auto") == "auto"
+    assert resolve_capture_destination("Session") == "session"
+    assert resolve_capture_destination("ARRANGEMENT") == "arrangement"
+
+
+def test_capture_destination_bad_raises_with_list():
+    with pytest.raises(ValueError) as exc:
+        resolve_capture_destination("nope")
+    assert "auto" in str(exc.value) and "arrangement" in str(exc.value)
+
+
+def test_capture_mode_default_and_name():
+    assert resolve_capture_mode(None) == "all"
+    assert resolve_capture_mode("All") == "all"
+
+
+def test_capture_mode_bad_raises():
+    with pytest.raises(ValueError):
+        resolve_capture_mode("some")
+
+
+def test_record_length_none_passthrough():
+    assert coerce_record_length(None) is None
+
+
+def test_record_length_positive_float():
+    assert coerce_record_length(4) == 4.0
+    assert coerce_record_length("8.5") == 8.5
+
+
+def test_record_length_non_positive_raises():
+    with pytest.raises(ValueError):
+        coerce_record_length(0)
+    with pytest.raises(ValueError):
+        coerce_record_length(-2)
+
+
+def test_record_length_non_numeric_raises():
+    with pytest.raises(ValueError):
+        coerce_record_length("soon")
