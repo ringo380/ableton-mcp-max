@@ -1,0 +1,58 @@
+---
+description: Cross-cutting tool-usage etiquette for the ableton MCP — restart protocol, write-lag, hot-swap, undo, MIDI extended API, connection triage.
+allowed-tools: ["Bash"]
+---
+
+# /ableton:best-practices
+
+The hard-won rules for driving Ableton Live through this MCP reliably. Load this into context before a multi-step Live session, or whenever a Live call behaves unexpectedly.
+
+## Verify, don't trust the return value (write-lag)
+
+Song-level property writes apply **asynchronously inside Live**, even within one Remote-Script task. A handler that sets a property and returns it in the same call frequently returns the **pre-write** value. The mutation is reliable; the confirmation dict is not.
+
+- After any transport/record/loop/tempo/punch/metronome write → confirm with a separate `get_transport`.
+- After structural changes (tracks/scenes) → confirm with a separate `get_session_info`.
+- After `undo`/`redo` → structural reads can be stale for ONE call; read **twice**.
+
+## MIDI notes: extended API only
+
+Use `add_notes_to_clip`, `replace_clip_notes`, `modify_clip_notes`, `remove_clip_notes`. **Never** legacy set_notes/remove_notes — they trigger a blocking modal in Live that stalls the Remote Script main thread and times out the socket ("No data received"), even though the edit may have applied. Edit notes in place by `note_id` (`modify_clip_notes`) rather than remove + re-add. `quantize_clip` is safe (no modal).
+
+## Loading devices HOT-SWAPS
+
+`load_instrument_or_effect` / `load_preset` / `load_drum_kit` REPLACE the existing instrument on a track — they don't append. For experiments, load onto an EMPTY regular track and `delete_device`/`delete_track` after; never onto a patch you care about.
+
+## Device-tool asymmetry
+
+`get_device_parameters` / `set_device_parameter` are regular-track-only (no `track_type`). Return/master-track devices are reachable for `get_device_info`/`get_rack_macros`/`set_rack_macro`/`set_chain_property`/`set_device_on`/`delete_device` (these take `track_type`) but NOT for raw param read/write.
+
+## Track-type differences
+
+Return / master / group tracks have **no `.arm`**; group tracks have no monitoring; only regular tracks expose input monitoring. Probe optional endpoints defensively — don't assume a field exists on every track type. No LOM call creates a group track (grouping is UI-only, ⌘G).
+
+## Automation envelopes
+
+Reads are **sampled only** (`value_at_time`) — there's no breakpoint enumeration, and sampling a step's exact left edge returns the pre-step value (sample slightly inside). Writes: `insert_step` makes FLAT segments, `duration=0` is a no-op; the server auto-tiles value-only points into a staircase. No linear ramps exist in the LOM.
+
+## Re-read state every session
+
+The open Live set changes between sessions. Always `get_session_info` + `get_track_info` at the start of a task; never carry a track index forward from a previous conversation.
+
+## Connection triage
+
+"Could not connect to Ableton" on the first call after a restart is usually just the reconnect race — retry once. If it persists:
+
+```bash
+pgrep -fl "Ableton Live" || echo "Live not running"
+lsof -nP -iTCP:9877 -sTCP:LISTEN || echo "Nothing listening on 9877 — Control Surface not selected, or Live needs a restart"
+```
+
+Remote Script load errors / command logs live in `~/Library/Preferences/Ableton/Live 11*/Log.txt` (grep `AbletonMCP` / `Traceback`). Re-run `/ableton:setup` if the Remote Script half isn't loaded.
+
+## (Maintainers only) restart protocol
+
+If you EDIT the plugin's code, changes don't hot-reload:
+- Edited the Remote Script (`remote_script/...`)? Reinstall (`scripts/install_remote_script.sh`) then quit + reopen Live so it re-scans Control Surfaces.
+- Edited `server.py` or any `*_utils.py` it imports? Restart Claude Code (the MCP server loads at session start).
+- Batch both, then do ONE reinstall + ONE dual-restart.

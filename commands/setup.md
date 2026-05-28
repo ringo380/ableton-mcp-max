@@ -1,0 +1,70 @@
+---
+description: Guided first-run setup for the ableton plugin — sync deps, install the Live Remote Script, select the Control Surface, and verify the connection.
+disable-model-invocation: true
+allowed-tools: ["Bash", "Read"]
+---
+
+# /ableton:setup
+
+Take the user from "plugin enabled" to "issuing Ableton Live commands from Claude Code" in one session.
+
+This plugin has **two halves** that both must be in place:
+
+1. **The MCP server** (bundled in this plugin) — launches automatically over stdio. It speaks to Live over `localhost:9877`.
+2. **The Remote Script** inside Ableton Live — the other end of that socket. It is NOT installed automatically; this command installs it and walks you through enabling it.
+
+> The native "Authenticate" button in the `/mcp` dialog only applies to HTTP/OAuth-transport servers. This server is stdio, so this command is the supported setup flow. If MCP tools error with "Could not connect to Ableton", the Remote Script half isn't running yet — work through the steps below.
+
+## Pre-flight
+
+1. Confirm `uv` is installed (the server launcher needs it):
+   ```bash
+   command -v uv || echo "MISSING — install from https://docs.astral.sh/uv/"
+   ```
+
+2. Confirm Ableton Live 11 is present:
+   ```bash
+   ls -d "/Applications/Ableton Live 11 Suite.app" 2>/dev/null || echo "Live 11 Suite not found at the default path — ask the user where Live is installed."
+   ```
+
+3. Warm the server venv so the first MCP call doesn't time out (creates/syncs the venv from `uv.lock`):
+   ```bash
+   uv run --directory "$CLAUDE_PLUGIN_ROOT" python -c "import ableton_mcp_max.server; print('server import OK')"
+   ```
+
+## Install the Remote Script
+
+The repo ships `scripts/install_remote_script.sh`, which copies the Remote Script into Live's MIDI Remote Scripts folder, backs up any existing install, and fixes ownership (Live silently skips root-owned script folders). Run it:
+
+```bash
+bash "$CLAUDE_PLUGIN_ROOT/scripts/install_remote_script.sh"
+```
+
+It will prompt for `sudo` (writes into the app bundle). On success it prints the destination path.
+
+## Enable the Control Surface (manual — user does this in Live)
+
+Tell the user to:
+
+1. Open **Ableton Live** (or quit + reopen if it was already running — Live only scans Remote Scripts at launch).
+2. Go to **Settings/Preferences → Link, Tempo & MIDI** (named "Link/MIDI" in some versions).
+3. Under **Control Surface**, pick **AbletonMCP** from the dropdown. Leave Input/Output as needed (the script uses a socket, not MIDI ports).
+4. Live is now listening on `localhost:9877`.
+
+## Verify
+
+Run a smoke check through the MCP server (load the tool first if deferred: `ToolSearch select:mcp__AbletonMCPMax__get_session_info`):
+
+- Call `get_session_info`. A JSON blob with track/scene/tempo info means both halves are connected.
+- The **first** call right after enabling the surface (or after any Claude Code restart) can fail while the server reconnects — just retry once.
+
+If it still fails:
+```bash
+pgrep -fl "Ableton Live" || echo "Live is not running"
+lsof -nP -iTCP:9877 -sTCP:LISTEN || echo "Nothing listening on 9877 — Control Surface not selected, or Live needs a restart"
+```
+Remote Script load errors are logged in `~/Library/Preferences/Ableton/Live 11*/Log.txt` (grep for `AbletonMCP` or `Traceback`).
+
+## Done
+
+Once `get_session_info` returns, point the user at `/ableton:new-track`, `/ableton:add-to-track`, and `/ableton:best-practices` for workflow guidance.

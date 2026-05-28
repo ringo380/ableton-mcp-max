@@ -1,0 +1,21 @@
+{
+  "name": "ableton",
+  "version": "0.1.0",
+  "description": "Drive Ableton Live 11 from Claude Code — tracks, clips, MIDI notes, devices, mixer, automation, arrangement, scenes, and transport over a bundled MCP server. Includes a guided /ableton:setup and best-practice workflow commands.",
+  "author": {
+    "name": "Ryan Robson and Robworks Software LLC",
+    "url": "https://robworks.info"
+  },
+  "homepage": "https://github.com/ringo380/ableton-mcp-max",
+  "repository": "https://github.com/ringo380/ableton-mcp-max",
+  "license": "MIT",
+  "keywords": [
+    "ableton",
+    "ableton-live",
+    "mcp",
+    "music",
+    "daw",
+    "midi",
+    "audio"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "AbletonMCPMax": {
+      "type": "stdio",
+      "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/launch-mcp.sh",
+      "args": []
+    }
+  }
+}
