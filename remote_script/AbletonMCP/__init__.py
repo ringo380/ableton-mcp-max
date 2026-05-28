@@ -275,7 +275,13 @@ class AbletonMCP(ControlSurface):
                                  "delete_arrangement_clip",
                                  "create_audio_track", "create_return_track",
                                  "delete_track", "delete_return_track",
-                                 "duplicate_track", "undo", "redo"]:
+                                 "duplicate_track", "undo", "redo",
+                                 "set_groove_amount", "set_swing_amount",
+                                 "set_clip_trigger_quantization",
+                                 "set_midi_recording_quantization", "set_nudge",
+                                 "set_selected_track", "set_selected_scene",
+                                 "set_detail_clip", "set_highlighted_clip_slot",
+                                 "set_track_fold"]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
                 
@@ -570,6 +576,39 @@ class AbletonMCP(ControlSurface):
                             result = self._undo()
                         elif command_type == "redo":
                             result = self._redo()
+                        elif command_type == "set_groove_amount":
+                            result = self._set_groove_amount(params.get("value", 0.0))
+                        elif command_type == "set_swing_amount":
+                            result = self._set_swing_amount(params.get("value", 0.0))
+                        elif command_type == "set_clip_trigger_quantization":
+                            result = self._set_clip_trigger_quantization(
+                                params.get("value", 0))
+                        elif command_type == "set_midi_recording_quantization":
+                            result = self._set_midi_recording_quantization(
+                                params.get("value", 0))
+                        elif command_type == "set_nudge":
+                            result = self._set_nudge(
+                                params.get("direction", "up"),
+                                params.get("active", False))
+                        elif command_type == "set_selected_track":
+                            result = self._set_selected_track(
+                                params.get("track_index", 0),
+                                params.get("track_type", "regular"))
+                        elif command_type == "set_selected_scene":
+                            result = self._set_selected_scene(
+                                params.get("scene_index", 0))
+                        elif command_type == "set_detail_clip":
+                            result = self._set_detail_clip(
+                                params.get("track_index", 0),
+                                params.get("clip_slot_index", 0))
+                        elif command_type == "set_highlighted_clip_slot":
+                            result = self._set_highlighted_clip_slot(
+                                params.get("track_index", 0),
+                                params.get("scene_index", 0))
+                        elif command_type == "set_track_fold":
+                            result = self._set_track_fold(
+                                params.get("track_index", 0),
+                                params.get("folded", False))
 
                         # Put the result in the queue
                         response_queue.put({"status": "success", "result": result})
@@ -666,6 +705,8 @@ class AbletonMCP(ControlSurface):
                 response["result"] = self._get_scenes()
             elif command_type == "get_transport":
                 response["result"] = self._get_transport()
+            elif command_type == "get_view_selection":
+                response["result"] = self._get_view_selection()
             elif command_type == "get_cue_points":
                 response["result"] = self._get_cue_points()
             elif command_type == "get_arrangement_clips":
@@ -774,6 +815,12 @@ class AbletonMCP(ControlSurface):
                 "clip_slots": clip_slots,
                 "devices": devices
             }
+            # Phase 10: group-track folding state (probed defensively).
+            for attr in ("is_foldable", "is_grouped", "fold_state"):
+                try:
+                    result[attr] = getattr(track, attr)
+                except Exception:
+                    pass
             return result
         except Exception as e:
             self.log_message("Error getting track info: " + str(e))
@@ -1927,7 +1974,10 @@ class AbletonMCP(ControlSurface):
                 "is_playing": clip.is_playing,
             }
             for attr in ("warping", "warp_mode", "gain", "gain_display_string",
-                         "pitch_coarse", "pitch_fine"):
+                         "pitch_coarse", "pitch_fine",
+                         # Phase 10 launch settings (valid on MIDI + audio).
+                         "launch_mode", "launch_quantization", "legato",
+                         "velocity_amount"):
                 try:
                     result[attr] = getattr(clip, attr)
                 except Exception:
@@ -2333,6 +2383,14 @@ class AbletonMCP(ControlSurface):
                 info["back_to_arranger"] = song.back_to_arranger
             except Exception:
                 pass
+            # Phase 10: global feel / quantization.
+            for key in ("groove_amount", "swing_amount",
+                        "clip_trigger_quantization", "midi_recording_quantization",
+                        "count_in_duration", "nudge_up", "nudge_down"):
+                try:
+                    info[key] = getattr(song, key)
+                except Exception:
+                    pass
             return info
         except Exception as e:
             self.log_message("Error getting transport: " + str(e))
@@ -2345,6 +2403,204 @@ class AbletonMCP(ControlSurface):
             return {"metronome": self._song.metronome}
         except Exception as e:
             self.log_message("Error setting metronome: " + str(e))
+            raise
+
+    def _set_groove_amount(self, value):
+        """Set the global groove amount (0.0-1.0). Read-back may lag."""
+        try:
+            self._song.groove_amount = float(value)
+            return {"groove_amount": self._song.groove_amount}
+        except Exception as e:
+            self.log_message("Error setting groove amount: " + str(e))
+            raise
+
+    def _set_swing_amount(self, value):
+        """Set the global swing amount (0.0-1.0). Read-back may lag."""
+        try:
+            self._song.swing_amount = float(value)
+            return {"swing_amount": self._song.swing_amount}
+        except Exception as e:
+            self.log_message("Error setting swing amount: " + str(e))
+            raise
+
+    def _set_clip_trigger_quantization(self, value):
+        """Set the global Session clip-launch quantization (enum int)."""
+        try:
+            self._song.clip_trigger_quantization = int(value)
+            return {"clip_trigger_quantization": self._song.clip_trigger_quantization}
+        except Exception as e:
+            self.log_message("Error setting clip trigger quantization: " + str(e))
+            raise
+
+    def _set_midi_recording_quantization(self, value):
+        """Set the global MIDI-recording quantization (enum int)."""
+        try:
+            self._song.midi_recording_quantization = int(value)
+            return {"midi_recording_quantization":
+                    self._song.midi_recording_quantization}
+        except Exception as e:
+            self.log_message("Error setting MIDI recording quantization: " + str(e))
+            raise
+
+    def _set_nudge(self, direction, active):
+        """Hold/release a tempo-nudge button (direction 'up'|'down')."""
+        try:
+            value = bool(active)
+            if direction == "up":
+                self._song.nudge_up = value
+            elif direction == "down":
+                self._song.nudge_down = value
+            else:
+                raise Exception("Unknown nudge direction '%s' (up|down)" % (direction,))
+            return {"direction": direction, "active": value}
+        except Exception as e:
+            self.log_message("Error setting nudge: " + str(e))
+            raise
+
+    def _set_selected_track(self, track_index, track_type):
+        """Select a track in the Session/Arrangement view."""
+        try:
+            song = self._song
+            if track_type == "master":
+                track = song.master_track
+                idx = -1
+            elif track_type == "return":
+                returns = song.return_tracks
+                if track_index < 0 or track_index >= len(returns):
+                    raise Exception(
+                        "Return track index out of range (0..%d)"
+                        % (len(returns) - 1,))
+                track = returns[track_index]
+                idx = track_index
+            else:
+                tracks = song.tracks
+                if track_index < 0 or track_index >= len(tracks):
+                    raise Exception(
+                        "Track index out of range (0..%d)" % (len(tracks) - 1,))
+                track = tracks[track_index]
+                idx = track_index
+            song.view.selected_track = track
+            return {"selected_track": track.name, "track_type": track_type,
+                    "track_index": idx}
+        except Exception as e:
+            self.log_message("Error setting selected track: " + str(e))
+            raise
+
+    def _set_selected_scene(self, scene_index):
+        """Select a scene in the Session view."""
+        try:
+            scenes = self._song.scenes
+            if scene_index < 0 or scene_index >= len(scenes):
+                raise Exception(
+                    "Scene index out of range (0..%d)" % (len(scenes) - 1,))
+            self._song.view.selected_scene = scenes[scene_index]
+            return {"selected_scene": scene_index, "name": scenes[scene_index].name}
+        except Exception as e:
+            self.log_message("Error setting selected scene: " + str(e))
+            raise
+
+    def _set_detail_clip(self, track_index, clip_slot_index):
+        """Show a Session clip in Live's Detail view (slot must hold a clip)."""
+        try:
+            tracks = self._song.tracks
+            if track_index < 0 or track_index >= len(tracks):
+                raise Exception(
+                    "Track index out of range (0..%d)" % (len(tracks) - 1,))
+            slots = tracks[track_index].clip_slots
+            if clip_slot_index < 0 or clip_slot_index >= len(slots):
+                raise Exception(
+                    "Clip slot index out of range (0..%d)" % (len(slots) - 1,))
+            slot = slots[clip_slot_index]
+            if not slot.has_clip:
+                raise Exception(
+                    "No clip in slot %d on track %d" % (clip_slot_index, track_index))
+            self._song.view.detail_clip = slot.clip
+            return {"detail_clip": slot.clip.name,
+                    "track_index": track_index,
+                    "clip_slot_index": clip_slot_index}
+        except Exception as e:
+            self.log_message("Error setting detail clip: " + str(e))
+            raise
+
+    def _set_highlighted_clip_slot(self, track_index, scene_index):
+        """Highlight a Session clip slot (regular track + scene)."""
+        try:
+            tracks = self._song.tracks
+            if track_index < 0 or track_index >= len(tracks):
+                raise Exception(
+                    "Track index out of range (0..%d)" % (len(tracks) - 1,))
+            slots = tracks[track_index].clip_slots
+            if scene_index < 0 or scene_index >= len(slots):
+                raise Exception(
+                    "Scene index out of range (0..%d)" % (len(slots) - 1,))
+            self._song.view.highlighted_clip_slot = slots[scene_index]
+            return {"track_index": track_index, "scene_index": scene_index,
+                    "has_clip": slots[scene_index].has_clip}
+        except Exception as e:
+            self.log_message("Error setting highlighted clip slot: " + str(e))
+            raise
+
+    def _set_track_fold(self, track_index, folded):
+        """Fold/unfold a group track. Rejected if the track is not foldable."""
+        try:
+            tracks = self._song.tracks
+            if track_index < 0 or track_index >= len(tracks):
+                raise Exception(
+                    "Track index out of range (0..%d)" % (len(tracks) - 1,))
+            track = tracks[track_index]
+            if not track.is_foldable:
+                raise Exception(
+                    "Track %d ('%s') is not a group track (not foldable)"
+                    % (track_index, track.name))
+            track.fold_state = 1 if folded else 0
+            return {"track_index": track_index, "name": track.name,
+                    "fold_state": track.fold_state}
+        except Exception as e:
+            self.log_message("Error setting track fold: " + str(e))
+            raise
+
+    def _get_view_selection(self):
+        """Read the current Live view selection."""
+        try:
+            song = self._song
+            view = song.view
+            out = {}
+            try:
+                sel_track = view.selected_track
+                out["selected_track_name"] = sel_track.name
+                # Resolve index within regular tracks (None for return/master).
+                idx = None
+                for i in range(len(song.tracks)):
+                    if song.tracks[i] == sel_track:
+                        idx = i
+                        break
+                out["selected_track_index"] = idx
+            except Exception:
+                pass
+            try:
+                sel_scene = view.selected_scene
+                sidx = None
+                for i in range(len(song.scenes)):
+                    if song.scenes[i] == sel_scene:
+                        sidx = i
+                        break
+                out["selected_scene_index"] = sidx
+            except Exception:
+                pass
+            try:
+                dc = view.detail_clip
+                out["detail_clip"] = dc.name if dc is not None else None
+            except Exception:
+                pass
+            try:
+                slot = view.highlighted_clip_slot
+                out["highlighted_clip_slot_has_clip"] = (
+                    slot.has_clip if slot is not None else None)
+            except Exception:
+                pass
+            return out
+        except Exception as e:
+            self.log_message("Error getting view selection: " + str(e))
             raise
 
     def _set_arrangement_record(self, on):

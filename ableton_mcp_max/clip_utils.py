@@ -14,6 +14,11 @@ _ALIASES = {
     "gain": {"gain"},
     "pitch_coarse": {"pitch_coarse", "pitch", "transpose", "pitch_semitones"},
     "pitch_fine": {"pitch_fine", "detune", "pitch_cents"},
+    # Phase 10 — clip launch settings (valid on both MIDI and audio clips).
+    "launch_mode": {"launch_mode", "launchmode"},
+    "launch_quantization": {"launch_quantization", "launchquant", "launch_quant"},
+    "legato": {"legato"},
+    "velocity_amount": {"velocity_amount", "velamount", "vel_amount"},
 }
 
 # Properties valid on each clip kind. Audio clips additionally expose
@@ -21,6 +26,8 @@ _ALIASES = {
 _COMMON = {
     "looping", "loop_start", "loop_end", "start_marker", "end_marker",
     "signature_numerator", "signature_denominator",
+    # Launch settings are general Clip props (both MIDI and audio).
+    "launch_mode", "launch_quantization", "legato", "velocity_amount",
 }
 _AUDIO_ONLY = {"warping", "warp_mode", "gain", "pitch_coarse", "pitch_fine"}
 _CLIP_KIND_SUPPORT = {
@@ -29,10 +36,11 @@ _CLIP_KIND_SUPPORT = {
 }
 
 # Properties coerced to bool / int (others float).
-_BOOL_PROPS = {"looping", "warping"}
+_BOOL_PROPS = {"looping", "warping", "legato"}
 _INT_PROPS = {
     "signature_numerator", "signature_denominator", "warp_mode",
     "pitch_coarse", "pitch_fine",
+    "launch_mode", "launch_quantization",
 }
 # Pure (live-state-independent) clamps: prop -> (min, max).
 _CLAMPS = {

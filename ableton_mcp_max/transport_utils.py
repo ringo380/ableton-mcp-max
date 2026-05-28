@@ -6,6 +6,7 @@ user-supplied values to the canonical forms the handler applies directly.
 """
 
 from ableton_mcp_max.device_utils import coerce_on_value
+from ableton_mcp_max.clip_utils import QUANTIZE_GRID_MAP
 
 # Cue-jump direction alias -> canonical "next" | "prev".
 _CUE_DIR_CANON = {
@@ -139,3 +140,101 @@ def coerce_punch_fields(punch_in, punch_out):
     if not out:
         raise ValueError("Nothing to set: provide punch_in and/or punch_out.")
     return out
+
+
+# --- Phase 10: global feel / quantization ---------------------------------
+
+# Friendly name -> Live.Song.Quantization int (clip_trigger_quantization).
+# This enum spans bar-level values (unlike RecordingQuantization). Ordering is
+# the standard Live 11 Quantization enum; CONFIRM live before trusting the names
+# (the int path always works regardless).
+CLIP_TRIGGER_QUANTIZATION_MAP = {
+    "none": 0,
+    "8_bars": 1,
+    "4_bars": 2,
+    "2_bars": 3,
+    "1_bar": 4,
+    "1/2": 5,
+    "1/2t": 6,
+    "1/4": 7,
+    "1/4t": 8,
+    "1/8": 9,
+    "1/8t": 10,
+    "1/16": 11,
+    "1/16t": 12,
+    "1/32": 13,
+}
+
+_NUDGE_DIRECTIONS = ("up", "down")
+
+
+def coerce_unit_float(value, label="value"):
+    """Coerce to a float clamped to 0.0-1.0. Raises ValueError if non-numeric."""
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        raise ValueError("%s must be a number (0.0-1.0); got '%s'" % (label, value))
+    if out < 0.0:
+        out = 0.0
+    if out > 1.0:
+        out = 1.0
+    return out
+
+
+def resolve_clip_trigger_quantization(value):
+    """Map an int (pass-through) or a friendly name to the
+    Live.Song.Quantization int for clip_trigger_quantization.
+
+    Ints are accepted directly (0..13). Names fold via
+    CLIP_TRIGGER_QUANTIZATION_MAP. Raises ValueError otherwise.
+    """
+    if isinstance(value, bool):
+        raise ValueError("Quantization must be an int or name; got a bool")
+    if isinstance(value, int):
+        return value
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        pass
+    key = str(value).strip().lower()
+    if key in CLIP_TRIGGER_QUANTIZATION_MAP:
+        return CLIP_TRIGGER_QUANTIZATION_MAP[key]
+    raise ValueError(
+        "Unknown clip-trigger quantization '%s'. Available: %s (or an int 0-13)"
+        % (value, ", ".join(CLIP_TRIGGER_QUANTIZATION_MAP.keys()))
+    )
+
+
+def resolve_midi_recording_quantization(value):
+    """Map an int (pass-through) or a friendly grid name to the
+    Live.Song.RecordingQuantization int for midi_recording_quantization.
+
+    Reuses clip_utils.QUANTIZE_GRID_MAP (same enum, live-confirmed:
+    none=0, 1/4=1, 1/8=2, ...). Ints accepted directly. Raises ValueError otherwise.
+    """
+    if isinstance(value, bool):
+        raise ValueError("Quantization must be an int or name; got a bool")
+    if isinstance(value, int):
+        return value
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        pass
+    key = str(value).strip().lower()
+    if key in QUANTIZE_GRID_MAP:
+        return QUANTIZE_GRID_MAP[key]
+    raise ValueError(
+        "Unknown MIDI recording quantization '%s'. Available: %s (or an int)"
+        % (value, ", ".join(QUANTIZE_GRID_MAP.keys()))
+    )
+
+
+def normalize_nudge_direction(value):
+    """Fold a nudge direction (case-insensitive) to 'up' | 'down'.
+    Raises ValueError otherwise."""
+    key = str(value).strip().lower()
+    if key in _NUDGE_DIRECTIONS:
+        return key
+    raise ValueError(
+        "Unknown nudge direction '%s'. Valid: up, down" % (value,)
+    )
