@@ -1,10 +1,10 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Phase 8 (Arrangement Authoring) — LIVE-VERIFIED 2026-05-26 on branch
-`feat/phase8-arrangement-authoring`. Offline suite 172/172; both halves compile; all 5 tools
-exercised live (cue create/delete/idempotence + arrangement clip read/place/delete + negatives).
-Cue rename DROPPED (CuePoint.name read-only in LOM); cue create/delete redesigned to orchestrate
-across settled commands (in-task playhead writes are async). Branch READY FOR PR.
+**Current focus:** Phase 9 (Track Lifecycle & Undo/Redo) — LIVE-VERIFIED 2026-05-27 on branch
+`feat/phase9-track-lifecycle`. Offline suite 183/183; both halves compile; all 7 new tools
+exercised live (create audio+return, duplicate, delete both types w/ re-index, undo/redo round-trip,
+server-side + handler-side negatives). `create_midi_track` already had `index` (parity, no change).
+Branch READY FOR PR.
 **Next action (resume here):** open PR → review → `gh pr merge --squash --delete-branch` →
 `git remote prune origin`. (gh login must be ringo380.)
 
@@ -23,6 +23,7 @@ across settled commands (in-task playhead writes are async). Branch READY FOR PR
 | 6 | Automation Envelopes | Live-verified | 2026-05-25 |
 | 7 | Change Listeners (polling buffer) | Live-verified | 2026-05-25 |
 | 8 | Arrangement Authoring (cue CRUD + arrangement clips) | Live-verified | 2026-05-26 |
+| 9 | Track Lifecycle (create/delete/duplicate) & Undo/Redo | Live-verified | 2026-05-27 |
 
 ## Phase 0 tools (parity, vendored) — live-verified (get_session_info + get_track_info confirmed; rest vendored unchanged from ahujasid)
 - [x] get_session_info, get_track_info, create_midi_track, set_track_name,
@@ -379,3 +380,39 @@ Extends Phase 5 from cue reads/navigation into cue + arrangement-clip editing. P
   index 0) — index is stable for delete; don't assume chronological order.
 - **duplicate_clip_to_arrangement returns the new Clip** and re-reads of arrangement_clips within the
   same task reflect it (unlike song-position). delete_clip(clip) re-indexes the list.
+
+## Phase 9 tools (Track Lifecycle & Undo/Redo) — ALL live-verified 2026-05-27
+Closes the standing "no delete_track" gap (scratch tracks no longer need user Cmd+Z). Pure helper
+`track_utils.py` (coerce_create_index: None/-1 → append, else >=0; coerce_track_index: >=0;
+offline tests +11 → suite 183/183). All 7 LOM calls confirmed in 11.0.0.xml. Separate tools per
+track type (1:1 with LOM), per design.
+- **Creates (3):**
+  - [x] create_audio_track(index=-1) — live: appended at index 7 → "8-Audio", track_count 7→8.
+  - [x] create_return_track() — live: appended at return index 2 → "C-Return", return_count 2→3.
+  - [x] create_midi_track — PARITY ONLY (Phase 0 tool already had index=-1; no change this phase).
+- **duplicate_track(index) (1):** live: duplicate_track(7) → new_index 8 "9-Audio", count 8→9.
+  Confirms new_index derived from `song.view.selected_track` (LOM duplicate_track returns None).
+- **Deletes (2):**
+  - [x] delete_track(index) — live: deleted 8 then 7, remaining_count 9→8→7, collection re-indexes.
+  - [x] delete_return_track(index) — live: deleted return 2, remaining_count 3→2.
+- **Undo/redo (2):**
+  - [x] undo() / redo() — live: create → undo {undone:true, can_redo:true} → redo {redone:true,
+        can_redo:false}. Both guarded by can_undo/can_redo precheck (clean no-op when empty).
+- **Negatives:** delete_track(999) → handler-side "Track index out of range (0..6)"; duplicate_track(-5)
+  → server-side coercion "Index must be >= 0; got -5" (no socket call). All scratch tracks cleaned up
+  via the new delete tools → set restored to baseline 7 regular / 2 returns.
+- Spec: `docs/superpowers/specs/2026-05-27-phase-9-track-lifecycle-design.md`;
+  Plan: `docs/superpowers/plans/2026-05-27-phase-9-track-lifecycle.md`.
+
+### Phase 9 live findings (2026-05-27)
+- **Track-structural undo readback is STALE (new, important):** immediately after `undo()` of a
+  track create, a follow-up `get_session_info` returned a TRANSIENT wrong count (9 regular / 3 returns
+  — the pre-delete peak) instead of the settled value; a second read showed the correct count. This is
+  the song-property-write-lag class (Phase 5) now confirmed for track-collection structure after undo.
+  The undo/redo MECHANISM itself is reliable (undone/redone flags + can_undo/can_redo correct, redo
+  reinstated the track and settled to the right state). **Verify structural state with a second read
+  after undo/redo; don't trust the first post-undo count.**
+- **undo is GLOBAL** (documented in the tool): it walks Live's whole undo stack including user
+  hand-edits; the can_undo precheck only prevents erroring on an empty stack, it does not scope to MCP.
+- **duplicate_track selects the new track**, so `song.view.selected_track` is a reliable in-task source
+  for new_index/name (LOM duplicate_track itself returns None).
