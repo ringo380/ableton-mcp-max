@@ -248,3 +248,40 @@ def test_patch_chain_zone_selector_on_audio_effect_ok():
     out = patch_chain_zone(AUDIO_RACK, "audio_effect", 0, "chain_selector", [0, 63])
     z = read_chain_zone(out, "AudioEffectBranchPreset", 0, "BranchSelectorRange")
     assert z["max"] == 63
+
+
+# --- Task 6: real factory-file integration tests ---
+
+import glob
+
+
+def _factory_rack(subdir):
+    hits = glob.glob(
+        "/Applications/Ableton*Live*.app/Contents/App-Resources/Core Library/"
+        "Racks/%s/*/*.adg" % subdir)
+    return hits[0] if hits else None
+
+
+@pytest.mark.skipif(_factory_rack("Instrument Racks") is None,
+                    reason="Ableton Live factory racks not installed")
+def test_real_instrument_rack_summarizes():
+    with gzip.open(_factory_rack("Instrument Racks"), "rt") as f:
+        xml = f.read()
+    s = summarize_rack_adg(xml)
+    assert s["rack_type"] == "instrument"
+    assert len(s["macros"]) == 16
+    assert len(s["chains"]) >= 1
+    # every chain has a clean key zone with sane bounds (not a nested 20..40 sample zone)
+    for c in s["chains"]:
+        assert c["key_zone"] is not None
+        assert 0 <= c["key_zone"]["min"] <= c["key_zone"]["max"] <= 127
+
+
+@pytest.mark.skipif(_factory_rack("Audio Effect Racks") is None,
+                    reason="Ableton Live factory racks not installed")
+def test_real_audio_effect_rack_no_keyvel():
+    with gzip.open(_factory_rack("Audio Effect Racks"), "rt") as f:
+        xml = f.read()
+    s = summarize_rack_adg(xml)
+    assert s["rack_type"] == "audio_effect"
+    assert all(c["key_zone"] is None for c in s["chains"])
