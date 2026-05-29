@@ -2604,18 +2604,23 @@ def _read_rack_template(template):
         if hits:
             with gzip.open(hits[0], "rt") as f:
                 return f.read(), hits[0]
+        if os.path.sep in expanded and "*" not in expanded:
+            raise FileNotFoundError("Rack file not found: %s" % expanded)
     # (b) factory rack by name under any Racks/<kind>/<sub>/<name>.adg
     name = os.path.splitext(os.path.basename(expanded))[0]
-    for root in (
-        "%s/Racks/**/%s.adg" % (_APP_CORE, name),
-    ):
-        hits = glob.glob(root, recursive=True)
-        if hits:
-            with gzip.open(hits[0], "rt") as f:
-                return f.read(), hits[0]
+    hits = glob.glob(
+        "%s/Racks/**/%s.adg" % (_APP_CORE, glob.escape(name)), recursive=True
+    )
+    if hits:
+        with gzip.open(hits[0], "rt") as f:
+            return f.read(), hits[0]
     # (c) user-library rack by name across rack device-folders
     lib = _user_library_dir()
-    hits = glob.glob(os.path.join(lib, "Presets", "*", "*", "%s.adg" % name))
+    hits = glob.glob(
+        os.path.join(
+            glob.escape(lib), "Presets", "*", "*", "%s.adg" % glob.escape(name)
+        )
+    )
     if hits:
         with gzip.open(hits[0], "rt") as f:
             return f.read(), hits[0]
