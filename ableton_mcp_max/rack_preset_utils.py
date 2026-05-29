@@ -163,3 +163,56 @@ def chain_name(xml, branch_tag, chain_index):
     branch = xml[s:e]
     m = _direct_child_match(branch, branch_tag, r'<UserName Value="([^"]*)" />')
     return _xml_unescape(m.group(1)) if m else ""
+
+
+from ableton_mcp_max.preset_patch import get_attr as _get_attr
+
+
+def _macro_field(xml, prefix, index):
+    """Value of <prefix.N Value="..."/> or None."""
+    m = re.search(r'<%s\.%d Value="([^"]*)" />' % (re.escape(prefix), index), xml)
+    return m.group(1) if m else None
+
+
+def summarize_rack_adg(xml):
+    """Structured summary of a rack .adg: type, visible-macro count, 16 macros,
+    and per-chain zones. key_zone/velocity_zone are None on audio/midi-fx racks.
+    """
+    kind = detect_rack_type(xml)
+    meta = RACK_TYPES[kind]
+    btag = meta["branch_tag"]
+    nvis = _get_attr(xml, "NumVisibleMacroControls")
+
+    macros = []
+    for i in range(16):
+        name = _macro_field(xml, "MacroDisplayNames", i)
+        color = _macro_field(xml, "MacroColor", i)
+        default = _macro_field(xml, "MacroDefaults", i)
+        macros.append({
+            "macro": i + 1,
+            "name": _xml_unescape(name) if name is not None else "",
+            "color": int(color) if color is not None and color.lstrip("-").isdigit() else None,
+            "default": float(default) if default is not None else None,
+        })
+
+    chains = []
+    for ci in range(len(top_branches(xml, btag))):
+        entry = {
+            "chain": ci,
+            "name": chain_name(xml, btag, ci),
+            "chain_selector_zone": read_chain_zone(xml, btag, ci, "BranchSelectorRange"),
+        }
+        if meta["has_key_velocity"]:
+            entry["key_zone"] = read_chain_zone(xml, btag, ci, "KeyRange")
+            entry["velocity_zone"] = read_chain_zone(xml, btag, ci, "VelocityRange")
+        else:
+            entry["key_zone"] = None
+            entry["velocity_zone"] = None
+        chains.append(entry)
+
+    return {
+        "rack_type": kind,
+        "num_visible_macros": int(nvis) if nvis is not None and nvis.isdigit() else None,
+        "macros": macros,
+        "chains": chains,
+    }

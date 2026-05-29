@@ -117,3 +117,35 @@ def test_chain_name_direct_child():
 def test_top_branches_out_of_range():
     with pytest.raises(ValueError):
         read_chain_zone(SAMPLER_RACK, "InstrumentBranchPreset", 9, "KeyRange")
+
+
+# --- Task 3: summarizer ---
+
+from ableton_mcp_max.rack_preset_utils import summarize_rack_adg
+
+
+def test_summarize_instrument_shape():
+    s = summarize_rack_adg(INSTR_RACK)
+    assert s["rack_type"] == "instrument"
+    assert s["num_visible_macros"] == 2
+    assert len(s["macros"]) == 16
+    assert s["macros"][0] == {"macro": 1, "name": "Cutoff", "color": 27, "default": 56.0}
+    assert s["macros"][1]["name"] == "Reso"
+    # macros without display-name tags come back with name "" (defaults present or 0)
+    assert s["macros"][5]["macro"] == 6
+    assert len(s["chains"]) == 1
+    c = s["chains"][0]
+    assert c["chain"] == 0
+    assert c["name"] == "Chain A"
+    assert c["key_zone"]["max"] == 127
+    assert c["velocity_zone"]["min"] == 1
+    assert c["chain_selector_zone"] == {"min": 0, "max": 0, "crossfade_min": 0, "crossfade_max": 0}
+
+
+def test_summarize_audio_effect_null_keyvel():
+    s = summarize_rack_adg(AUDIO_RACK)
+    assert s["rack_type"] == "audio_effect"
+    c = s["chains"][0]
+    assert c["key_zone"] is None
+    assert c["velocity_zone"] is None
+    assert c["chain_selector_zone"]["min"] == 0
