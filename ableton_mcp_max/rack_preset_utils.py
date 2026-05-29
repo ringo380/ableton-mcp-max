@@ -267,3 +267,75 @@ def patch_macros(xml, names=None, colors=None, defaults=None):
             raise ValueError("macro %d default %s out of range 0..127." % (num, f))
         out = _set_macro_field(out, "MacroDefaults", idx, f)
     return out
+
+
+# tool zone key -> XML zone tag.
+_ZONE_TAGS = {
+    "key": "KeyRange",
+    "velocity": "VelocityRange",
+    "chain_selector": "BranchSelectorRange",
+}
+
+
+def normalize_zone(value, label):
+    """Coerce a zone arg into {min,max,crossfade_min,crossfade_max} and validate.
+
+    Accepts shorthand [min, max] (crossfades = min/max, i.e. no crossfade) or a
+    full object. Enforces 0..127 ints and min <= crossfade_min <= crossfade_max
+    <= max.
+    """
+    if isinstance(value, (list, tuple)):
+        if len(value) != 2:
+            raise ValueError("%s shorthand must be [min, max]." % label)
+        lo = validate_int_range(value[0], 0, 127, "%s min" % label)
+        hi = validate_int_range(value[1], 0, 127, "%s max" % label)
+        z = {"min": lo, "max": hi, "crossfade_min": lo, "crossfade_max": hi}
+    elif isinstance(value, dict):
+        lo = validate_int_range(value.get("min"), 0, 127, "%s min" % label)
+        hi = validate_int_range(value.get("max"), 0, 127, "%s max" % label)
+        cmin = validate_int_range(value.get("crossfade_min", lo), 0, 127, "%s crossfade_min" % label)
+        cmax = validate_int_range(value.get("crossfade_max", hi), 0, 127, "%s crossfade_max" % label)
+        z = {"min": lo, "max": hi, "crossfade_min": cmin, "crossfade_max": cmax}
+    else:
+        raise ValueError("%s must be [min, max] or an object." % label)
+    if not (z["min"] <= z["crossfade_min"] <= z["crossfade_max"] <= z["max"]):
+        raise ValueError(
+            "%s requires min <= crossfade_min <= crossfade_max <= max "
+            "(got %s)." % (label, z)
+        )
+    return z
+
+
+def patch_chain_zone(xml, rack_type, chain_index, zone_key, value):
+    """Patch chain `chain_index`'s `zone_key` ('key'|'velocity'|'chain_selector').
+
+    `rack_type` is from detect_rack_type. Raises if key/velocity is requested on
+    a rack type whose chains lack them (audio_effect/midi_effect). Pure.
+    """
+    if zone_key not in _ZONE_TAGS:
+        raise ValueError("unknown zone %r (use key|velocity|chain_selector)." % zone_key)
+    meta = RACK_TYPES[rack_type]
+    if zone_key in ("key", "velocity") and not meta["has_key_velocity"]:
+        raise ValueError(
+            "%s racks have no %s zone (only chain_selector)." % (rack_type, zone_key)
+        )
+    z = normalize_zone(value, zone_key)
+    zone_tag = _ZONE_TAGS[zone_key]
+    btag = meta["branch_tag"]
+    s, e = _branch_span(xml, btag, chain_index)
+    branch = xml[s:e]
+    m = _direct_child_match(branch, btag, r'<%s>.*?</%s>' % (zone_tag, zone_tag))
+    if not m:
+        raise ValueError(
+            "chain %d has no <%s> to patch." % (chain_index, zone_tag)
+        )
+    block = m.group(0)
+    for field, key in (("Min", "min"), ("Max", "max"),
+                       ("CrossfadeMin", "crossfade_min"), ("CrossfadeMax", "crossfade_max")):
+        block = re.sub(
+            r'(<%s Value=")[^"]*("\s*/>)' % field,
+            lambda mm, v=z[key]: mm.group(1) + str(v) + mm.group(2),
+            block, count=1,
+        )
+    new_branch = branch[:m.start()] + block + branch[m.end():]
+    return xml[:s] + new_branch + xml[e:]

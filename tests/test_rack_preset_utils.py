@@ -198,3 +198,53 @@ def test_patch_macro_is_pure():
     src = INSTR_RACK
     patch_macros(src, names={1: "Z"})
     assert src == INSTR_RACK
+
+
+# --- Task 5: zone patcher ---
+
+from ableton_mcp_max.rack_preset_utils import patch_chain_zone, normalize_zone
+
+
+def test_normalize_zone_shorthand():
+    assert normalize_zone([0, 60], "key") == {
+        "min": 0, "max": 60, "crossfade_min": 0, "crossfade_max": 60}
+
+
+def test_normalize_zone_full_object():
+    z = normalize_zone({"min": 0, "max": 60, "crossfade_min": 10, "crossfade_max": 50}, "key")
+    assert z["crossfade_min"] == 10 and z["crossfade_max"] == 50
+
+
+def test_normalize_zone_bad_ordering():
+    with pytest.raises(ValueError):
+        normalize_zone({"min": 0, "max": 60, "crossfade_min": 50, "crossfade_max": 10}, "key")
+
+
+def test_normalize_zone_crossfade_outside_minmax():
+    with pytest.raises(ValueError):
+        normalize_zone({"min": 10, "max": 60, "crossfade_min": 5, "crossfade_max": 60}, "key")
+
+
+def test_patch_chain_zone_key_roundtrip():
+    out = patch_chain_zone(SAMPLER_RACK, "instrument", 0, "key", [0, 48])
+    z = read_chain_zone(out, "InstrumentBranchPreset", 0, "KeyRange")
+    assert z == {"min": 0, "max": 48, "crossfade_min": 0, "crossfade_max": 48}
+    # nested multisample KeyRange untouched (still 20..40)
+    assert "<KeyRange><Min Value=\"20\" />" in out
+
+
+def test_patch_chain_zone_does_not_touch_other_chain():
+    out = patch_chain_zone(SAMPLER_RACK, "instrument", 0, "key", [0, 48])
+    z1 = read_chain_zone(out, "InstrumentBranchPreset", 1, "KeyRange")
+    assert z1["min"] == 60  # chain 1 unchanged
+
+
+def test_patch_chain_zone_rejects_key_on_audio_effect():
+    with pytest.raises(ValueError):
+        patch_chain_zone(AUDIO_RACK, "audio_effect", 0, "key", [0, 60])
+
+
+def test_patch_chain_zone_selector_on_audio_effect_ok():
+    out = patch_chain_zone(AUDIO_RACK, "audio_effect", 0, "chain_selector", [0, 63])
+    z = read_chain_zone(out, "AudioEffectBranchPreset", 0, "BranchSelectorRange")
+    assert z["max"] == 63
