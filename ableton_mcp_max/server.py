@@ -2570,6 +2570,56 @@ def _load_user_preset(track_index, browser_path, name, ext="adv"):
         return False, "Preset written, but loading failed: %s" % le
 
 
+def _read_user_preset(category, device_folder, name, ext="adg"):
+    """Read + gunzip an existing User Library preset to XML (the pipeline's read
+    side). Raises FileNotFoundError if it's not there yet.
+    """
+    lib = _user_library_dir()
+    path = os.path.join(lib, "Presets", category, device_folder, "%s.%s" % (name, ext))
+    if not os.path.isfile(path):
+        raise FileNotFoundError(
+            "User Library preset not found: %s. Run clone_rack first." % path)
+    with gzip.open(path, "rt") as f:
+        return f.read(), path
+
+
+def _read_rack_template(template):
+    """Read + gunzip a rack .adg template to XML.
+
+    Resolves `template` two ways:
+      (a) an absolute path or glob to a factory rack (e.g. under Core Library/
+          Racks/...) — NOT Defaults/, so _read_default_adv does not apply;
+      (b) a bare name of a rack already in the User Library (searched across all
+          rack device-folders).
+    Returns (xml, resolved_path). Raises FileNotFoundError if unresolved.
+    """
+    expanded = os.path.expanduser(str(template))
+    # (a) direct path / glob
+    if os.path.sep in expanded or "*" in expanded:
+        hits = glob.glob(expanded)
+        if hits:
+            with gzip.open(hits[0], "rt") as f:
+                return f.read(), hits[0]
+    # (b) factory rack by name under any Racks/<kind>/<sub>/<name>.adg
+    name = os.path.splitext(os.path.basename(expanded))[0]
+    for root in (
+        "%s/Racks/**/%s.adg" % (_APP_CORE, name),
+    ):
+        hits = glob.glob(root, recursive=True)
+        if hits:
+            with gzip.open(hits[0], "rt") as f:
+                return f.read(), hits[0]
+    # (c) user-library rack by name across rack device-folders
+    lib = _user_library_dir()
+    hits = glob.glob(os.path.join(lib, "Presets", "*", "*", "%s.adg" % name))
+    if hits:
+        with gzip.open(hits[0], "rt") as f:
+            return f.read(), hits[0]
+    raise FileNotFoundError(
+        "Rack template %r not found as a path, a factory rack name, or a User "
+        "Library preset name." % (template,))
+
+
 def _scan_factory_tables(limit=400):
     """Return sorted unique factory wavetable names (SpriteName values)."""
     global _FACTORY_TABLE_CACHE
