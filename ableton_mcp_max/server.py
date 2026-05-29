@@ -79,7 +79,7 @@ from ableton_mcp_max.wavetable_preset_utils import (
 from ableton_mcp_max.simpler_preset_utils import build_simpler_adv
 from ableton_mcp_max.rack_preset_utils import (
     summarize_rack_adg, detect_rack_type, RACK_TYPES,
-    patch_macros, patch_chain_zone,
+    patch_macros, patch_chain_zone, patch_macro_mappings,
 )
 from ableton_mcp_max.arrangement_utils import (
     coerce_time,
@@ -3009,6 +3009,51 @@ def set_rack_zones(ctx: Context, name: str, zones: list) -> str:
     except Exception as e:
         logger.error(f"Error setting rack zones: {str(e)}")
         return f"Error setting rack zones: {str(e)}"
+
+
+@mcp.tool()
+def add_rack_macro_mappings(ctx: Context, name: str, mappings: list) -> str:
+    """
+    Map rack macros to device parameters on a User Library rack, in place.
+
+    Macro->parameter mappings are NOT settable via the LOM — this preset edit is
+    the only MCP route. Operates on a rack created by clone_rack (the working
+    preset). Macros are addressed 1-based (matching set_rack_macro); chains
+    0-based (matching get_rack_chains).
+
+    Each entry in `mappings` is an object:
+      {"macro": 1, "chain": 0, "device": 0, "parameter": "Gain"}
+    - macro: 1..16 macro number.
+    - chain: 0-based chain index.
+    - device: 0-based device index within that chain.
+    - parameter: the parameter's XML tag name within the device (e.g. "Gain",
+            "Volume"). Use inspect-style trial or Live's device to find tag names;
+            an invalid name returns an error listing the device's available tags.
+
+    Mappings are default full-range (the macro sweeps the parameter's whole
+    range). Re-mapping a parameter replaces its existing mapping; several
+    parameters may share one macro. Load the result with load_preset, then verify
+    by moving the macro (set_rack_macro) and reading the device parameter.
+
+    Returns JSON {written, path, mappings:[...]}.
+    """
+    try:
+        safe = validate_preset_name(name)
+        if not isinstance(mappings, list) or not mappings:
+            return "Error: mappings must be a non-empty list of {macro, chain, device, parameter} objects."
+        category, device_folder, xml = _user_rack_category(safe)
+        kind = detect_rack_type(xml)
+        out = patch_macro_mappings(xml, kind, mappings)
+        dest, _bp = _write_user_preset(
+            out, safe, device_folder, category=category, ext="adg")
+        return json.dumps({
+            "written": True, "path": dest, "mappings": mappings,
+        }, separators=(",", ":"))
+    except (ValueError, FileNotFoundError) as e:
+        return f"Error: {str(e)}"
+    except Exception as e:
+        logger.error(f"Error adding rack macro mappings: {str(e)}")
+        return f"Error adding rack macro mappings: {str(e)}"
 
 
 @mcp.tool()
