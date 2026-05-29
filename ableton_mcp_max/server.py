@@ -77,6 +77,10 @@ from ableton_mcp_max.wavetable_preset_utils import (
     summarize_wavetable_adv,
 )
 from ableton_mcp_max.simpler_preset_utils import build_simpler_adv
+from ableton_mcp_max.rack_preset_utils import (
+    summarize_rack_adg, detect_rack_type, RACK_TYPES,
+    patch_macros, patch_chain_zone,
+)
 from ableton_mcp_max.arrangement_utils import (
     coerce_time,
     coerce_index,
@@ -2822,6 +2826,78 @@ def create_simpler_instrument(ctx: Context, name: str, sample_path: str,
     except Exception as e:
         logger.error(f"Error creating simpler instrument: {str(e)}")
         return f"Error creating simpler instrument: {str(e)}"
+
+
+@mcp.tool()
+def inspect_rack_preset(ctx: Context, template: str) -> str:
+    """
+    Inspect a rack preset (.adg) and report its macros and chain zones.
+
+    Reads a rack by path (a factory rack under Core Library/Racks/...) or by
+    name (a factory rack name, or a preset already in your User Library) and
+    returns its structure — the inputs you need for rename_rack_macros and
+    set_rack_zones. Reads only; nothing is written or loaded.
+
+    Macros are reported 1-based (matching set_rack_macro); chains 0-based
+    (matching get_rack_chains). key_zone/velocity_zone are null on audio-effect
+    and midi-effect racks (those chains have only a chain_selector_zone).
+
+    Parameters:
+    - template: a .adg path/glob, OR a factory/User-Library rack name.
+
+    Returns JSON {rack_type, num_visible_macros, macros:[...16...], chains:[...]}.
+    """
+    try:
+        xml, path = _read_rack_template(template)
+        summary = summarize_rack_adg(xml)
+        summary["template_path"] = path
+        return json.dumps(summary, separators=(",", ":"))
+    except (ValueError, FileNotFoundError) as e:
+        return f"Error: {str(e)}"
+    except Exception as e:
+        logger.error(f"Error inspecting rack preset: {str(e)}")
+        return f"Error inspecting rack preset: {str(e)}"
+
+
+@mcp.tool()
+def clone_rack(ctx: Context, template: str, name: str) -> str:
+    """
+    Copy a rack preset into your User Library as a new working preset.
+
+    Racks have no blank/default template, so the rack-preset pipeline starts by
+    cloning an existing rack (factory or User Library). The clone becomes the
+    working preset that rename_rack_macros / set_rack_zones edit in place; load
+    the finished result later with load_preset using the returned browser_path.
+
+    The User Library category and device-folder are derived from the rack type
+    (instrument -> Instruments/Instrument Rack, audio_effect -> Audio Effects/
+    Audio Effect Rack, midi_effect -> MIDI Effects/MIDI Effect Rack, drum ->
+    Drums/Drum Rack).
+
+    Parameters:
+    - template: source rack — a .adg path/glob, or a factory/User-Library name.
+    - name: new preset name (becomes '<name>.adg'; no slashes or leading dot).
+
+    Returns JSON {written, path, browser_path, summary:{...inspect shape...}}.
+    """
+    try:
+        safe = validate_preset_name(name)
+        xml, _src = _read_rack_template(template)
+        kind = detect_rack_type(xml)
+        meta = RACK_TYPES[kind]
+        dest, browser_path = _write_user_preset(
+            xml, safe, meta["device_folder"], category=meta["category"], ext="adg")
+        return json.dumps({
+            "written": True,
+            "path": dest,
+            "browser_path": browser_path,
+            "summary": summarize_rack_adg(xml),
+        }, separators=(",", ":"))
+    except (ValueError, FileNotFoundError) as e:
+        return f"Error: {str(e)}"
+    except Exception as e:
+        logger.error(f"Error cloning rack: {str(e)}")
+        return f"Error cloning rack: {str(e)}"
 
 
 @mcp.tool()
