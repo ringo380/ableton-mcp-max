@@ -1,13 +1,17 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Preset-patch rack tools (task #5) COMPLETE + LIVE-VERIFIED. Phase A (v0.2.0:
-inspect_rack_preset, clone_rack, rename_rack_macros, set_rack_zones) shipped; Phase B macro→param
-mapping experiment cracked the `<KeyMidi>` encoding and `add_rack_macro_mappings` is built +
-live-verified on branch `feat/rack-macro-mappings` (offline 307/307; server imports; remote script
-unchanged). Phases 0–11 + Phase A all live-verified and merged. See "Preset-patch backdoor" section.
-**Next action (resume here):** ship `feat/rack-macro-mappings` as v0.3.0 (bump plugin.json, PR→squash
-merge, release, bump marketplace ableton ref + build-readme). gh login must be ringo380. Future: rack
-macro-mapping v2 (custom/inverted ranges; nested rack-in-rack params).
+**Current focus:** Preset-patch rack tools (task #5) SHIPPED. Phase A = v0.2.0 (inspect_rack_preset,
+clone_rack, rename_rack_macros, set_rack_zones); Phase B v1 = v0.3.0 (add_rack_macro_mappings via
+`<KeyMidi>` encoding). Both merged + released + marketplace ableton ref bumped; offline 307/307; all
+live-verified. Phases 0–11 also done. See "Preset-patch backdoor" section for full detail.
+**Next action (resume here): rack macro-mapping v2 — USER CONFIRMED wanted (2026-05-29).** Two features
+on a NEW branch off main (v0.3.0): (1) custom/inverted mapping RANGES — FIRST do a user-performed
+save-diff in Live (map a macro, drag its range to a custom sub-range + an inverted one, save vs a
+default baseline, diff) to confirm where the range is stored (hypothesis: the target param's
+`<MidiControllerRange>` Min/Max — v1 found it UNCHANGED for default maps), then add optional min/max to
+`add_rack_macro_mappings`; (2) nested rack-in-rack param addressing (extend `_locate_param` to descend
+into a rack device's branches). Code: `rack_preset_utils.py` + `add_rack_macro_mappings` in server.py +
+tests; model on the v1 plan/spec; ship as v0.4.0. gh login must be ringo380.
 
 ## Phases
 | Phase | Title | Status | Completed |
