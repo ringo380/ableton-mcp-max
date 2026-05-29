@@ -55,3 +55,65 @@ def test_rack_types_has_metadata():
     assert meta["device_folder"] == "Instrument Rack"
     assert meta["has_key_velocity"] is True
     assert RACK_TYPES["audio_effect"]["has_key_velocity"] is False
+
+
+# --- Task 2: depth-aware branch scanner + direct-child finders ---
+
+from ableton_mcp_max.rack_preset_utils import (
+    top_branches, read_chain_zone, chain_name,
+)
+
+# A sampler-style chain: a nested MultiSamplePart injects extra KeyRange/Velocity
+# that MUST be ignored; only the branch's direct-child zones count.
+SAMPLER_RACK = (
+    '<Ableton><GroupDevicePreset><Device><InstrumentGroupDevice>'
+    '<NumVisibleMacroControls Value="0" />'
+    '</InstrumentGroupDevice></Device><BranchPresets>'
+    '<InstrumentBranchPreset Id="0"><Name Value="" /><UserName Value="Lo" />'
+    '<BranchSelectorRange><Min Value="0" /><Max Value="0" /><CrossfadeMin Value="0" /><CrossfadeMax Value="0" /></BranchSelectorRange>'
+    '<KeyRange><Min Value="0" /><Max Value="59" /><CrossfadeMin Value="0" /><CrossfadeMax Value="59" /></KeyRange>'
+    '<VelocityRange><Min Value="1" /><Max Value="127" /><CrossfadeMin Value="1" /><CrossfadeMax Value="127" /></VelocityRange>'
+    '<DeviceChain><MultiSamplePart>'
+    '<KeyRange><Min Value="20" /><Max Value="40" /><CrossfadeMin Value="20" /><CrossfadeMax Value="40" /></KeyRange>'
+    '<VelocityRange><Min Value="1" /><Max Value="64" /><CrossfadeMin Value="1" /><CrossfadeMax Value="64" /></VelocityRange>'
+    '</MultiSamplePart></DeviceChain>'
+    '</InstrumentBranchPreset>'
+    '<InstrumentBranchPreset Id="1"><Name Value="" /><UserName Value="Hi" />'
+    '<BranchSelectorRange><Min Value="0" /><Max Value="0" /><CrossfadeMin Value="0" /><CrossfadeMax Value="0" /></BranchSelectorRange>'
+    '<KeyRange><Min Value="60" /><Max Value="127" /><CrossfadeMin Value="60" /><CrossfadeMax Value="127" /></KeyRange>'
+    '<VelocityRange><Min Value="1" /><Max Value="127" /><CrossfadeMin Value="1" /><CrossfadeMax Value="127" /></VelocityRange>'
+    '<DeviceChain></DeviceChain>'
+    '</InstrumentBranchPreset></BranchPresets>'
+    '</GroupDevicePreset></Ableton>'
+)
+
+
+def test_top_branches_counts_chains():
+    spans = top_branches(SAMPLER_RACK, "InstrumentBranchPreset")
+    assert len(spans) == 2
+
+
+def test_read_chain_zone_ignores_nested_multisample():
+    # chain 0's direct-child KeyRange is 0..59, NOT the nested 20..40.
+    z = read_chain_zone(SAMPLER_RACK, "InstrumentBranchPreset", 0, "KeyRange")
+    assert z == {"min": 0, "max": 59, "crossfade_min": 0, "crossfade_max": 59}
+
+
+def test_read_chain_zone_second_chain():
+    z = read_chain_zone(SAMPLER_RACK, "InstrumentBranchPreset", 1, "KeyRange")
+    assert z["min"] == 60 and z["max"] == 127
+
+
+def test_read_chain_zone_absent_returns_none():
+    # audio-effect chain has no KeyRange.
+    assert read_chain_zone(AUDIO_RACK, "AudioEffectBranchPreset", 0, "KeyRange") is None
+
+
+def test_chain_name_direct_child():
+    assert chain_name(SAMPLER_RACK, "InstrumentBranchPreset", 0) == "Lo"
+    assert chain_name(SAMPLER_RACK, "InstrumentBranchPreset", 1) == "Hi"
+
+
+def test_top_branches_out_of_range():
+    with pytest.raises(ValueError):
+        read_chain_zone(SAMPLER_RACK, "InstrumentBranchPreset", 9, "KeyRange")
