@@ -348,3 +348,178 @@ def test_real_audio_effect_rack_no_keyvel():
     s = summarize_rack_adg(xml)
     assert s["rack_type"] == "audio_effect"
     assert all(c["key_zone"] is None for c in s["chains"])
+
+
+# --- Task 1 (Phase B): depth-aware direct-child element scanner ---
+
+from ableton_mcp_max.rack_preset_utils import _child_elements, _find_child
+
+ELEM = (
+    '<Root>'
+    '<LomId Value="0" />'
+    '<A><Inner Value="1" /><Nested><A /></Nested></A>'
+    '<B Value="x" />'
+    '<A><Two Value="2" /></A>'
+    '</Root>'
+)
+
+def test_child_elements_direct_only():
+    kids = _child_elements(ELEM)
+    tags = [t for (t, s, e) in kids]
+    # direct children only: LomId, A, B, A — the <A/> nested inside <Nested> is NOT counted
+    assert tags == ["LomId", "A", "B", "A"]
+
+def test_child_elements_spans_roundtrip():
+    kids = _child_elements(ELEM)
+    # the first <A> span must include its full nested content
+    t, s, e = kids[1]
+    assert t == "A"
+    assert ELEM[s:e] == '<A><Inner Value="1" /><Nested><A /></Nested></A>'
+
+def test_child_elements_selfclosing_with_slashes_in_attr():
+    el = '<P><Path Value="a/b/c" /><Manual Value="1" /></P>'
+    assert [t for (t, s, e) in _child_elements(el)] == ["Path", "Manual"]
+
+def test_find_child_first_match():
+    span = _find_child(ELEM, "A")
+    assert span is not None and ELEM[span[0]:span[1]].startswith("<A><Inner")
+
+def test_find_child_absent():
+    assert _find_child(ELEM, "Nope") is None
+
+
+# --- Task 2 (Phase B): patch_macro_mappings ---
+
+from ableton_mcp_max.rack_preset_utils import patch_macro_mappings
+import re as _re
+
+# A minimal audio-effect rack with one chain, one device (StereoGain) with two params.
+MAP_RACK = (
+    '<Ableton><GroupDevicePreset><Device><AudioEffectGroupDevice>'
+    '<NumVisibleMacroControls Value="2" />'
+    '</AudioEffectGroupDevice></Device><BranchPresets>'
+    '<AudioEffectBranchPreset Id="0"><Name Value="" /><UserName Value="A" />'
+    '<DevicePresets>'
+    '<AbletonDevicePreset Id="0"><Device>'
+    '<StereoGain Id="0"><LomId Value="0" />'
+    '<Gain><LomId Value="0" /><Manual Value="1" /><MidiControllerRange><Min Value="0" /><Max Value="1" /></MidiControllerRange></Gain>'
+    '<Balance><LomId Value="0" /><Manual Value="0" /></Balance>'
+    '</StereoGain></Device></AbletonDevicePreset>'
+    '</DevicePresets>'
+    '<DeviceChain></DeviceChain>'
+    '</AudioEffectBranchPreset></BranchPresets>'
+    '</GroupDevicePreset></Ableton>'
+)
+
+def _gain_keymidi(xml):
+    g = _re.search(r'<Gain>.*?</Gain>', xml, _re.S).group(0)
+    m = _re.search(r'<KeyMidi>.*?</KeyMidi>', g, _re.S)
+    return m.group(0) if m else None
+
+def test_patch_mapping_injects_keymidi():
+    out = patch_macro_mappings(MAP_RACK, "audio_effect",
+                               [{"macro": 1, "chain": 0, "device": 0, "parameter": "Gain"}])
+    km = _gain_keymidi(out)
+    assert km is not None
+    assert '<Channel Value="16" />' in km
+    assert '<NoteOrController Value="0" />' in km   # Macro 1 -> index 0
+    assert '<ControllerMapMode Value="0" />' in km
+    # injected after the param's <LomId>, before <Manual>
+    g = _re.search(r'<Gain>.*?</Gain>', out, _re.S).group(0)
+    assert g.index('<KeyMidi>') < g.index('<Manual')
+    assert g.index('<LomId') < g.index('<KeyMidi>')
+
+def test_patch_mapping_macro_index_is_zero_based():
+    out = patch_macro_mappings(MAP_RACK, "audio_effect",
+                               [{"macro": 8, "chain": 0, "device": 0, "parameter": "Gain"}])
+    assert '<NoteOrController Value="7" />' in _gain_keymidi(out)
+
+def test_patch_mapping_idempotent_replace():
+    out = patch_macro_mappings(MAP_RACK, "audio_effect",
+                               [{"macro": 1, "chain": 0, "device": 0, "parameter": "Gain"}])
+    out2 = patch_macro_mappings(out, "audio_effect",
+                                [{"macro": 3, "chain": 0, "device": 0, "parameter": "Gain"}])
+    # exactly one KeyMidi on Gain, now pointing at macro index 2
+    g = _re.search(r'<Gain>.*?</Gain>', out2, _re.S).group(0)
+    assert g.count('<KeyMidi>') == 1
+    assert '<NoteOrController Value="2" />' in g
+
+def test_patch_mapping_many_to_one():
+    out = patch_macro_mappings(MAP_RACK, "audio_effect", [
+        {"macro": 1, "chain": 0, "device": 0, "parameter": "Gain"},
+        {"macro": 1, "chain": 0, "device": 0, "parameter": "Balance"},
+    ])
+    assert '<NoteOrController Value="0" />' in _gain_keymidi(out)
+    bal = _re.search(r'<Balance>.*?</Balance>', out, _re.S).group(0)
+    assert '<KeyMidi>' in bal and '<NoteOrController Value="0" />' in bal
+
+def test_patch_mapping_bad_parameter():
+    with pytest.raises(ValueError):
+        patch_macro_mappings(MAP_RACK, "audio_effect",
+                             [{"macro": 1, "chain": 0, "device": 0, "parameter": "Nope"}])
+
+def test_patch_mapping_bad_device_index():
+    with pytest.raises(ValueError):
+        patch_macro_mappings(MAP_RACK, "audio_effect",
+                             [{"macro": 1, "chain": 0, "device": 5, "parameter": "Gain"}])
+
+def test_patch_mapping_bad_macro_number():
+    with pytest.raises(ValueError):
+        patch_macro_mappings(MAP_RACK, "audio_effect",
+                             [{"macro": 17, "chain": 0, "device": 0, "parameter": "Gain"}])
+
+def test_patch_mapping_is_pure():
+    src = MAP_RACK
+    patch_macro_mappings(src, "audio_effect",
+                         [{"macro": 1, "chain": 0, "device": 0, "parameter": "Gain"}])
+    assert src == MAP_RACK
+
+
+# --- Task 3 (Phase B): real factory-file macro-mapping round-trip ---
+
+import re
+
+@pytest.mark.skipif(_factory_rack("Audio Effect Racks") is None,
+                    reason="Ableton Live factory racks not installed")
+def test_real_audio_rack_mapping_roundtrip():
+    # Use a factory audio-effect rack; map macro 2 onto the first param of its
+    # first device, then confirm the KeyMidi is present with the right index.
+    with gzip.open(_factory_rack("Audio Effect Racks"), "rt") as f:
+        xml = f.read()
+    # discover the first device's first parameter tag via the navigator
+    from ableton_mcp_max.rack_preset_utils import (
+        _branch_span, _find_child, _child_elements, RACK_TYPES, detect_rack_type,
+    )
+    btag = RACK_TYPES[detect_rack_type(xml)]["branch_tag"]
+    bs, be = _branch_span(xml, btag, 0)
+    branch = xml[bs:be]
+    dp = _find_child(branch, "DevicePresets")
+    devicepresets = branch[dp[0]:dp[1]]
+    adp = [s for s in _child_elements(devicepresets) if s[0] == "AbletonDevicePreset"][0]
+    adp_xml = devicepresets[adp[1]:adp[2]]
+    dev = _find_child(adp_xml, "Device")
+    device_el = adp_xml[dev[0]:dev[1]]
+    dtag, ds, de = _child_elements(device_el)[0]
+    # first real parameter child of the device element (has a <LomId> and <Manual>)
+    param_tag = None
+    inner = device_el[ds:de]
+    for t, s, e in _child_elements(inner):
+        block = inner[s:e]
+        if "<LomId" in block and "<Manual" in block:
+            param_tag = t
+            break
+    assert param_tag is not None
+
+    out = patch_macro_mappings(xml, detect_rack_type(xml),
+                               [{"macro": 2, "chain": 0, "device": 0, "parameter": param_tag}])
+    # exactly one new KeyMidi appeared vs the original count, with index 1
+    assert out.count("<KeyMidi>") == xml.count("<KeyMidi>") + 1
+    # find the param block that was actually patched (may not be the first occurrence
+    # — e.g. <On> appears in every device; search all and find the one with our sentinel)
+    blk = None
+    for m in re.finditer(r'<%s>.*?</%s>' % (param_tag, param_tag), out, re.S):
+        if '<Channel Value="16" />' in m.group(0):
+            blk = m.group(0)
+            break
+    assert blk is not None, "patched <%s> with KeyMidi not found" % param_tag
+    assert '<NoteOrController Value="1" />' in blk

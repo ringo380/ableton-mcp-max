@@ -315,6 +315,168 @@ def normalize_zone(value, label):
     return z
 
 
+# Matches one XML tag token: opening <Tag ...>, self-closing <Tag ... />, or close </Tag>.
+# Attribute values may contain '/', so selfclose is the trailing '/' immediately before '>'.
+_TAG_TOKEN = re.compile(r'<(/?)([A-Za-z0-9_.]+)((?:\s[^>]*?)?)(/?)>')
+
+
+def _child_elements(element_xml):
+    """Return [(tag, start, end), ...] for the DIRECT child elements of the single
+    element whose full text is `element_xml` (it starts with the element's own
+    opening tag and ends with its closing tag). Offsets are relative to
+    element_xml. Handles self-closing children and arbitrary nesting/tag names.
+
+    Assumes well-formed Ableton XML with no unencoded '>' inside attribute values
+    (Live encodes these as '&gt;'; same assumption as `_direct_child_match`).
+    """
+    spans = []
+    depth = 0
+    stack = []
+    seen_root = False
+    for m in _TAG_TOKEN.finditer(element_xml):
+        closing, tag, _attrs, selfclose = m.group(1), m.group(2), m.group(3), m.group(4)
+        if not seen_root:
+            # first token is the root element's own opening tag
+            seen_root = True
+            depth = 1
+            continue
+        if closing:
+            depth -= 1
+            if depth == 1:
+                st_tag, st_pos = stack.pop()
+                spans.append((st_tag, st_pos, m.end()))
+            elif depth == 0:
+                break  # root element closed
+        elif selfclose == "/":
+            if depth == 1:
+                spans.append((tag, m.start(), m.end()))
+        else:
+            if depth == 1:
+                stack.append((tag, m.start()))
+            depth += 1
+    return spans
+
+
+def _find_child(element_xml, tag):
+    """Return (start, end) of the first direct-child element named `tag`, or None."""
+    for t, s, e in _child_elements(element_xml):
+        if t == tag:
+            return (s, e)
+    return None
+
+
+_KEYMIDI_TEMPLATE = (
+    "<KeyMidi>"
+    '<PersistentKeyString Value="" />'
+    '<IsNote Value="false" />'
+    '<Channel Value="16" />'
+    '<NoteOrController Value="%d" />'
+    '<LowerRangeNote Value="-1" />'
+    '<UpperRangeNote Value="-1" />'
+    '<ControllerMapMode Value="0" />'
+    "</KeyMidi>"
+)
+
+
+def _locate_param(xml, branch_tag, chain_index, device_index, parameter):
+    """Return absolute (start, end) of the target parameter element, or raise
+    ValueError with a clear message. Navigates branch -> DevicePresets ->
+    Nth AbletonDevicePreset -> Device -> device element -> direct-child <parameter>.
+
+    The parameter is matched by the FIRST direct-child element with that tag name
+    (sufficient for real device params, which are unique).
+    """
+    bs, be = _branch_span(xml, branch_tag, chain_index)  # raises if chain bad
+    branch = xml[bs:be]
+
+    dp = _find_child(branch, "DevicePresets")
+    if not dp:
+        raise ValueError("chain %d has no <DevicePresets> (no devices)." % chain_index)
+    base_dp = bs + dp[0]
+    devicepresets = xml[base_dp:bs + dp[1]]
+
+    devs = [(s, e) for (t, s, e) in _child_elements(devicepresets)
+            if t == "AbletonDevicePreset"]
+    if device_index < 0 or device_index >= len(devs):
+        raise ValueError(
+            "device index %d out of range (chain %d has %d device(s))."
+            % (device_index, chain_index, len(devs)))
+    ds, de = devs[device_index]
+    base_adp = base_dp + ds
+    adp = xml[base_adp:base_dp + de]
+
+    dev = _find_child(adp, "Device")
+    if not dev:
+        raise ValueError("device %d has no <Device> wrapper." % device_index)
+    base_dev = base_adp + dev[0]
+    device_block = xml[base_dev:base_adp + dev[1]]
+
+    devkids = _child_elements(device_block)
+    if not devkids:
+        raise ValueError("device %d <Device> has no device element." % device_index)
+    dtag, des, dee = devkids[0]
+    base_el = base_dev + des
+    device_el = xml[base_el:base_dev + dee]
+
+    p = _find_child(device_el, parameter)
+    if not p:
+        avail = sorted({t for (t, s, e) in _child_elements(device_el)})
+        raise ValueError(
+            "parameter <%s> not found as a direct child of device <%s> "
+            "(chain %d, device %d). Available: %s"
+            % (parameter, dtag, chain_index, device_index, ", ".join(avail)))
+    return base_el + p[0], base_el + p[1]
+
+
+def _inject_keymidi(param_el, macro_index):
+    """Return param_el with a <KeyMidi> mapping for `macro_index` (0-based).
+
+    Idempotent: if a <KeyMidi> already exists, replace its NoteOrController;
+    otherwise insert after the param's first <LomId .../> (or after the opening
+    tag if it has none).
+    """
+    if "<KeyMidi>" in param_el:
+        return re.sub(
+            r'(<KeyMidi>.*?<NoteOrController Value=")[^"]*(".*?</KeyMidi>)',
+            lambda m: m.group(1) + str(macro_index) + m.group(2),
+            param_el, count=1, flags=re.S)
+    block = _KEYMIDI_TEMPLATE % macro_index
+    lom = re.search(r'<LomId Value="[^"]*" />', param_el)
+    if lom:
+        return param_el[:lom.end()] + block + param_el[lom.end():]
+    ot = re.match(r'<[A-Za-z0-9_.]+(?:\s[^>]*?)?>', param_el)
+    if not ot:
+        raise ValueError("malformed parameter element; cannot inject mapping.")
+    return param_el[:ot.end()] + block + param_el[ot.end():]
+
+
+def patch_macro_mappings(xml, rack_type, mappings):
+    """Add macro->parameter mappings to a rack .adg XML. Pure: returns new XML.
+
+    `mappings`: list of {macro (1-based), chain (0-based), device (0-based),
+    parameter (XML tag name of the param within the device, e.g. 'Gain')}.
+    Default full-range mappings (no min/max). Many params may share a macro.
+    Re-mapping a param replaces its existing mapping.
+    """
+    btag = RACK_TYPES[rack_type]["branch_tag"]
+    out = xml
+    for mp in mappings:
+        if not isinstance(mp, dict):
+            raise ValueError("each mapping must be an object.")
+        macro_index = _check_macro_number(mp.get("macro"))  # 0-based, validates 1..16
+        for key in ("chain", "device"):
+            if mp.get(key) is None:
+                raise ValueError("mapping requires '%s' (an integer index)." % key)
+        chain = int(mp["chain"])
+        device = int(mp["device"])
+        parameter = str(mp.get("parameter", "")).strip()
+        if not parameter:
+            raise ValueError("mapping requires a 'parameter' tag name.")
+        ps, pe = _locate_param(out, btag, chain, device, parameter)
+        out = out[:ps] + _inject_keymidi(out[ps:pe], macro_index) + out[pe:]
+    return out
+
+
 def patch_chain_zone(xml, rack_type, chain_index, zone_key, value):
     """Patch chain `chain_index`'s `zone_key` ('key'|'velocity'|'chain_selector').
 

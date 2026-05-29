@@ -1,12 +1,13 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Preset-patch rack tools (task #5) Phase A LIVE-VERIFIED 2026-05-29 on branch
-`feat/preset-patch-backdoor` (see "Preset-patch backdoor" section below). 4 new tools
-(inspect_rack_preset, clone_rack, rename_rack_macros, set_rack_zones) + rack_preset_utils.py.
-Offline suite 293/293; server imports; remote script unchanged (no Live bounce needed).
-Phases 0–11 all live-verified and committed/merged.
-**Next action (resume here):** finish the `feat/preset-patch-backdoor` branch (merge/PR), then
-run the GATED Phase B macro-mapping save-diff experiment (plan Task 11). gh login must be ringo380.
+**Current focus:** Preset-patch rack tools (task #5) COMPLETE + LIVE-VERIFIED. Phase A (v0.2.0:
+inspect_rack_preset, clone_rack, rename_rack_macros, set_rack_zones) shipped; Phase B macro→param
+mapping experiment cracked the `<KeyMidi>` encoding and `add_rack_macro_mappings` is built +
+live-verified on branch `feat/rack-macro-mappings` (offline 307/307; server imports; remote script
+unchanged). Phases 0–11 + Phase A all live-verified and merged. See "Preset-patch backdoor" section.
+**Next action (resume here):** ship `feat/rack-macro-mappings` as v0.3.0 (bump plugin.json, PR→squash
+merge, release, bump marketplace ableton ref + build-readme). gh login must be ringo380. Future: rack
+macro-mapping v2 (custom/inverted ranges; nested rack-in-rack params).
 
 ## Phases
 | Phase | Title | Status | Completed |
@@ -537,6 +538,22 @@ Shared pure core: `ableton_mcp_max/preset_patch.py` (set_attr/set_manual/scope/g
     macros like "Master EQ"/"Master Comp") → correctly detected as `instrument`. A bare top-level
     DrumGroupDevice (only from saving a raw Drum Rack) detects as `drum`; its DrumBranchPreset pads
     carry direct-child key/vel zones (probe-confirmed), so `has_key_velocity=True` is correct.
-  - **Phase B (macro→parameter MAPPINGS): GATED, not built.** All `.adg` AutomationTarget Ids
-    serialize to 0 with no mapping registry → encoding not statically recoverable. Next: plan Task 11
-    save-diff experiment (user maps Macro→param in Live, save mapped+unmapped, diff) → go/no-go.
+  - **Phase B (macro→parameter MAPPINGS): save-diff experiment DONE 2026-05-29 → GO (cleanly patchable).**
+    Encoding cracked: a mapping is a self-contained `<KeyMidi>` block injected into the TARGET PARAMETER
+    (after its `<LomId>`), with `Channel=16` (macro sentinel), `IsNote=false`, `ControllerMapMode=0`,
+    `Lower/UpperRangeNote=-1`, and **`NoteOrController` = the 0-based macro index** (Macro 1→0). NO ids
+    (all AutomationTarget/ModulationTarget stay 0; factory non-zero ids are MacroSnapshots/preset-refs,
+    unrelated). Confirmed: test Macro1→Gain gave NoteOrController=0; factory "Basic Bass Amp" — all 16
+    mapped params carry Channel=16 KeyMidi w/ NoteOrController=macro index; many params can share a macro.
+    Default full-range mapping needs NO range edit (param's MidiControllerRange unchanged). Custom/inverted
+    ranges = deferred v2 (storage unconfirmed). See spec Section 3 "FINDINGS".
+  - **`add_rack_macro_mappings` (Phase B v1): LIVE-VERIFIED 2026-05-29.** Tool + `patch_macro_mappings`
+    in `rack_preset_utils.py` (depth-aware `_child_elements` scanner navigates branch→DevicePresets→
+    AbletonDevicePreset→Device→device-element→param; injects KeyMidi after `<LomId>`; idempotent replace;
+    many-to-one; bad chain/device/param rejected with available-tag listing). Plan:
+    `docs/superpowers/plans/2026-05-29-rack-macro-mappings.md`. Offline 307/307.
+    Live: cloned "Basic Bass Amp"→MCP MapVerify, mapped Macro 16→chain0/device0(Gate)/Attack via the util,
+    loaded onto a scratch track → Live PARSED it cleanly AND `get_rack_macros` showed macro 16 auto-renamed
+    "Attack" (Live auto-labels a single-mapped unnamed macro with its target = proof the mapping bound).
+    Scratch track + preset cleaned up. Addresses params that are DIRECT children of a (non-rack) device;
+    nested rack-in-rack params + custom ranges = future. Shipped as plugin v0.3.0.

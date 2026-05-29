@@ -213,28 +213,81 @@ referencing that id, plus a min/max range pair. The experiment determines whethe
 be globally unique within the file, how the device-parameter side is addressed, and whether
 chain/device traversal order matters.
 
-### Go / no-go gate (three branches)
+### FINDINGS (experiment run 2026-05-29) — encoding cracked
 
-- **Cleanly patchable** — mapping is a self-contained, well-structured XML insertion with
-  predictable ids → build `add_rack_macro_mappings` as specced below.
-- **Fragile** — encoding works but is brittle (id collisions, order-dependent, easy to
-  corrupt the preset) → ship a *narrower* version (e.g. single-device, single-chain only)
-  with loud caveats, or defer.
-- **Infeasible** — encoding can't be reliably synthesized server-side → do NOT build the
-  write tool; document the limitation and stop at Phase A. (Phase A still delivers real
-  value: named/colored macros + zones on cloned racks.)
+The expected id-based encoding was **wrong**. The real encoding is far simpler and there are
+**no ids involved at all** (every `AutomationTarget`/`ModulationTarget Id` stays `0`, in both
+the test rack and factory racks — the only non-zero ids in factory racks are `MacroSnapshot`
+and preset-ref bookkeeping, unrelated to mappings).
 
-### Tentative `add_rack_macro_mappings(name, mappings)` (pending gate)
+A macro→parameter mapping is a **self-contained `<KeyMidi>` block injected into the target
+parameter element** (right after its `<LomId>`, before `<Manual>`):
+
+```xml
+<KeyMidi>
+  <PersistentKeyString Value="" />
+  <IsNote Value="false" />
+  <Channel Value="16" />            <!-- constant: the macro sentinel (real MIDI ch = 0..15) -->
+  <NoteOrController Value="N" />     <!-- THE macro index, 0-based: Macro 1 => 0, Macro 8 => 7 -->
+  <LowerRangeNote Value="-1" />
+  <UpperRangeNote Value="-1" />
+  <ControllerMapMode Value="0" />
+</KeyMidi>
+```
+
+Evidence: mapping **Macro 1 → Utility Gain** added exactly this block to `<Gain>` with
+`NoteOrController=0`. Factory "Basic Bass Amp" (12 macros) corroborates: all 16 of its mapped
+params carry `Channel=16` `KeyMidi` blocks whose `NoteOrController` is the controlling macro
+index (Bass→1, Middle→2, Treble→3, Presence→4, Volume→5, Gain→6/7, MicPos→8, MicType→9, …),
+and **multiple params can share one macro** (several params on index 11 = one "Drive" macro).
+
+Key properties that make this clean:
+- No id management, no registry, no cross-reference — the block is fully local to the param.
+- The macro is identified purely by **0-based index** in `NoteOrController`.
+- Many-to-one (one macro → several params) = repeat the block on each param with the same index.
+- **Default (full-range) mapping needs no range edit** — the param's existing
+  `<MidiControllerRange>` is its intrinsic range, unchanged by mapping (confirmed: identical
+  in mapped vs unmapped). The macro's `<Manual>` value updates to reflect the target, but that
+  is a value, not structural, and is not required for the mapping to function on load.
+
+**Unknowns deferred to a v2** (not needed for a useful v1):
+- **Custom / inverted mapping ranges** (macro sweeps a param sub-range) — not exercised; the
+  test used Live's default full-range map. Where a custom range is stored is still unconfirmed.
+- Whether `ControllerMapMode` ever varies (always `0` in all observed data).
+
+### Go / no-go gate — DECISION: **GO (cleanly patchable)**
+
+The encoding is a self-contained, id-free, index-addressed XML insertion — the
+"cleanly patchable" branch. Build `add_rack_macro_mappings` (v1 = default full-range mappings;
+custom ranges deferred to v2 pending a follow-up diff).
+
+(For the record, the other two branches — *fragile* and *infeasible* — do not apply: there is
+no id collision risk and the synthesis is deterministic.)
+
+### `add_rack_macro_mappings(name, mappings)` (v1 — confirmed encoding)
 
 - `mappings`: list of
   ```json
-  {"macro": 1, "chain": 0, "device": 0, "parameter": "Gain", "min": 0.0, "max": 1.0}
+  {"macro": 1, "chain": 0, "device": 0, "parameter": "Gain"}
   ```
-  - `macro` 1-based, `chain` 0-based, `device` = device index within the chain (0-based),
-    `parameter` = parameter name (resolved/validated against the device's parameters),
-    `min`/`max` = mapped range in the parameter's own units.
+  - `macro` 1-based (→ stored as `NoteOrController = macro - 1`),
+  - `chain` 0-based (resolve via the depth-aware branch scanner from Phase A),
+  - `device` = device index within the chain's `<DeviceChain>` (0-based),
+  - `parameter` = the parameter's XML tag name (e.g. `Gain`, `Volume`) within that device.
+- **No `min`/`max` in v1** — mappings are default full-range (the param's intrinsic
+  `<MidiControllerRange>` is untouched). Custom/inverted ranges are a v2 once their storage is
+  confirmed by a follow-up diff.
+- Implementation: for each mapping, locate chain → device → the parameter element, then inject
+  the `<KeyMidi>` block (Section 3 Findings) right after that param's `<LomId>`, with
+  `NoteOrController = macro - 1`. Idempotency: if the param already has a `<KeyMidi>`, replace
+  its `NoteOrController` rather than inserting a duplicate.
+- Validation: macro 1–16; chain in range; device in range; parameter tag must exist in the
+  device (else clear error). Many-to-one allowed (same macro on several params).
 - Patches the named working preset in place; returns `{written, path, mappings: [...]}`.
-- Exact field set + validation finalized after the experiment.
+- Pure helper `patch_macro_mappings(xml, rack_type, mappings)` in `rack_preset_utils.py`,
+  unit-tested offline (inject → re-find KeyMidi → assert `Channel=16`, `NoteOrController=N-1`;
+  many-to-one; idempotent replace; bad param/chain/device rejection). Live-verify by loading a
+  patched rack and confirming the macro audibly/visibly drives the param in Live.
 
 ---
 
