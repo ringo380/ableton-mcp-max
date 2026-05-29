@@ -216,3 +216,54 @@ def summarize_rack_adg(xml):
         "macros": macros,
         "chains": chains,
     }
+
+
+def _xml_escape(s):
+    return (str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+
+def _set_macro_field(xml, prefix, index, value):
+    """Replace Value on <prefix.N Value="..."/>; raise if that macro slot absent."""
+    pattern = r'(<%s\.%d Value=")[^"]*("\s*/>)' % (re.escape(prefix), index)
+    new, n = re.subn(pattern, lambda m: m.group(1) + str(value) + m.group(2), xml)
+    if n == 0:
+        raise ValueError("macro slot <%s.%d> not found in preset." % (prefix, index))
+    return new
+
+
+def _check_macro_number(num):
+    if isinstance(num, bool) or not isinstance(num, int):
+        raise ValueError("macro number must be an int 1..16, got %r." % (num,))
+    if not (1 <= num <= 16):
+        raise ValueError("macro number %d out of range 1..16." % num)
+    return num - 1  # -> 0-based XML index
+
+
+def patch_macros(xml, names=None, colors=None, defaults=None):
+    """Patch macro display names / colors / defaults in a rack .adg XML.
+
+    names/colors/defaults are dicts keyed by 1-based macro number. Only listed
+    macros change. Names are XML-escaped; a literal double-quote is rejected.
+    Colors are ints >= 0; defaults are floats 0..127. Pure: returns new XML.
+    """
+    out = xml
+    for num, name in (names or {}).items():
+        idx = _check_macro_number(num)
+        text = str(name)
+        if '"' in text:
+            raise ValueError("macro %d name must not contain a double-quote." % num)
+        out = _set_macro_field(out, "MacroDisplayNames", idx, _xml_escape(text))
+    for num, color in (colors or {}).items():
+        idx = _check_macro_number(num)
+        c = validate_int_range(color, 0, 70, "macro %d color" % num)
+        out = _set_macro_field(out, "MacroColor", idx, c)
+    for num, dflt in (defaults or {}).items():
+        idx = _check_macro_number(num)
+        try:
+            f = float(dflt)
+        except (TypeError, ValueError):
+            raise ValueError("macro %d default must be a number 0..127." % num)
+        if not (0.0 <= f <= 127.0):
+            raise ValueError("macro %d default %s out of range 0..127." % (num, f))
+        out = _set_macro_field(out, "MacroDefaults", idx, f)
+    return out

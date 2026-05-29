@@ -149,3 +149,52 @@ def test_summarize_audio_effect_null_keyvel():
     assert c["key_zone"] is None
     assert c["velocity_zone"] is None
     assert c["chain_selector_zone"]["min"] == 0
+
+
+# --- Task 4: macro patchers ---
+
+from ableton_mcp_max.rack_preset_utils import patch_macros
+
+
+def test_patch_macro_names():
+    out = patch_macros(INSTR_RACK, names={1: "Brightness", 2: "Resonance"})
+    s = summarize_rack_adg(out)
+    assert s["macros"][0]["name"] == "Brightness"
+    assert s["macros"][1]["name"] == "Resonance"
+
+
+def test_patch_macro_names_xml_escaped():
+    out = patch_macros(INSTR_RACK, names={1: "Low & High"})
+    assert '<MacroDisplayNames.0 Value="Low &amp; High" />' in out
+    assert summarize_rack_adg(out)["macros"][0]["name"] == "Low & High"
+
+
+def test_patch_macro_colors_and_defaults():
+    out = patch_macros(INSTR_RACK, colors={1: 5}, defaults={2: 100.0})
+    s = summarize_rack_adg(out)
+    assert s["macros"][0]["color"] == 5
+    assert s["macros"][1]["default"] == 100.0
+
+
+def test_patch_macro_only_listed_changed():
+    out = patch_macros(INSTR_RACK, names={2: "Reso2"})
+    s = summarize_rack_adg(out)
+    assert s["macros"][0]["name"] == "Cutoff"  # macro 1 untouched
+    assert s["macros"][1]["name"] == "Reso2"
+
+
+def test_patch_macro_rejects_quote_in_name():
+    with pytest.raises(ValueError):
+        patch_macros(INSTR_RACK, names={1: 'bad" />'})
+
+
+@pytest.mark.parametrize("bad", [0, 17, -1])
+def test_patch_macro_rejects_out_of_range_number(bad):
+    with pytest.raises(ValueError):
+        patch_macros(INSTR_RACK, names={bad: "x"})
+
+
+def test_patch_macro_is_pure():
+    src = INSTR_RACK
+    patch_macros(src, names={1: "Z"})
+    assert src == INSTR_RACK
