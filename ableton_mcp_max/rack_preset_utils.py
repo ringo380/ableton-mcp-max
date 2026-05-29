@@ -315,6 +315,53 @@ def normalize_zone(value, label):
     return z
 
 
+# Matches one XML tag token: opening <Tag ...>, self-closing <Tag ... />, or close </Tag>.
+# Attribute values may contain '/', so selfclose is the trailing '/' immediately before '>'.
+_TAG_TOKEN = re.compile(r'<(/?)([A-Za-z0-9_.]+)((?:\s[^>]*?)?)(/?)>')
+
+
+def _child_elements(element_xml):
+    """Return [(tag, start, end), ...] for the DIRECT child elements of the single
+    element whose full text is `element_xml` (it starts with the element's own
+    opening tag and ends with its closing tag). Offsets are relative to
+    element_xml. Handles self-closing children and arbitrary nesting/tag names.
+    """
+    spans = []
+    depth = 0
+    stack = []
+    seen_root = False
+    for m in _TAG_TOKEN.finditer(element_xml):
+        closing, tag, _attrs, selfclose = m.group(1), m.group(2), m.group(3), m.group(4)
+        if not seen_root:
+            # first token is the root element's own opening tag
+            seen_root = True
+            depth = 1
+            continue
+        if closing:
+            depth -= 1
+            if depth == 1:
+                st_tag, st_pos = stack.pop()
+                spans.append((st_tag, st_pos, m.end()))
+            elif depth == 0:
+                break  # root element closed
+        elif selfclose == "/":
+            if depth == 1:
+                spans.append((tag, m.start(), m.end()))
+        else:
+            if depth == 1:
+                stack.append((tag, m.start()))
+            depth += 1
+    return spans
+
+
+def _find_child(element_xml, tag):
+    """Return (start, end) of the first direct-child element named `tag`, or None."""
+    for t, s, e in _child_elements(element_xml):
+        if t == tag:
+            return (s, e)
+    return None
+
+
 def patch_chain_zone(xml, rack_type, chain_index, zone_key, value):
     """Patch chain `chain_index`'s `zone_key` ('key'|'velocity'|'chain_selector').
 

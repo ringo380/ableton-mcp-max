@@ -348,3 +348,41 @@ def test_real_audio_effect_rack_no_keyvel():
     s = summarize_rack_adg(xml)
     assert s["rack_type"] == "audio_effect"
     assert all(c["key_zone"] is None for c in s["chains"])
+
+
+# --- Task 1 (Phase B): depth-aware direct-child element scanner ---
+
+from ableton_mcp_max.rack_preset_utils import _child_elements, _find_child
+
+ELEM = (
+    '<Root>'
+    '<LomId Value="0" />'
+    '<A><Inner Value="1" /><Nested><A /></Nested></A>'
+    '<B Value="x" />'
+    '<A><Two Value="2" /></A>'
+    '</Root>'
+)
+
+def test_child_elements_direct_only():
+    kids = _child_elements(ELEM)
+    tags = [t for (t, s, e) in kids]
+    # direct children only: LomId, A, B, A — the <A/> nested inside <Nested> is NOT counted
+    assert tags == ["LomId", "A", "B", "A"]
+
+def test_child_elements_spans_roundtrip():
+    kids = _child_elements(ELEM)
+    # the first <A> span must include its full nested content
+    t, s, e = kids[1]
+    assert t == "A"
+    assert ELEM[s:e] == '<A><Inner Value="1" /><Nested><A /></Nested></A>'
+
+def test_child_elements_selfclosing_with_slashes_in_attr():
+    el = '<P><Path Value="a/b/c" /><Manual Value="1" /></P>'
+    assert [t for (t, s, e) in _child_elements(el)] == ["Path", "Manual"]
+
+def test_find_child_first_match():
+    span = _find_child(ELEM, "A")
+    assert span is not None and ELEM[span[0]:span[1]].startswith("<A><Inner")
+
+def test_find_child_absent():
+    assert _find_child(ELEM, "Nope") is None
