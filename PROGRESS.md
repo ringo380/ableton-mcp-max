@@ -537,6 +537,13 @@ Shared pure core: `ableton_mcp_max/preset_patch.py` (set_attr/set_manual/scope/g
     macros like "Master EQ"/"Master Comp") → correctly detected as `instrument`. A bare top-level
     DrumGroupDevice (only from saving a raw Drum Rack) detects as `drum`; its DrumBranchPreset pads
     carry direct-child key/vel zones (probe-confirmed), so `has_key_velocity=True` is correct.
-  - **Phase B (macro→parameter MAPPINGS): GATED, not built.** All `.adg` AutomationTarget Ids
-    serialize to 0 with no mapping registry → encoding not statically recoverable. Next: plan Task 11
-    save-diff experiment (user maps Macro→param in Live, save mapped+unmapped, diff) → go/no-go.
+  - **Phase B (macro→parameter MAPPINGS): save-diff experiment DONE 2026-05-29 → GO (cleanly patchable).**
+    Encoding cracked: a mapping is a self-contained `<KeyMidi>` block injected into the TARGET PARAMETER
+    (after its `<LomId>`), with `Channel=16` (macro sentinel), `IsNote=false`, `ControllerMapMode=0`,
+    `Lower/UpperRangeNote=-1`, and **`NoteOrController` = the 0-based macro index** (Macro 1→0). NO ids
+    (all AutomationTarget/ModulationTarget stay 0; factory non-zero ids are MacroSnapshots/preset-refs,
+    unrelated). Confirmed: test Macro1→Gain gave NoteOrController=0; factory "Basic Bass Amp" — all 16
+    mapped params carry Channel=16 KeyMidi w/ NoteOrController=macro index; many params can share a macro.
+    Default full-range mapping needs NO range edit (param's MidiControllerRange unchanged). Custom/inverted
+    ranges = deferred v2 (storage unconfirmed). Next: build `add_rack_macro_mappings` (v1) — see spec
+    Section 3 "FINDINGS" + the `add_rack_macro_mappings` def.
