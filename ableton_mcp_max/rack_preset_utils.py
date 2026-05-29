@@ -325,6 +325,9 @@ def _child_elements(element_xml):
     element whose full text is `element_xml` (it starts with the element's own
     opening tag and ends with its closing tag). Offsets are relative to
     element_xml. Handles self-closing children and arbitrary nesting/tag names.
+
+    Assumes well-formed Ableton XML with no unencoded '>' inside attribute values
+    (Live encodes these as '&gt;'; same assumption as `_direct_child_match`).
     """
     spans = []
     depth = 0
@@ -379,6 +382,9 @@ def _locate_param(xml, branch_tag, chain_index, device_index, parameter):
     """Return absolute (start, end) of the target parameter element, or raise
     ValueError with a clear message. Navigates branch -> DevicePresets ->
     Nth AbletonDevicePreset -> Device -> device element -> direct-child <parameter>.
+
+    The parameter is matched by the FIRST direct-child element with that tag name
+    (sufficient for real device params, which are unique).
     """
     bs, be = _branch_span(xml, branch_tag, chain_index)  # raises if chain bad
     branch = xml[bs:be]
@@ -458,8 +464,11 @@ def patch_macro_mappings(xml, rack_type, mappings):
         if not isinstance(mp, dict):
             raise ValueError("each mapping must be an object.")
         macro_index = _check_macro_number(mp.get("macro"))  # 0-based, validates 1..16
-        chain = int(mp.get("chain"))
-        device = int(mp.get("device"))
+        for key in ("chain", "device"):
+            if mp.get(key) is None:
+                raise ValueError("mapping requires '%s' (an integer index)." % key)
+        chain = int(mp["chain"])
+        device = int(mp["device"])
         parameter = str(mp.get("parameter", "")).strip()
         if not parameter:
             raise ValueError("mapping requires a 'parameter' tag name.")
