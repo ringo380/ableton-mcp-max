@@ -473,3 +473,53 @@ def test_patch_mapping_is_pure():
     patch_macro_mappings(src, "audio_effect",
                          [{"macro": 1, "chain": 0, "device": 0, "parameter": "Gain"}])
     assert src == MAP_RACK
+
+
+# --- Task 3 (Phase B): real factory-file macro-mapping round-trip ---
+
+import re
+
+@pytest.mark.skipif(_factory_rack("Audio Effect Racks") is None,
+                    reason="Ableton Live factory racks not installed")
+def test_real_audio_rack_mapping_roundtrip():
+    # Use a factory audio-effect rack; map macro 2 onto the first param of its
+    # first device, then confirm the KeyMidi is present with the right index.
+    with gzip.open(_factory_rack("Audio Effect Racks"), "rt") as f:
+        xml = f.read()
+    # discover the first device's first parameter tag via the navigator
+    from ableton_mcp_max.rack_preset_utils import (
+        _branch_span, _find_child, _child_elements, RACK_TYPES, detect_rack_type,
+    )
+    btag = RACK_TYPES[detect_rack_type(xml)]["branch_tag"]
+    bs, be = _branch_span(xml, btag, 0)
+    branch = xml[bs:be]
+    dp = _find_child(branch, "DevicePresets")
+    devicepresets = branch[dp[0]:dp[1]]
+    adp = [s for s in _child_elements(devicepresets) if s[0] == "AbletonDevicePreset"][0]
+    adp_xml = devicepresets[adp[1]:adp[2]]
+    dev = _find_child(adp_xml, "Device")
+    device_el = adp_xml[dev[0]:dev[1]]
+    dtag, ds, de = _child_elements(device_el)[0]
+    # first real parameter child of the device element (has a <LomId> and <Manual>)
+    param_tag = None
+    inner = device_el[ds:de]
+    for t, s, e in _child_elements(inner):
+        block = inner[s:e]
+        if "<LomId" in block and "<Manual" in block:
+            param_tag = t
+            break
+    assert param_tag is not None
+
+    out = patch_macro_mappings(xml, detect_rack_type(xml),
+                               [{"macro": 2, "chain": 0, "device": 0, "parameter": param_tag}])
+    # exactly one new KeyMidi appeared vs the original count, with index 1
+    assert out.count("<KeyMidi>") == xml.count("<KeyMidi>") + 1
+    # find the param block that was actually patched (may not be the first occurrence
+    # — e.g. <On> appears in every device; search all and find the one with our sentinel)
+    blk = None
+    for m in re.finditer(r'<%s>.*?</%s>' % (param_tag, param_tag), out, re.S):
+        if '<Channel Value="16" />' in m.group(0):
+            blk = m.group(0)
+            break
+    assert blk is not None, "patched <%s> with KeyMidi not found" % param_tag
+    assert '<NoteOrController Value="1" />' in blk
