@@ -386,3 +386,90 @@ def test_find_child_first_match():
 
 def test_find_child_absent():
     assert _find_child(ELEM, "Nope") is None
+
+
+# --- Task 2 (Phase B): patch_macro_mappings ---
+
+from ableton_mcp_max.rack_preset_utils import patch_macro_mappings
+import re as _re
+
+# A minimal audio-effect rack with one chain, one device (StereoGain) with two params.
+MAP_RACK = (
+    '<Ableton><GroupDevicePreset><Device><AudioEffectGroupDevice>'
+    '<NumVisibleMacroControls Value="2" />'
+    '</AudioEffectGroupDevice></Device><BranchPresets>'
+    '<AudioEffectBranchPreset Id="0"><Name Value="" /><UserName Value="A" />'
+    '<DevicePresets>'
+    '<AbletonDevicePreset Id="0"><Device>'
+    '<StereoGain Id="0"><LomId Value="0" />'
+    '<Gain><LomId Value="0" /><Manual Value="1" /><MidiControllerRange><Min Value="0" /><Max Value="1" /></MidiControllerRange></Gain>'
+    '<Balance><LomId Value="0" /><Manual Value="0" /></Balance>'
+    '</StereoGain></Device></AbletonDevicePreset>'
+    '</DevicePresets>'
+    '<DeviceChain></DeviceChain>'
+    '</AudioEffectBranchPreset></BranchPresets>'
+    '</GroupDevicePreset></Ableton>'
+)
+
+def _gain_keymidi(xml):
+    g = _re.search(r'<Gain>.*?</Gain>', xml, _re.S).group(0)
+    m = _re.search(r'<KeyMidi>.*?</KeyMidi>', g, _re.S)
+    return m.group(0) if m else None
+
+def test_patch_mapping_injects_keymidi():
+    out = patch_macro_mappings(MAP_RACK, "audio_effect",
+                               [{"macro": 1, "chain": 0, "device": 0, "parameter": "Gain"}])
+    km = _gain_keymidi(out)
+    assert km is not None
+    assert '<Channel Value="16" />' in km
+    assert '<NoteOrController Value="0" />' in km   # Macro 1 -> index 0
+    assert '<ControllerMapMode Value="0" />' in km
+    # injected after the param's <LomId>, before <Manual>
+    g = _re.search(r'<Gain>.*?</Gain>', out, _re.S).group(0)
+    assert g.index('<KeyMidi>') < g.index('<Manual')
+    assert g.index('<LomId') < g.index('<KeyMidi>')
+
+def test_patch_mapping_macro_index_is_zero_based():
+    out = patch_macro_mappings(MAP_RACK, "audio_effect",
+                               [{"macro": 8, "chain": 0, "device": 0, "parameter": "Gain"}])
+    assert '<NoteOrController Value="7" />' in _gain_keymidi(out)
+
+def test_patch_mapping_idempotent_replace():
+    out = patch_macro_mappings(MAP_RACK, "audio_effect",
+                               [{"macro": 1, "chain": 0, "device": 0, "parameter": "Gain"}])
+    out2 = patch_macro_mappings(out, "audio_effect",
+                                [{"macro": 3, "chain": 0, "device": 0, "parameter": "Gain"}])
+    # exactly one KeyMidi on Gain, now pointing at macro index 2
+    g = _re.search(r'<Gain>.*?</Gain>', out2, _re.S).group(0)
+    assert g.count('<KeyMidi>') == 1
+    assert '<NoteOrController Value="2" />' in g
+
+def test_patch_mapping_many_to_one():
+    out = patch_macro_mappings(MAP_RACK, "audio_effect", [
+        {"macro": 1, "chain": 0, "device": 0, "parameter": "Gain"},
+        {"macro": 1, "chain": 0, "device": 0, "parameter": "Balance"},
+    ])
+    assert '<NoteOrController Value="0" />' in _gain_keymidi(out)
+    bal = _re.search(r'<Balance>.*?</Balance>', out, _re.S).group(0)
+    assert '<KeyMidi>' in bal and '<NoteOrController Value="0" />' in bal
+
+def test_patch_mapping_bad_parameter():
+    with pytest.raises(ValueError):
+        patch_macro_mappings(MAP_RACK, "audio_effect",
+                             [{"macro": 1, "chain": 0, "device": 0, "parameter": "Nope"}])
+
+def test_patch_mapping_bad_device_index():
+    with pytest.raises(ValueError):
+        patch_macro_mappings(MAP_RACK, "audio_effect",
+                             [{"macro": 1, "chain": 0, "device": 5, "parameter": "Gain"}])
+
+def test_patch_mapping_bad_macro_number():
+    with pytest.raises(ValueError):
+        patch_macro_mappings(MAP_RACK, "audio_effect",
+                             [{"macro": 17, "chain": 0, "device": 0, "parameter": "Gain"}])
+
+def test_patch_mapping_is_pure():
+    src = MAP_RACK
+    patch_macro_mappings(src, "audio_effect",
+                         [{"macro": 1, "chain": 0, "device": 0, "parameter": "Gain"}])
+    assert src == MAP_RACK
