@@ -2900,6 +2900,112 @@ def clone_rack(ctx: Context, template: str, name: str) -> str:
         return f"Error cloning rack: {str(e)}"
 
 
+def _user_rack_category(name):
+    """Find which rack device-folder a User Library rack <name>.adg lives in.
+
+    Returns (category, device_folder, xml). Raises FileNotFoundError if absent.
+    """
+    for kind, meta in RACK_TYPES.items():
+        try:
+            xml, _path = _read_user_preset(
+                meta["category"], meta["device_folder"], name, ext="adg")
+            return meta["category"], meta["device_folder"], xml
+        except FileNotFoundError:
+            continue
+    raise FileNotFoundError(
+        "No User Library rack named %r in any rack folder. Run clone_rack first."
+        % name)
+
+
+@mcp.tool()
+def rename_rack_macros(ctx: Context, name: str, macro_names: dict = None,
+                       macro_colors: dict = None,
+                       macro_defaults: dict = None) -> str:
+    """
+    Rename / recolor / set defaults for a User Library rack's macros, in place.
+
+    Operates on a rack preset previously created by clone_rack (the working
+    preset). Only the macros you list are changed; the rest keep their values.
+    Macro display names are NOT settable via the LOM — this preset edit is the
+    only MCP route. Macros are addressed 1-based (matching set_rack_macro).
+
+    Parameters:
+    - name: the User Library rack preset name (from clone_rack).
+    - macro_names: object {macro_number: "Display Name"} (no double-quote).
+    - macro_colors: object {macro_number: color_int} (0..70).
+    - macro_defaults: object {macro_number: default_float} (0..127).
+
+    The file is overwritten in place, so it reloads fresh with load_preset
+    without re-indexing. Returns JSON {written, path, macros:[...16...]}.
+    """
+    try:
+        safe = validate_preset_name(name)
+        category, device_folder, xml = _user_rack_category(safe)
+        names = {int(k): v for k, v in (macro_names or {}).items()}
+        colors = {int(k): v for k, v in (macro_colors or {}).items()}
+        defaults = {int(k): v for k, v in (macro_defaults or {}).items()}
+        out = patch_macros(xml, names=names, colors=colors, defaults=defaults)
+        dest, _bp = _write_user_preset(
+            out, safe, device_folder, category=category, ext="adg")
+        return json.dumps({
+            "written": True, "path": dest,
+            "macros": summarize_rack_adg(out)["macros"],
+        }, separators=(",", ":"))
+    except (ValueError, FileNotFoundError) as e:
+        return f"Error: {str(e)}"
+    except Exception as e:
+        logger.error(f"Error renaming rack macros: {str(e)}")
+        return f"Error renaming rack macros: {str(e)}"
+
+
+@mcp.tool()
+def set_rack_zones(ctx: Context, name: str, zones: list) -> str:
+    """
+    Set chain key / velocity / chain-selector zones on a User Library rack.
+
+    Operates in place on a rack created by clone_rack. Chain zones are not
+    settable via the LOM — this preset edit is the only MCP route. Chains are
+    addressed 0-based (matching get_rack_chains). key and velocity are rejected
+    for audio-effect / midi-effect racks (those chains only have a
+    chain_selector zone).
+
+    Each entry in `zones` is an object:
+      {"chain": 0,
+       "key": [0, 60]                 // shorthand [min,max], OR a full object:
+       "velocity": {"min":0,"max":127,"crossfade_min":0,"crossfade_max":127},
+       "chain_selector": [0, 63]}
+    Provide only the zones you want to change. Validation enforces 0..127 and
+    min <= crossfade_min <= crossfade_max <= max.
+
+    Returns JSON {written, path, chains:[...]}.
+    """
+    try:
+        safe = validate_preset_name(name)
+        category, device_folder, xml = _user_rack_category(safe)
+        kind = detect_rack_type(xml)
+        if not isinstance(zones, list):
+            return "Error: zones must be a list of {chain, key?, velocity?, chain_selector?} objects."
+        out = xml
+        for entry in zones:
+            if not isinstance(entry, dict) or "chain" not in entry:
+                return "Error: each zones entry needs a 'chain' index."
+            ci = int(entry["chain"])
+            for zone_key in ("key", "velocity", "chain_selector"):
+                if zone_key in entry and entry[zone_key] is not None:
+                    out = patch_chain_zone(out, kind, ci, zone_key, entry[zone_key])
+        dest, _bp = _write_user_preset(
+            out, safe, device_folder, category=category, ext="adg")
+        return json.dumps({
+            "written": True, "path": dest,
+            "chains": summarize_rack_adg(out)["chains"],
+        }, separators=(",", ":"))
+    except (ValueError, FileNotFoundError) as e:
+        return f"Error: {str(e)}"
+    except Exception as e:
+        logger.error(f"Error setting rack zones: {str(e)}")
+        return f"Error setting rack zones: {str(e)}"
+
+
 @mcp.tool()
 def create_cue_point(ctx: Context, time: float) -> str:
     """
