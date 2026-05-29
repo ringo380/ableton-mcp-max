@@ -3,6 +3,10 @@ from mcp.server.fastmcp import FastMCP, Context
 import socket
 import json
 import logging
+import os
+import re
+import gzip
+import glob
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, List, Optional, Union
@@ -66,6 +70,16 @@ from ableton_mcp_max.listener_utils import (
 from ableton_mcp_max.preset_utils import (
     match_recursive_preset,
     split_preset_path,
+)
+from ableton_mcp_max.preset_patch import validate_preset_name
+from ableton_mcp_max.wavetable_preset_utils import (
+    build_wavetable_adv,
+    summarize_wavetable_adv,
+)
+from ableton_mcp_max.simpler_preset_utils import build_simpler_adv
+from ableton_mcp_max.rack_preset_utils import (
+    summarize_rack_adg, detect_rack_type, RACK_TYPES,
+    patch_macros, patch_chain_zone,
 )
 from ableton_mcp_max.arrangement_utils import (
     coerce_time,
@@ -2436,6 +2450,566 @@ def load_preset(ctx: Context, track_index: int, path: str, name: str = None) -> 
     except Exception as e:
         logger.error(f"Error loading preset: {str(e)}")
         return f"Error loading preset: {str(e)}"
+
+
+# --- Preset-patch infrastructure (device-agnostic) ----------------------
+# The LOM only exposes a device's automatable parameters; choosers, file refs,
+# and structural state live only in the preset XML. These helpers patch a
+# known-good factory preset, write it into the User Library, and load it
+# through the normal browser path. Per-device XML logic lives in *_utils
+# modules (see preset_patch + wavetable_preset_utils).
+#
+# Index note: Live only sees a brand-new preset file after it re-indexes the
+# User Library (on launch / browser refresh). Once a filename is indexed,
+# overwriting it and reloading reads fresh — no re-index needed.
+
+_APP_CORE = ("/Applications/Ableton*Live*.app/Contents/App-Resources/"
+             "Core Library")
+_FACTORY_TABLE_CACHE = None
+
+
+def _factory_default_adv(filename, category="Instruments"):
+    """Path to a factory-default preset (e.g. 'Wavetable.adv'), or raise."""
+    hits = glob.glob("%s/Defaults/%s/%s" % (_APP_CORE, category, filename))
+    if not hits:
+        raise FileNotFoundError(
+            "Factory default %s/%s not found under /Applications/Ableton*.app. "
+            "Is Ableton Live 11 Suite installed?" % (category, filename)
+        )
+    return hits[0]
+
+
+def _read_default_adv(filename, category="Instruments"):
+    """Decompressed XML of a factory-default preset."""
+    with gzip.open(_factory_default_adv(filename, category), "rt") as f:
+        return f.read()
+
+
+def _user_library_dir():
+    """Resolve Live's configured User Library directory.
+
+    Reads the actual <UserLibrary> project path from the newest Live
+    preferences' Library.cfg (NOT a UserFolderInfo "Place", which is a
+    different folder and was being matched by mistake). The library content
+    lives under <ProjectPath>/User Library on some installs and directly under
+    <ProjectPath> on others, so prefer whichever holds a Presets/ tree. Falls
+    back to ~/Music/Ableton/User Library.
+    """
+    cfgs = sorted(
+        glob.glob(os.path.expanduser(
+            "~/Library/Preferences/Ableton/Live */Library.cfg")),
+        key=lambda p: os.path.getmtime(p), reverse=True,
+    )
+    for cfg in cfgs:
+        try:
+            with open(cfg, "rb") as f:
+                blob = f.read().decode("latin-1", "ignore")
+        except OSError:
+            continue
+        u = blob.find("<UserLibrary>")
+        if u < 0:
+            continue
+        m = re.search(r'<ProjectPath Value="([^"]*)"', blob[u:u + 600])
+        if not m:
+            continue
+        base = m.group(1)
+        for cand in (os.path.join(base, "User Library"), base):
+            if os.path.isdir(os.path.join(cand, "Presets")):
+                return cand
+    return os.path.expanduser("~/Music/Ableton/User Library")
+
+
+def _write_user_preset(xml, name, device_folder, category="Instruments",
+                       ext="adv"):
+    """Gzip-write `xml` to <UserLib>/Presets/<category>/<device_folder>/<name>.<ext>.
+
+    Returns (dest_path, browser_path) where browser_path is the get_browser_*
+    path for loading.
+    """
+    lib = _user_library_dir()
+    dest_dir = os.path.join(lib, "Presets", category, device_folder)
+    os.makedirs(dest_dir, exist_ok=True)
+    dest = os.path.join(dest_dir, "%s.%s" % (name, ext))
+    with gzip.open(dest, "wt") as f:
+        f.write(xml)
+    browser_path = "user_library/Presets/%s/%s" % (category, device_folder)
+    return dest, browser_path
+
+
+def _load_user_preset(track_index, browser_path, name, ext="adv"):
+    """Load a just-written User Library preset onto a track.
+
+    Returns (loaded: bool, note: str|None). Distinguishes "not indexed yet"
+    (ValueError from the matcher) from an outright load failure, so callers can
+    surface the right guidance.
+    """
+    try:
+        ableton = get_ableton_connection()
+        presets_result = ableton.send_command("get_browser_presets", {
+            "path": browser_path,
+        })
+        presets = (presets_result.get("presets", [])
+                   if isinstance(presets_result, dict) else [])
+        try:
+            chosen = match_recursive_preset(presets, "%s.%s" % (name, ext))
+        except ValueError:
+            chosen = match_recursive_preset(presets, name)
+        load_result = ableton.send_command("load_browser_item", {
+            "track_index": track_index,
+            "item_uri": chosen.get("uri"),
+        })
+        if load_result.get("loaded", False):
+            return True, None
+        return False, ("Preset written but load_browser_item did not confirm "
+                       "loading onto track %s." % track_index)
+    except ValueError:
+        return False, (
+            "Preset written, but Live's browser has not indexed it yet so it "
+            "can't be loaded onto track %s. Refresh the browser (right-click "
+            "User Library -> Refresh) or relaunch Live, then call load_preset "
+            "with path '%s' name '%s'. (Re-running this tool after indexing "
+            "loads it directly.)" % (track_index, browser_path, name)
+        )
+    except Exception as le:
+        return False, "Preset written, but loading failed: %s" % le
+
+
+def _read_user_preset(category, device_folder, name, ext="adg"):
+    """Read + gunzip an existing User Library preset to XML (the pipeline's read
+    side). Raises FileNotFoundError if it's not there yet.
+    """
+    lib = _user_library_dir()
+    path = os.path.join(lib, "Presets", category, device_folder, "%s.%s" % (name, ext))
+    if not os.path.isfile(path):
+        raise FileNotFoundError(
+            "User Library preset not found: %s. Run clone_rack first." % path)
+    with gzip.open(path, "rt") as f:
+        return f.read(), path
+
+
+def _read_rack_template(template):
+    """Read + gunzip a rack .adg template to XML.
+
+    Resolves `template` two ways:
+      (a) an absolute path or glob to a factory rack (e.g. under Core Library/
+          Racks/...) — NOT Defaults/, so _read_default_adv does not apply;
+      (b) a bare name of a rack already in the User Library (searched across all
+          rack device-folders).
+    Returns (xml, resolved_path). Raises FileNotFoundError if unresolved.
+    """
+    expanded = os.path.expanduser(str(template))
+    # (a) direct path / glob
+    if os.path.sep in expanded or "*" in expanded:
+        hits = glob.glob(expanded)
+        if hits:
+            with gzip.open(hits[0], "rt") as f:
+                return f.read(), hits[0]
+        if os.path.sep in expanded and "*" not in expanded:
+            raise FileNotFoundError("Rack file not found: %s" % expanded)
+    # (b) factory rack by name under any Racks/<kind>/<sub>/<name>.adg
+    name = os.path.splitext(os.path.basename(expanded))[0]
+    hits = glob.glob(
+        "%s/Racks/**/%s.adg" % (_APP_CORE, glob.escape(name)), recursive=True
+    )
+    if hits:
+        with gzip.open(hits[0], "rt") as f:
+            return f.read(), hits[0]
+    # (c) user-library rack by name across rack device-folders
+    lib = _user_library_dir()
+    hits = glob.glob(
+        os.path.join(
+            glob.escape(lib), "Presets", "*", "*", "%s.adg" % glob.escape(name)
+        )
+    )
+    if hits:
+        with gzip.open(hits[0], "rt") as f:
+            return f.read(), hits[0]
+    raise FileNotFoundError(
+        "Rack template %r not found as a path, a factory rack name, or a User "
+        "Library preset name." % (template,))
+
+
+def _scan_factory_tables(limit=400):
+    """Return sorted unique factory wavetable names (SpriteName values)."""
+    global _FACTORY_TABLE_CACHE
+    if _FACTORY_TABLE_CACHE is not None:
+        return _FACTORY_TABLE_CACHE
+    names = set()
+    files = glob.glob(
+        "%s/Devices/Instruments/Wavetable/**/*.adv" % _APP_CORE, recursive=True
+    )[:limit]
+    for path in files:
+        try:
+            with gzip.open(path, "rt") as f:
+                xml = f.read()
+        except OSError:
+            continue
+        for m in re.findall(r'<SpriteName[12] Value="([^"]*)" />', xml):
+            names.add(m)
+    _FACTORY_TABLE_CACHE = sorted(names)
+    return _FACTORY_TABLE_CACHE
+
+
+@mcp.tool()
+def list_wavetable_tables(ctx: Context) -> str:
+    """
+    List the factory Wavetable oscillator tables available by name, plus the
+    unison-mode legend — the inputs for create_wavetable_preset.
+
+    The oscillator wavetable selection, unison mode, and unison voice count are
+    NOT in Wavetable's automatable parameter list, so they can't be set with
+    set_device_parameter. create_wavetable_preset reaches them by writing a
+    preset; this tool tells you the valid table names to pass it.
+
+    Returns JSON {count, tables:[...], unison_modes:{name:int}, voices:[min,max]}.
+    """
+    try:
+        tables = _scan_factory_tables()
+        from ableton_mcp_max.wavetable_preset_utils import (
+            UNISON_MODES, MIN_VOICES, MAX_VOICES,
+        )
+        payload = {
+            "count": len(tables),
+            "tables": tables,
+            "unison_modes": UNISON_MODES,
+            "voices": [MIN_VOICES, MAX_VOICES],
+        }
+        return json.dumps(payload, separators=(",", ":"))
+    except Exception as e:
+        logger.error(f"Error listing wavetable tables: {str(e)}")
+        return f"Error listing wavetable tables: {str(e)}"
+
+
+@mcp.tool()
+def create_wavetable_preset(ctx: Context, name: str, table1: str,
+                            table2: str = None, unison_mode: str = "classic",
+                            voices: int = 7, amount: float = 0.85,
+                            osc1_pos: float = None, osc2_pos: float = None,
+                            osc2_on: bool = True,
+                            track_index: int = None) -> str:
+    """
+    Generate a Wavetable preset (.adv) in the User Library and optionally load it.
+
+    This is the ONLY way to set Wavetable's oscillator table selection, unison
+    mode, and unison voice count via MCP — those controls are absent from the
+    automatable parameter API. The preset is built by patching Live's factory
+    default, so everything else stays at default and the automatable params
+    (osc detune/pos, unison amount, filter, envelopes) remain tweakable
+    afterwards with set_device_parameter.
+
+    Parameters
+    - name: preset name (becomes '<name>.adv' under User Library; no slashes).
+    - table1: factory wavetable for Osc 1 (see list_wavetable_tables, e.g.
+            'Basic Shapes', 'Quad Saw', 'Logue Saw').
+    - table2: factory wavetable for Osc 2 (defaults to table1).
+    - unison_mode: name or int 0..6 — None, Classic (supersaw), Shimmer, Noise,
+            Phase Sync, Position Spread, Random Note. Default 'classic'.
+    - voices: unison voice count 2..8 (default 7).
+    - amount: unison amount 0.0..1.0 (default 0.85).
+    - osc1_pos / osc2_pos: optional wave position 0.0..1.0 (left at default if omitted).
+    - osc2_on: enable Osc 2 (default True, for a 2-osc supersaw).
+    - track_index: if given, attempt to load the new preset onto that track.
+
+    Loading note: Live only sees a brand-new preset file after it re-indexes
+    the User Library (on launch, or a browser refresh) — so a first-time load
+    may report "written but not yet loadable". Once the name is indexed,
+    re-running this tool overwrites the same file and loads fresh immediately.
+
+    Returns JSON {written, path, settings, loaded, note}.
+    """
+    try:
+        safe = validate_preset_name(name)
+        # build_wavetable_adv validates inputs and raises ValueError on bad ones.
+        xml = build_wavetable_adv(
+            _read_default_adv("Wavetable.adv"), table1=table1, table2=table2,
+            unison_mode=unison_mode, voices=voices, amount=amount,
+            osc1_pos=osc1_pos, osc2_pos=osc2_pos, osc2_on=osc2_on, name=safe,
+        )
+        dest, browser_path = _write_user_preset(xml, safe, "Wavetable")
+
+        loaded, note = False, None
+        if track_index is not None:
+            loaded, note = _load_user_preset(track_index, browser_path, safe)
+
+        return json.dumps({
+            "written": True,
+            "path": dest,
+            "settings": summarize_wavetable_adv(xml),
+            "loaded": loaded,
+            "note": note,
+        }, separators=(",", ":"))
+    except (ValueError, FileNotFoundError) as e:
+        return f"Error: {str(e)}"
+    except Exception as e:
+        logger.error(f"Error creating wavetable preset: {str(e)}")
+        return f"Error creating wavetable preset: {str(e)}"
+
+
+def _read_audio_meta(path):
+    """Return (file_size_bytes, frames, sample_rate) for an audio file.
+
+    Reads frame count + sample rate from WAV/AIFF headers (stdlib). For other
+    formats frames/rate come back 0 (the caller should reject, since a 0-length
+    sample region won't play). Raises FileNotFoundError if the path is missing.
+    """
+    if not os.path.isfile(path):
+        raise FileNotFoundError("sample not found: %s" % path)
+    size = os.path.getsize(path)
+    ext = os.path.splitext(path)[1].lower()
+    frames, rate = 0, 0
+    try:
+        if ext == ".wav":
+            import wave
+            with wave.open(path, "rb") as w:
+                frames, rate = w.getnframes(), w.getframerate()
+        elif ext in (".aif", ".aiff", ".aifc"):
+            import aifc
+            with aifc.open(path, "rb") as a:
+                frames, rate = a.getnframes(), int(a.getframerate())
+    except Exception as e:
+        logger.warning("could not read audio header for %s: %s", path, e)
+        frames, rate = 0, 0
+    return size, frames, rate
+
+
+@mcp.tool()
+def create_simpler_instrument(ctx: Context, name: str, sample_path: str,
+                              root_key: int = 60,
+                              track_index: int = None) -> str:
+    """
+    Create a Simpler preset that loads a chosen audio file, and optionally load it.
+
+    The sample a Simpler plays is NOT in Live's automatable parameter API, so a
+    preset is the only way to set it via MCP. This writes a Simpler .adv into
+    the User Library referencing `sample_path` (Live relinks + recomputes on
+    load). Everything else about Simpler (filter type, ADSR, LFO, warp via the
+    UI) is automatable afterwards with set_device_parameter.
+
+    Parameters
+    - name: preset name (becomes '<name>.adv' under User Library; no slashes).
+    - sample_path: absolute path to a .wav or .aif/.aiff file. Other formats are
+            rejected (their frame count can't be read, which would yield a
+            silent zero-length sample) — convert to WAV/AIFF first.
+    - root_key: MIDI note the sample plays at unpitched (default 60 = C3).
+    - track_index: if given, load the new preset onto that track.
+
+    Returns JSON {written, path, sample, frames, sample_rate, loaded, note}.
+    """
+    try:
+        safe = validate_preset_name(name)
+        sample_path = os.path.expanduser(str(sample_path))
+        size, frames, rate = _read_audio_meta(sample_path)
+        if frames <= 0:
+            return ("Error: could not read a frame count for %r. Only .wav and "
+                    ".aif/.aiff are supported (other formats would load as a "
+                    "silent, zero-length sample). Convert to WAV/AIFF first."
+                    % os.path.basename(sample_path))
+
+        xml = build_simpler_adv(
+            _read_default_adv("Simpler.adv"), sample_path=sample_path,
+            file_size=size, frames=frames, sample_rate=rate, name=safe,
+            root_key=root_key, relative_path=os.path.basename(sample_path),
+            relative_path_type=0,
+        )
+        dest, browser_path = _write_user_preset(xml, safe, "Simpler")
+
+        loaded, note = False, None
+        if track_index is not None:
+            loaded, note = _load_user_preset(track_index, browser_path, safe)
+
+        return json.dumps({
+            "written": True,
+            "path": dest,
+            "sample": sample_path,
+            "frames": frames,
+            "sample_rate": rate,
+            "loaded": loaded,
+            "note": note,
+        }, separators=(",", ":"))
+    except (ValueError, FileNotFoundError) as e:
+        return f"Error: {str(e)}"
+    except Exception as e:
+        logger.error(f"Error creating simpler instrument: {str(e)}")
+        return f"Error creating simpler instrument: {str(e)}"
+
+
+@mcp.tool()
+def inspect_rack_preset(ctx: Context, template: str) -> str:
+    """
+    Inspect a rack preset (.adg) and report its macros and chain zones.
+
+    Reads a rack by path (a factory rack under Core Library/Racks/...) or by
+    name (a factory rack name, or a preset already in your User Library) and
+    returns its structure — the inputs you need for rename_rack_macros and
+    set_rack_zones. Reads only; nothing is written or loaded.
+
+    Macros are reported 1-based (matching set_rack_macro); chains 0-based
+    (matching get_rack_chains). key_zone/velocity_zone are null on audio-effect
+    and midi-effect racks (those chains have only a chain_selector_zone).
+
+    Parameters:
+    - template: a .adg path/glob, OR a factory/User-Library rack name.
+
+    Returns JSON {rack_type, num_visible_macros, macros:[...16...], chains:[...]}.
+    """
+    try:
+        xml, path = _read_rack_template(template)
+        summary = summarize_rack_adg(xml)
+        summary["template_path"] = path
+        return json.dumps(summary, separators=(",", ":"))
+    except (ValueError, FileNotFoundError) as e:
+        return f"Error: {str(e)}"
+    except Exception as e:
+        logger.error(f"Error inspecting rack preset: {str(e)}")
+        return f"Error inspecting rack preset: {str(e)}"
+
+
+@mcp.tool()
+def clone_rack(ctx: Context, template: str, name: str) -> str:
+    """
+    Copy a rack preset into your User Library as a new working preset.
+
+    Racks have no blank/default template, so the rack-preset pipeline starts by
+    cloning an existing rack (factory or User Library). The clone becomes the
+    working preset that rename_rack_macros / set_rack_zones edit in place; load
+    the finished result later with load_preset using the returned browser_path.
+
+    The User Library category and device-folder are derived from the rack type
+    (instrument -> Instruments/Instrument Rack, audio_effect -> Audio Effects/
+    Audio Effect Rack, midi_effect -> MIDI Effects/MIDI Effect Rack, drum ->
+    Drums/Drum Rack).
+
+    Parameters:
+    - template: source rack — a .adg path/glob, or a factory/User-Library name.
+    - name: new preset name (becomes '<name>.adg'; no slashes or leading dot).
+
+    Returns JSON {written, path, browser_path, summary:{...inspect shape...}}.
+    """
+    try:
+        safe = validate_preset_name(name)
+        xml, _src = _read_rack_template(template)
+        kind = detect_rack_type(xml)
+        meta = RACK_TYPES[kind]
+        dest, browser_path = _write_user_preset(
+            xml, safe, meta["device_folder"], category=meta["category"], ext="adg")
+        return json.dumps({
+            "written": True,
+            "path": dest,
+            "browser_path": browser_path,
+            "summary": summarize_rack_adg(xml),
+        }, separators=(",", ":"))
+    except (ValueError, FileNotFoundError) as e:
+        return f"Error: {str(e)}"
+    except Exception as e:
+        logger.error(f"Error cloning rack: {str(e)}")
+        return f"Error cloning rack: {str(e)}"
+
+
+def _user_rack_category(name):
+    """Find which rack device-folder a User Library rack <name>.adg lives in.
+
+    Returns (category, device_folder, xml). Raises FileNotFoundError if absent.
+    """
+    for kind, meta in RACK_TYPES.items():
+        try:
+            xml, _path = _read_user_preset(
+                meta["category"], meta["device_folder"], name, ext="adg")
+            return meta["category"], meta["device_folder"], xml
+        except FileNotFoundError:
+            continue
+    raise FileNotFoundError(
+        "No User Library rack named %r in any rack folder. Run clone_rack first."
+        % name)
+
+
+@mcp.tool()
+def rename_rack_macros(ctx: Context, name: str, macro_names: dict = None,
+                       macro_colors: dict = None,
+                       macro_defaults: dict = None) -> str:
+    """
+    Rename / recolor / set defaults for a User Library rack's macros, in place.
+
+    Operates on a rack preset previously created by clone_rack (the working
+    preset). Only the macros you list are changed; the rest keep their values.
+    Macro display names are NOT settable via the LOM — this preset edit is the
+    only MCP route. Macros are addressed 1-based (matching set_rack_macro).
+
+    Parameters:
+    - name: the User Library rack preset name (from clone_rack).
+    - macro_names: object {macro_number: "Display Name"} (no double-quote).
+    - macro_colors: object {macro_number: color_int} (-1..69; -1 = no color).
+    - macro_defaults: object {macro_number: default_float} (0..127).
+
+    The file is overwritten in place, so it reloads fresh with load_preset
+    without re-indexing. Returns JSON {written, path, macros:[...16...]}.
+    """
+    try:
+        safe = validate_preset_name(name)
+        category, device_folder, xml = _user_rack_category(safe)
+        names = {int(k): v for k, v in (macro_names or {}).items()}
+        colors = {int(k): v for k, v in (macro_colors or {}).items()}
+        defaults = {int(k): v for k, v in (macro_defaults or {}).items()}
+        out = patch_macros(xml, names=names, colors=colors, defaults=defaults)
+        dest, _bp = _write_user_preset(
+            out, safe, device_folder, category=category, ext="adg")
+        return json.dumps({
+            "written": True, "path": dest,
+            "macros": summarize_rack_adg(out)["macros"],
+        }, separators=(",", ":"))
+    except (ValueError, FileNotFoundError) as e:
+        return f"Error: {str(e)}"
+    except Exception as e:
+        logger.error(f"Error renaming rack macros: {str(e)}")
+        return f"Error renaming rack macros: {str(e)}"
+
+
+@mcp.tool()
+def set_rack_zones(ctx: Context, name: str, zones: list) -> str:
+    """
+    Set chain key / velocity / chain-selector zones on a User Library rack.
+
+    Operates in place on a rack created by clone_rack. Chain zones are not
+    settable via the LOM — this preset edit is the only MCP route. Chains are
+    addressed 0-based (matching get_rack_chains). key and velocity are rejected
+    for audio-effect / midi-effect racks (those chains only have a
+    chain_selector zone).
+
+    Each entry in `zones` is an object:
+      {"chain": 0,
+       "key": [0, 60]                 // shorthand [min,max], OR a full object:
+       "velocity": {"min":0,"max":127,"crossfade_min":0,"crossfade_max":127},
+       "chain_selector": [0, 63]}
+    Provide only the zones you want to change. Validation enforces 0..127 and
+    min <= crossfade_min <= crossfade_max <= max.
+
+    Returns JSON {written, path, chains:[...]}.
+    """
+    try:
+        safe = validate_preset_name(name)
+        category, device_folder, xml = _user_rack_category(safe)
+        kind = detect_rack_type(xml)
+        if not isinstance(zones, list):
+            return "Error: zones must be a list of {chain, key?, velocity?, chain_selector?} objects."
+        out = xml
+        for entry in zones:
+            if not isinstance(entry, dict) or "chain" not in entry:
+                return "Error: each zones entry needs a 'chain' index."
+            ci = int(entry["chain"])
+            for zone_key in ("key", "velocity", "chain_selector"):
+                if zone_key in entry and entry[zone_key] is not None:
+                    out = patch_chain_zone(out, kind, ci, zone_key, entry[zone_key])
+        dest, _bp = _write_user_preset(
+            out, safe, device_folder, category=category, ext="adg")
+        return json.dumps({
+            "written": True, "path": dest,
+            "chains": summarize_rack_adg(out)["chains"],
+        }, separators=(",", ":"))
+    except (ValueError, FileNotFoundError) as e:
+        return f"Error: {str(e)}"
+    except Exception as e:
+        logger.error(f"Error setting rack zones: {str(e)}")
+        return f"Error setting rack zones: {str(e)}"
+
 
 @mcp.tool()
 def create_cue_point(ctx: Context, time: float) -> str:

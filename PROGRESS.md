@@ -1,11 +1,12 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Phase 11 (Capture & Recording) ALL LIVE-VERIFIED 2026-05-27 on branch
-`phase-11-capture-recording` — awaiting commit + PR. Offline suite 210/210; both halves compile;
-server imports. 5 new tools (capture_midi, capture_and_insert_scene, trigger_session_record,
-stop_all_clips, tap_tempo) + get_transport +3 reads (can_capture_midi, is_counting_in,
-session_record_status). The get_track_info group-track arm fix shipped earlier as PR #12 (`0929f57`).
-**Next action (resume here):** commit Phase 11 + PR → squash-merge. (gh login must be ringo380.)
+**Current focus:** Preset-patch rack tools (task #5) Phase A LIVE-VERIFIED 2026-05-29 on branch
+`feat/preset-patch-backdoor` (see "Preset-patch backdoor" section below). 4 new tools
+(inspect_rack_preset, clone_rack, rename_rack_macros, set_rack_zones) + rack_preset_utils.py.
+Offline suite 293/293; server imports; remote script unchanged (no Live bounce needed).
+Phases 0–11 all live-verified and committed/merged.
+**Next action (resume here):** finish the `feat/preset-patch-backdoor` branch (merge/PR), then
+run the GATED Phase B macro-mapping save-diff experiment (plan Task 11). gh login must be ringo380.
 
 ## Phases
 | Phase | Title | Status | Completed |
@@ -506,3 +507,36 @@ Closes the capture/recording set deferred during the Phase 10 gap-audit. All 5 L
 - **Live-test reminders:** confirm effects via SEPARATE follow-up reads (song-property-write lag);
   capture tools do nothing on an empty blank set (need playing material); clean up captured clips/scenes
   + restore the set; stop session-record promptly (auto-starts playback).
+
+## Preset-patch backdoor (initiative — separate from numbered Phases)
+Reach Ableton controls absent from the LOM `device.parameters` API by patching gzipped
+preset XML (.adv/.adg), writing to the User Library, and loading via the browser.
+Shared pure core: `ableton_mcp_max/preset_patch.py` (set_attr/set_manual/scope/get_attr + validators).
+
+- **Wavetable + Simpler** (committed `30570cd`): `list_wavetable_tables`, `create_wavetable_preset`
+  (osc table / unison mode / voices — none automatable), `create_simpler_instrument` (sample ref
+  injected into empty `<SampleParts/>`). `wavetable_preset_utils.py` / `simpler_preset_utils.py`.
+
+- **Rack macro-mapping & zones — Phase A: LIVE-VERIFIED 2026-05-29** (branch `feat/preset-patch-backdoor`).
+  Pure XML in `rack_preset_utils.py` (depth-aware branch scanner finds chain-level zones that are
+  DIRECT children of a branch, ignoring nested sampler multisample KeyRanges); 4 tools in server.py.
+  Spec: `docs/superpowers/specs/2026-05-29-rack-preset-macro-mapping-design.md`;
+  Plan: `docs/superpowers/plans/2026-05-29-rack-preset-macro-mapping.md`. Offline 293/293.
+  - [x] inspect_rack_preset — live: "808 Drifter" → instrument, 8 visible macros, all 16 read
+        (named + color + default; unnamed color -1), 1 chain w/ key/vel/selector zones.
+  - [x] clone_rack — live: 808 Drifter → User Library `Instruments/Instrument Rack/MCP RackTest.adg`
+        (category/folder derived from rack_type); browser_path returned.
+  - [x] rename_rack_macros — live: macro 1→"MCP One" color 5, macro 2→"MCP Two & Co" default 100;
+        `&` XML-escape round-trips; unlisted macros preserved.
+  - [x] set_rack_zones — live: chain 0 key→[24,96], velocity→[1,100]; file round-trips via inspect.
+  - [x] load_preset (existing tool) — live: loaded MCP RackTest onto scratch MIDI track 3 first try
+        (User Library already indexed). LOM `get_rack_macros` confirmed device "MCP RackTest" with
+        "MCP One" / "MCP Two & Co"; full device chain intact. Scratch track + test preset cleaned up.
+  - **Rack-type detection is POSITION-based** (earliest device tag = top-level rack's device): factory
+    "drum kits" (e.g. Acuff Kit) are actually INSTRUMENT racks wrapping a nested Drum Rack (master-bus
+    macros like "Master EQ"/"Master Comp") → correctly detected as `instrument`. A bare top-level
+    DrumGroupDevice (only from saving a raw Drum Rack) detects as `drum`; its DrumBranchPreset pads
+    carry direct-child key/vel zones (probe-confirmed), so `has_key_velocity=True` is correct.
+  - **Phase B (macro→parameter MAPPINGS): GATED, not built.** All `.adg` AutomationTarget Ids
+    serialize to 0 with no mapping registry → encoding not statically recoverable. Next: plan Task 11
+    save-diff experiment (user maps Macro→param in Live, save mapped+unmapped, diff) → go/no-go.
