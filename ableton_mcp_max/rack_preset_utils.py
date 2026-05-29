@@ -14,7 +14,7 @@ KeyRange in the branch".
 """
 import re
 
-from ableton_mcp_max.preset_patch import validate_preset_name, validate_int_range
+from ableton_mcp_max.preset_patch import validate_preset_name, validate_int_range, get_attr as _get_attr
 
 # rack kind -> tags + User Library destination + whether chains have key/vel zones.
 RACK_TYPES = {
@@ -48,15 +48,23 @@ RACK_TYPES = {
 def detect_rack_type(xml):
     """Return 'instrument'|'audio_effect'|'midi_effect'|'drum' for a rack .adg XML.
 
+    Detects by the rack device-type tag that appears EARLIEST in the document:
+    that is the top-level rack's own device. (A drum rack's pads embed
+    InstrumentGroupDevice, and an instrument rack may embed a nested drum rack,
+    so a presence-only check would misread the outer type — position decides.)
     Raises ValueError if no known rack device-type tag is present.
     """
+    best_kind, best_pos = None, None
     for kind, meta in RACK_TYPES.items():
-        if "<%s" % meta["device_tag"] in xml:
-            return kind
-    raise ValueError(
-        "not a recognized rack preset: no Instrument/AudioEffect/MidiEffect/"
-        "Drum GroupDevice tag found."
-    )
+        pos = xml.find("<%s" % meta["device_tag"])
+        if pos != -1 and (best_pos is None or pos < best_pos):
+            best_pos, best_kind = pos, kind
+    if best_kind is None:
+        raise ValueError(
+            "not a recognized rack preset: no Instrument/AudioEffect/MidiEffect/"
+            "Drum GroupDevice tag found."
+        )
+    return best_kind
 
 
 def _xml_unescape(s):
@@ -90,6 +98,8 @@ def top_branches(xml, branch_tag):
         else:
             depth -= 1
             if depth == 0 and start is not None:
+                # m.end() lands on the closing tag's '>' because the [ >] char
+                # class consumes it (XML closing tags carry no attributes).
                 spans.append((start, m.end()))
                 start = None
     return spans
@@ -163,9 +173,6 @@ def chain_name(xml, branch_tag, chain_index):
     branch = xml[s:e]
     m = _direct_child_match(branch, branch_tag, r'<UserName Value="([^"]*)" />')
     return _xml_unescape(m.group(1)) if m else ""
-
-
-from ableton_mcp_max.preset_patch import get_attr as _get_attr
 
 
 def _macro_field(xml, prefix, index):
@@ -255,7 +262,7 @@ def patch_macros(xml, names=None, colors=None, defaults=None):
         out = _set_macro_field(out, "MacroDisplayNames", idx, _xml_escape(text))
     for num, color in (colors or {}).items():
         idx = _check_macro_number(num)
-        c = validate_int_range(color, 0, 70, "macro %d color" % num)
+        c = validate_int_range(color, -1, 69, "macro %d color" % num)
         out = _set_macro_field(out, "MacroColor", idx, c)
     for num, dflt in (defaults or {}).items():
         idx = _check_macro_number(num)
@@ -265,7 +272,7 @@ def patch_macros(xml, names=None, colors=None, defaults=None):
             raise ValueError("macro %d default must be a number 0..127." % num)
         if not (0.0 <= f <= 127.0):
             raise ValueError("macro %d default %s out of range 0..127." % (num, f))
-        out = _set_macro_field(out, "MacroDefaults", idx, f)
+        out = _set_macro_field(out, "MacroDefaults", idx, "%.6g" % f)
     return out
 
 
@@ -298,6 +305,8 @@ def normalize_zone(value, label):
         z = {"min": lo, "max": hi, "crossfade_min": cmin, "crossfade_max": cmax}
     else:
         raise ValueError("%s must be [min, max] or an object." % label)
+    if z["min"] > z["max"]:
+        raise ValueError("%s min %d must be <= max %d." % (label, z["min"], z["max"]))
     if not (z["min"] <= z["crossfade_min"] <= z["crossfade_max"] <= z["max"]):
         raise ValueError(
             "%s requires min <= crossfade_min <= crossfade_max <= max "

@@ -35,12 +35,52 @@ AUDIO_RACK = (
 )
 
 
+# A drum rack: top-level device is DrumGroupDevice, but its pad chains load
+# instruments so the XML ALSO embeds InstrumentGroupDevice (after, in document
+# order). Position-based detection must still return "drum".
+DRUM_RACK = (
+    '<Ableton><GroupDevicePreset><Device><DrumGroupDevice>'
+    '<NumVisibleMacroControls Value="0" />'
+    '</DrumGroupDevice></Device><BranchPresets>'
+    '<DrumBranchPreset Id="0"><Name Value="" /><UserName Value="Kick" />'
+    '<BranchSelectorRange><Min Value="0" /><Max Value="0" /><CrossfadeMin Value="0" /><CrossfadeMax Value="0" /></BranchSelectorRange>'
+    '<DeviceChain><InstrumentGroupDevice /></DeviceChain>'
+    '</DrumBranchPreset></BranchPresets>'
+    '</GroupDevicePreset></Ableton>'
+)
+MIDI_RACK = (
+    '<Ableton><GroupDevicePreset><Device><MidiEffectGroupDevice>'
+    '<NumVisibleMacroControls Value="0" />'
+    '</MidiEffectGroupDevice></Device><BranchPresets>'
+    '<MidiEffectBranchPreset Id="0"><Name Value="" /><UserName Value="Arp" />'
+    '<BranchSelectorRange><Min Value="0" /><Max Value="0" /><CrossfadeMin Value="0" /><CrossfadeMax Value="0" /></BranchSelectorRange>'
+    '<DeviceChain></DeviceChain>'
+    '</MidiEffectBranchPreset></BranchPresets>'
+    '</GroupDevicePreset></Ableton>'
+)
+
+
 def test_detect_instrument():
     assert detect_rack_type(INSTR_RACK) == "instrument"
 
 
 def test_detect_audio_effect():
     assert detect_rack_type(AUDIO_RACK) == "audio_effect"
+
+
+def test_detect_drum():
+    assert detect_rack_type(DRUM_RACK) == "drum"   # despite embedded InstrumentGroupDevice
+
+
+def test_detect_midi_effect():
+    assert detect_rack_type(MIDI_RACK) == "midi_effect"
+
+
+def test_detect_instrument_with_nested_drum():
+    # an instrument rack whose chain contains a nested drum rack stays "instrument"
+    nested = INSTR_RACK.replace("<DeviceChain></DeviceChain>",
+                                "<DeviceChain><DrumGroupDevice /></DeviceChain>")
+    assert detect_rack_type(nested) == "instrument"
 
 
 def test_detect_unknown_raises():
@@ -174,6 +214,12 @@ def test_patch_macro_colors_and_defaults():
     s = summarize_rack_adg(out)
     assert s["macros"][0]["color"] == 5
     assert s["macros"][1]["default"] == 100.0
+
+
+def test_patch_macro_color_no_color_sentinel():
+    out = patch_macros(INSTR_RACK, colors={1: -1})
+    s = summarize_rack_adg(out)
+    assert s["macros"][0]["color"] == -1
 
 
 def test_patch_macro_only_listed_changed():
