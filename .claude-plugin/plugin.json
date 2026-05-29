@@ -1,7 +1,7 @@
 {
   "name": "ableton",
-  "version": "0.2.0",
-  "description": "Drive Ableton Live 11 from Claude Code — tracks, clips, MIDI notes, devices, mixer, automation, arrangement, scenes, transport, and preset generation (Wavetable, Simpler, and rack macro names/colors/defaults + chain zones) over a bundled MCP server. Includes a guided /ableton:setup and best-practice workflow commands.",
+  "version": "0.3.0",
+  "description": "Drive Ableton Live 11 from Claude Code — tracks, clips, MIDI notes, devices, mixer, automation, arrangement, scenes, transport, and preset generation (Wavetable, Simpler, and rack macro names/colors/defaults, macro→parameter mappings, and chain zones) over a bundled MCP server. Includes a guided /ableton:setup and best-practice workflow commands.",
   "author": {
     "name": "Ryan Robson and Robworks Software LLC",
     "url": "https://robworks.info"
