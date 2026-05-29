@@ -2937,7 +2937,7 @@ def rename_rack_macros(ctx: Context, name: str, macro_names: dict = None,
     Parameters:
     - name: the User Library rack preset name (from clone_rack).
     - macro_names: object {macro_number: "Display Name"} (no double-quote).
-    - macro_colors: object {macro_number: color_int} (0..70).
+    - macro_colors: object {macro_number: color_int} (-1..69; -1 = no color).
     - macro_defaults: object {macro_number: default_float} (0..127).
 
     The file is overwritten in place, so it reloads fresh with load_preset

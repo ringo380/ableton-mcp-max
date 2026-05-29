@@ -323,6 +323,23 @@ def test_real_instrument_rack_summarizes():
         assert 0 <= c["key_zone"]["min"] <= c["key_zone"]["max"] <= 127
 
 
+@pytest.mark.skipif(_factory_rack("Instrument Racks") is None,
+                    reason="Ableton Live factory racks not installed")
+def test_real_instrument_rack_patch_roundtrips():
+    with gzip.open(_factory_rack("Instrument Racks"), "rt") as f:
+        xml = f.read()
+    # macro name round-trips through real (large, multi-line) XML
+    out = patch_macros(xml, names={1: "RT & Test"}, colors={1: -1}, defaults={1: 100.0})
+    s = summarize_rack_adg(out)
+    assert s["macros"][0]["name"] == "RT & Test"
+    assert s["macros"][0]["color"] == -1
+    assert s["macros"][0]["default"] == 100.0
+    # chain-level key zone patch round-trips on a real chain
+    out2 = patch_chain_zone(out, "instrument", 0, "key", [24, 96])
+    z = read_chain_zone(out2, "InstrumentBranchPreset", 0, "KeyRange")
+    assert z == {"min": 24, "max": 96, "crossfade_min": 24, "crossfade_max": 96}
+
+
 @pytest.mark.skipif(_factory_rack("Audio Effect Racks") is None,
                     reason="Ableton Live factory racks not installed")
 def test_real_audio_effect_rack_no_keyvel():
