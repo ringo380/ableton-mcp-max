@@ -255,6 +255,43 @@ Key properties that make this clean:
   test used Live's default full-range map. Where a custom range is stored is still unconfirmed.
 - Whether `ControllerMapMode` ever varies (always `0` in all observed data).
 
+### v2 FINDINGS (range save-diff, 2026-05-29) — custom/inverted ranges cracked
+
+Controlled save-diff (`MCP_RangeTest_default` vs `_custom` vs `_inverted`, Utility Gain mapped to
+Macro 1, dragged to −12→0 dB then inverted). The custom range is stored in the **target param's own
+`<MidiControllerRange><Min>/<Max>`** — the same block v1 deliberately left untouched. Specifically
+the mapped `<Gain>` is:
+
+```xml
+<Gain>
+  <LomId Value="0" />
+  <KeyMidi> … <Channel Value="16"/> <NoteOrController Value="0"/> … </KeyMidi>   <!-- unchanged across all 3 -->
+  <Manual Value="1" />
+  <MidiControllerRange>
+    <Min Value="0" />              <!-- default = param's intrinsic native min -->
+    <Max Value="56.2341309" />    <!-- default = param's intrinsic native max (+35 dB as linear amp) -->
+  </MidiControllerRange>
+  <AutomationTarget Id="0">…</AutomationTarget>
+  <ModulationTarget Id="0">…</ModulationTarget>
+</Gain>
+```
+
+Confirmed:
+- **(a)** the ONLY param-level delta is `<MidiControllerRange><Min>/<Max>`.
+- **(b)** values are in the param's **NATIVE stored units** (Gain = linear amplitude: `0`=−∞dB,
+  `1.0`=0dB, `56.2341309`=+35dB), NOT 0..127 and NOT necessarily dB. Custom −12→0 dB →
+  `Min=0.2511886358` (10^(−12/20)), `Max=1`. (The sibling `LegacyGain` MidiControllerRange is
+  `-35..35` because that param is stored in dB — units are per-parameter.)
+- **(c)** **inversion = swap Min/Max** (`Min=1`, `Max=0.2511886358`). No separate invert flag.
+- **(d)** `<KeyMidi>` byte-identical (range is NOT in KeyMidi); `ControllerMapMode` stays `0`.
+- **(e)** `<MidiControllerRange>` **always exists** on an automatable param and defaults to the
+  full native range → a default (full-range) map leaves it untouched (why v1 saw it "unchanged");
+  a custom range REPLACES Min/Max in place (no synthesis ever needed).
+
+The bookkeeping deltas in the diff (`FilePresetRef` to the prior save, `UserName`,
+`IsBranchesListVisible`, the macro `<Manual>` knob position, `DeviceId Name`) are save-time noise,
+not part of the mapping encoding.
+
 ### Go / no-go gate — DECISION: **GO (cleanly patchable)**
 
 The encoding is a self-contained, id-free, index-addressed XML insertion — the
@@ -288,6 +325,50 @@ no id collision risk and the synthesis is deterministic.)
   unit-tested offline (inject → re-find KeyMidi → assert `Channel=16`, `NoteOrController=N-1`;
   many-to-one; idempotent replace; bad param/chain/device rejection). Live-verify by loading a
   patched rack and confirming the macro audibly/visibly drives the param in Live.
+
+### v2 (custom/inverted ranges + nested rack addressing) — shipped v0.4.0
+
+Same tool/signature; the per-mapping dict grows (backward compatible):
+- **`range` (optional)**: `{"min": <float>, "max": <float>}` in the param's NATIVE units
+  (see v2 FINDINGS above). `min > max` inverts; omit for full-range. Implemented by
+  `_set_controller_range(param_el, lo, hi)` replacing `<Min>/<Max>` in the param's
+  `<MidiControllerRange>` (the same substitution style as `patch_chain_zone`).
+- **`path` (optional)**: an array of `{chain, device}` steps for nested rack-in-rack addressing,
+  replacing the flat `chain`/`device` (which stays valid = a one-step path). Implemented by a
+  recursive `_descend_to_device` / `_locate_param_by_path`; each non-final step's device must be a
+  rack, its branch_tag auto-detected via `detect_rack_type` (may differ from the outer's).
+  Supplying both `path` and flat `chain`/`device` is rejected.
+
+#### Nested-rack XML structure (live-verified 2026-05-29 — corrected a v2 bug)
+
+Confirmed against real factory racks (e.g. `Basic Heavy Guitar Amp.adg` — a nested Audio Effect
+Rack at chain0/device2 wrapping a Cabinet; Drum Rack pads wrapping Instrument Racks). A nested rack
+in a chain's `<DevicePresets>` is **NOT** an `<AbletonDevicePreset>`. It is a separate wrapper:
+
+```
+<DevicePresets>
+  <AbletonDevicePreset>…plain device…</AbletonDevicePreset>     <!-- device 0 -->
+  <AbletonDevicePreset>…plain device…</AbletonDevicePreset>     <!-- device 1 -->
+  <GroupDevicePreset>                                           <!-- device 2 = a NESTED RACK -->
+    <Device><AudioEffectGroupDevice>…</AudioEffectGroupDevice></Device>
+    <BranchPresets>…the nested rack's chains…</BranchPresets>   <!-- SIBLING of <Device>, not inside it -->
+    <ReturnBranchPresets>…</ReturnBranchPresets>
+  </GroupDevicePreset>
+</DevicePresets>
+```
+
+Two consequences the implementation MUST honor (both were initially wrong — the synthetic test
+fixture had invented an `<AbletonDevicePreset>`-wrapped nested rack with `<BranchPresets>` *inside*
+the device element, which Live never emits; the bug surfaced only in live testing when a real
+`path` map returned "device index 2 out of range — chain 0 has 2 devices"):
+1. **Device enumeration counts BOTH `<AbletonDevicePreset>` and `<GroupDevicePreset>`**, in
+   document order, so `device` indices match `get_rack_chains`.
+2. **Descent continues into the `<GroupDevicePreset>`'s `<BranchPresets>` sibling**, not into the
+   `<Device>` element. The nested rack's branch_tag is detected from the GroupDevice element inside
+   `<Device>`. (`top_branches` over the `<BranchPresets>` block finds the nested chains.)
+
+Regression guard: `test_real_factory_nested_descent_reaches_inner_device` descends a genuine factory
+nested rack (skipif when Live isn't installed), so reverting to `AbletonDevicePreset`-only fails.
 
 ---
 

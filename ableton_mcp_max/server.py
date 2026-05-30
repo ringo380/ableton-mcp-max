@@ -3024,16 +3024,32 @@ def add_rack_macro_mappings(ctx: Context, name: str, mappings: list) -> str:
     Each entry in `mappings` is an object:
       {"macro": 1, "chain": 0, "device": 0, "parameter": "Gain"}
     - macro: 1..16 macro number.
-    - chain: 0-based chain index.
-    - device: 0-based device index within that chain.
     - parameter: the parameter's XML tag name within the device (e.g. "Gain",
             "Volume"). Use inspect-style trial or Live's device to find tag names;
             an invalid name returns an error listing the device's available tags.
+    - device address — either the flat single-level form:
+        - chain: 0-based chain index.
+        - device: 0-based device index within that chain.
+      OR, to target a parameter inside a NESTED rack-in-rack, a "path" array of
+      {chain, device} steps that descend one rack level each (the nested rack's
+      type is auto-detected and may differ from the outer rack's). The flat form
+      is equivalent to a one-step path. Example (chain 0 -> device 1 is a rack ->
+      its chain 0 -> device 0):
+        {"macro": 1,
+         "path": [{"chain": 0, "device": 1}, {"chain": 0, "device": 0}],
+         "parameter": "Frequency"}
+      Supplying both "path" and flat chain/device is rejected as ambiguous.
+    - range (optional): {"min": <float>, "max": <float>} to make the macro sweep a
+            SUB-range of the parameter instead of its full range. min/max are in
+            the parameter's NATIVE units (the same units as get_device_parameters'
+            min/max/value — e.g. linear amplitude, Hz, dB), NOT 0..127. Setting
+            min > max INVERTS the mapping (macro-up drives the param down). Omit
+            for the default full-range mapping.
 
-    Mappings are default full-range (the macro sweeps the parameter's whole
-    range). Re-mapping a parameter replaces its existing mapping; several
-    parameters may share one macro. Load the result with load_preset, then verify
-    by moving the macro (set_rack_macro) and reading the device parameter.
+    Mappings are default full-range unless `range` is given. Re-mapping a
+    parameter replaces its existing mapping; several parameters may share one
+    macro. Load the result with load_preset, then verify by moving the macro
+    (set_rack_macro) and reading the device parameter.
 
     Returns JSON {written, path, mappings:[...]}.
     """
