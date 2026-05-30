@@ -12,6 +12,7 @@ The one structural subtlety: a chain that hosts a sampler contains many nested
 is a DIRECT CHILD of a top-level branch element (depth-aware), never "the first
 KeyRange in the branch".
 """
+import math
 import re
 
 from ableton_mcp_max.preset_patch import validate_preset_name, validate_int_range, get_attr as _get_attr
@@ -378,54 +379,137 @@ _KEYMIDI_TEMPLATE = (
 )
 
 
-def _locate_param(xml, branch_tag, chain_index, device_index, parameter):
-    """Return absolute (start, end) of the target parameter element, or raise
-    ValueError with a clear message. Navigates branch -> DevicePresets ->
-    Nth AbletonDevicePreset -> Device -> device element -> direct-child <parameter>.
+# Device wrappers inside a chain's <DevicePresets>. A plain device is an
+# <AbletonDevicePreset>; a NESTED rack is a <GroupDevicePreset> (it carries the
+# rack's chains in a <BranchPresets> sibling of its <Device>). Both count toward
+# the device index, in document (chain) order — matching get_rack_chains.
+_DEVICE_WRAPPERS = ("AbletonDevicePreset", "GroupDevicePreset")
 
-    The parameter is matched by the FIRST direct-child element with that tag name
-    (sufficient for real device params, which are unique).
+
+def _locate_device_in_region(region, branch_tag, chain_index, device_index, step_i):
+    """Find the device at (chain_index, device_index) WITHIN `region`.
+
+    Navigates branch -> DevicePresets -> Nth device wrapper -> Device -> device
+    element. Returns (device_tag, dev_start, dev_end, wrap_start, wrap_end) RELATIVE
+    to `region`: the device-element span (for param lookup / rack-type detection)
+    and the enclosing wrapper span (whose <BranchPresets> holds a nested rack's
+    chains). Errors carry the path step index `step_i` so multi-level failures are
+    debuggable.
     """
-    bs, be = _branch_span(xml, branch_tag, chain_index)  # raises if chain bad
-    branch = xml[bs:be]
+    spans = top_branches(region, branch_tag)
+    if chain_index < 0 or chain_index >= len(spans):
+        raise ValueError(
+            "chain index %d out of range at path step %d (level has %d chain(s))."
+            % (chain_index, step_i, len(spans)))
+    bs, be = spans[chain_index]
+    branch = region[bs:be]
 
     dp = _find_child(branch, "DevicePresets")
     if not dp:
-        raise ValueError("chain %d has no <DevicePresets> (no devices)." % chain_index)
-    base_dp = bs + dp[0]
-    devicepresets = xml[base_dp:bs + dp[1]]
+        raise ValueError(
+            "chain %d at path step %d has no <DevicePresets> (no devices)."
+            % (chain_index, step_i))
+    dp_base = bs + dp[0]
+    devicepresets = branch[dp[0]:dp[1]]
 
     devs = [(s, e) for (t, s, e) in _child_elements(devicepresets)
-            if t == "AbletonDevicePreset"]
+            if t in _DEVICE_WRAPPERS]
     if device_index < 0 or device_index >= len(devs):
         raise ValueError(
-            "device index %d out of range (chain %d has %d device(s))."
-            % (device_index, chain_index, len(devs)))
+            "device index %d out of range at path step %d (chain %d has %d device(s))."
+            % (device_index, step_i, chain_index, len(devs)))
     ds, de = devs[device_index]
-    base_adp = base_dp + ds
-    adp = xml[base_adp:base_dp + de]
+    wrap_base = dp_base + ds
+    wrap = devicepresets[ds:de]
 
-    dev = _find_child(adp, "Device")
+    dev = _find_child(wrap, "Device")
     if not dev:
-        raise ValueError("device %d has no <Device> wrapper." % device_index)
-    base_dev = base_adp + dev[0]
-    device_block = xml[base_dev:base_adp + dev[1]]
+        raise ValueError(
+            "device %d at path step %d has no <Device> wrapper." % (device_index, step_i))
+    dev_base = wrap_base + dev[0]
+    device_block = wrap[dev[0]:dev[1]]
 
     devkids = _child_elements(device_block)
     if not devkids:
-        raise ValueError("device %d <Device> has no device element." % device_index)
+        raise ValueError(
+            "device %d at path step %d <Device> has no device element."
+            % (device_index, step_i))
     dtag, des, dee = devkids[0]
-    base_el = base_dev + des
-    device_el = xml[base_el:base_dev + dee]
+    return dtag, dev_base + des, dev_base + dee, wrap_base, dp_base + de
 
+
+def _descend_to_device(xml, outer_branch_tag, steps):
+    """Walk `steps` (list of {chain, device}) descending one rack level per step.
+
+    Returns (device_tag, absolute_start, absolute_end) of the FINAL step's device
+    element. Every non-final step's device must itself be a nested rack (a
+    <GroupDevicePreset>); its branch_tag is detected from its own GroupDevice tag
+    (which may differ from the outer rack's, e.g. an Audio Effect Rack nested in an
+    Instrument Rack), and the descent continues into the wrapper's <BranchPresets>
+    (a sibling of <Device>, NOT inside the device element).
+    """
+    region = xml
+    region_base = 0
+    branch_tag = outer_branch_tag
+    last = len(steps) - 1
+    for i, step in enumerate(steps):
+        dtag, ds, de, ws, we = _locate_device_in_region(
+            region, branch_tag, step["chain"], step["device"], i)
+        abs_dev_start, abs_dev_end = region_base + ds, region_base + de
+        if i == last:
+            return dtag, abs_dev_start, abs_dev_end
+        device_el = xml[abs_dev_start:abs_dev_end]
+        try:
+            nested_kind = detect_rack_type(device_el)
+        except ValueError:
+            raise ValueError(
+                "path step %d targets device <%s>, which is not a rack; cannot "
+                "descend to step %d." % (i, dtag, i + 1))
+        branch_tag = RACK_TYPES[nested_kind]["branch_tag"]
+        # The nested rack's chains live in the wrapper's <BranchPresets> sibling.
+        wrap = xml[region_base + ws:region_base + we]
+        bp = _find_child(wrap, "BranchPresets")
+        if not bp:
+            raise ValueError(
+                "path step %d nested rack <%s> has no <BranchPresets>." % (i, dtag))
+        abs_bp_start = region_base + ws + bp[0]
+        region = xml[abs_bp_start:region_base + ws + bp[1]]
+        region_base = abs_bp_start
+    raise ValueError("path must have at least one step.")  # pragma: no cover
+
+
+def _locate_param_in_device(xml, dtag, base_el, end_el, parameter, where):
+    """Return absolute (start, end) of `parameter` as a direct child of the device
+    element spanning [base_el, end_el). Raises with the device's available tags.
+    """
+    device_el = xml[base_el:end_el]
     p = _find_child(device_el, parameter)
     if not p:
         avail = sorted({t for (t, s, e) in _child_elements(device_el)})
         raise ValueError(
-            "parameter <%s> not found as a direct child of device <%s> "
-            "(chain %d, device %d). Available: %s"
-            % (parameter, dtag, chain_index, device_index, ", ".join(avail)))
+            "parameter <%s> not found as a direct child of device <%s> (%s). "
+            "Available: %s" % (parameter, dtag, where, ", ".join(avail)))
     return base_el + p[0], base_el + p[1]
+
+
+def _locate_param_by_path(xml, outer_branch_tag, steps, parameter):
+    """Return absolute (start, end) of the target parameter, descending `steps`
+    (list of {chain, device}) into nested racks as needed.
+    """
+    dtag, bs, be = _descend_to_device(xml, outer_branch_tag, steps)
+    where = "path " + "/".join("c%dd%d" % (s["chain"], s["device"]) for s in steps)
+    return _locate_param_in_device(xml, dtag, bs, be, parameter, where)
+
+
+def _locate_param(xml, branch_tag, chain_index, device_index, parameter):
+    """Single-level shim over `_locate_param_by_path` (backward-compatible).
+
+    Navigates branch -> DevicePresets -> Nth AbletonDevicePreset -> Device ->
+    device element -> direct-child <parameter>. The parameter is matched by the
+    FIRST direct-child element with that tag name (unique for real device params).
+    """
+    return _locate_param_by_path(
+        xml, branch_tag, [{"chain": chain_index, "device": device_index}], parameter)
 
 
 def _inject_keymidi(param_el, macro_index):
@@ -450,13 +534,101 @@ def _inject_keymidi(param_el, macro_index):
     return param_el[:ot.end()] + block + param_el[ot.end():]
 
 
+def _set_controller_range(param_el, lo, hi):
+    """Set the macro-mapping range by replacing <Min>/<Max> inside the param's
+    <MidiControllerRange>. Values are in the parameter's NATIVE stored units (the
+    same units as the param's <Manual> / the LOM DeviceParameter.min..max), NOT
+    0..127. Inversion is expressed by lo > hi (written verbatim, never sorted).
+
+    Every automatable param carries a <MidiControllerRange> (it holds the param's
+    full native range by default), so this replaces in place — no synthesis.
+    Raises if the param somehow has none.
+    """
+    m = re.search(r'<MidiControllerRange>.*?</MidiControllerRange>', param_el, re.S)
+    if not m:
+        raise ValueError("parameter has no <MidiControllerRange> to set a range on.")
+    block = m.group(0)
+    block = re.sub(
+        r'(<Min Value=")[^"]*("\s*/>)',
+        lambda mm: mm.group(1) + ("%.10g" % lo) + mm.group(2), block, count=1)
+    block = re.sub(
+        r'(<Max Value=")[^"]*("\s*/>)',
+        lambda mm: mm.group(1) + ("%.10g" % hi) + mm.group(2), block, count=1)
+    return param_el[:m.start()] + block + param_el[m.end():]
+
+
+def _normalize_range(value):
+    """Coerce a mapping 'range' into (lo, hi) floats in the param's native units.
+
+    Requires an object {min, max}; both finite numbers. Inversion is allowed
+    (lo > hi) and preserved. No 0..127 clamp — native units are param-specific
+    (e.g. linear amplitude, Hz, dB).
+    """
+    if not isinstance(value, dict):
+        raise ValueError(
+            "mapping 'range' must be an object {min, max} in native param units.")
+    if value.get("min") is None or value.get("max") is None:
+        raise ValueError("mapping 'range' requires both 'min' and 'max'.")
+    try:
+        lo = float(value["min"])
+        hi = float(value["max"])
+    except (TypeError, ValueError):
+        raise ValueError("mapping 'range' min/max must be numbers.")
+    if not (math.isfinite(lo) and math.isfinite(hi)):
+        raise ValueError("mapping 'range' min/max must be finite numbers.")
+    return lo, hi
+
+
+def _normalize_path(mp):
+    """Resolve a mapping's device address into a list of {chain, device} steps.
+
+    Accepts either the flat single-level form ({chain, device}) or an explicit
+    `path` array of {chain, device} steps for nested rack-in-rack addressing.
+    Supplying both is rejected as ambiguous.
+    """
+    has_path = mp.get("path") is not None
+    has_flat = mp.get("chain") is not None or mp.get("device") is not None
+    if has_path and has_flat:
+        raise ValueError(
+            "mapping must use EITHER 'path' OR 'chain'/'device', not both.")
+    if has_path:
+        path = mp["path"]
+        if not isinstance(path, (list, tuple)) or not path:
+            raise ValueError("'path' must be a non-empty list of {chain, device} steps.")
+        steps = []
+        for i, step in enumerate(path):
+            if not isinstance(step, dict):
+                raise ValueError("path step %d must be a {chain, device} object." % i)
+            for key in ("chain", "device"):
+                if step.get(key) is None:
+                    raise ValueError(
+                        "path step %d requires '%s' (an integer index)." % (i, key))
+            steps.append({"chain": int(step["chain"]), "device": int(step["device"])})
+        return steps
+    for key in ("chain", "device"):
+        if mp.get(key) is None:
+            raise ValueError(
+                "mapping requires '%s' (an integer index), or a 'path' array." % key)
+    return [{"chain": int(mp["chain"]), "device": int(mp["device"])}]
+
+
 def patch_macro_mappings(xml, rack_type, mappings):
     """Add macro->parameter mappings to a rack .adg XML. Pure: returns new XML.
 
-    `mappings`: list of {macro (1-based), chain (0-based), device (0-based),
-    parameter (XML tag name of the param within the device, e.g. 'Gain')}.
-    Default full-range mappings (no min/max). Many params may share a macro.
-    Re-mapping a param replaces its existing mapping.
+    Each mapping is an object:
+      {macro (1-based), parameter (XML tag name within the device), AND a device
+       address — either flat {chain (0-based), device (0-based)} OR a nested
+       `path` array of {chain, device} steps descending one rack level each.}
+
+    A `path` lets a mapping target a parameter inside a nested rack-in-rack (the
+    nested rack's branch type is auto-detected and may differ from the outer's).
+    The flat form {chain, device} is equivalent to a one-step path.
+
+    Optional `range` ({min, max}) sets a custom mapping range so the macro sweeps
+    a sub-range of the parameter; min/max are in the param's NATIVE units and
+    min > max inverts the mapping. Omitting `range` leaves the param's full-range
+    mapping (its <MidiControllerRange> is untouched). Many params may share a
+    macro. Re-mapping a param replaces its existing mapping.
     """
     btag = RACK_TYPES[rack_type]["branch_tag"]
     out = xml
@@ -464,16 +636,17 @@ def patch_macro_mappings(xml, rack_type, mappings):
         if not isinstance(mp, dict):
             raise ValueError("each mapping must be an object.")
         macro_index = _check_macro_number(mp.get("macro"))  # 0-based, validates 1..16
-        for key in ("chain", "device"):
-            if mp.get(key) is None:
-                raise ValueError("mapping requires '%s' (an integer index)." % key)
-        chain = int(mp["chain"])
-        device = int(mp["device"])
+        steps = _normalize_path(mp)
         parameter = str(mp.get("parameter", "")).strip()
         if not parameter:
             raise ValueError("mapping requires a 'parameter' tag name.")
-        ps, pe = _locate_param(out, btag, chain, device, parameter)
-        out = out[:ps] + _inject_keymidi(out[ps:pe], macro_index) + out[pe:]
+        rng = mp.get("range")
+        lo_hi = _normalize_range(rng) if rng is not None else None
+        ps, pe = _locate_param_by_path(out, btag, steps, parameter)
+        seg = _inject_keymidi(out[ps:pe], macro_index)
+        if lo_hi is not None:
+            seg = _set_controller_range(seg, lo_hi[0], lo_hi[1])
+        out = out[:ps] + seg + out[pe:]
     return out
 
 

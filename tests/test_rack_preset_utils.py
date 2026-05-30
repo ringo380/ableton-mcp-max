@@ -523,3 +523,270 @@ def test_real_audio_rack_mapping_roundtrip():
             break
     assert blk is not None, "patched <%s> with KeyMidi not found" % param_tag
     assert '<NoteOrController Value="1" />' in blk
+
+
+# --- v2 Feature B: nested rack-in-rack parameter addressing (path) ---
+
+from ableton_mcp_max.rack_preset_utils import _descend_to_device
+
+# Instrument Rack whose chain0/device0 is itself an Audio Effect Rack (a nested
+# rack with a DIFFERENT branch_tag) containing chain0/device0 = StereoGain/Gain.
+# Structure mirrors REAL Live XML: a nested rack is a <GroupDevicePreset> wrapper
+# whose chains live in a <BranchPresets> SIBLING of its <Device> (confirmed
+# 2026-05-29 against factory Drum Rack pads). The earlier synthetic shape — a
+# nested rack wrapped in <AbletonDevicePreset> with <BranchPresets> inside the
+# device element — does not occur in practice.
+NESTED_RACK = (
+    '<Ableton><GroupDevicePreset><Device><InstrumentGroupDevice>'
+    '<UserName Value="Outer" />'
+    '</InstrumentGroupDevice></Device><BranchPresets>'
+    '<InstrumentBranchPreset Id="0"><UserName Value="OuterChain" />'
+    '<DevicePresets>'
+    '<GroupDevicePreset Id="0"><Device><AudioEffectGroupDevice>'
+    '<UserName Value="Nested" />'
+    '</AudioEffectGroupDevice></Device>'
+    '<BranchPresets>'
+    '<AudioEffectBranchPreset Id="0"><UserName Value="InnerChain" />'
+    '<DevicePresets>'
+    '<AbletonDevicePreset Id="0"><Device><StereoGain Id="0"><LomId Value="0" />'
+    '<Gain><LomId Value="0" /><Manual Value="1" />'
+    '<MidiControllerRange><Min Value="0" /><Max Value="1" /></MidiControllerRange></Gain>'
+    '<Balance><LomId Value="0" /><Manual Value="0" /></Balance>'
+    '</StereoGain></Device></AbletonDevicePreset>'
+    '</DevicePresets>'
+    '<DeviceChain></DeviceChain>'
+    '</AudioEffectBranchPreset>'
+    '</BranchPresets>'
+    '</GroupDevicePreset>'
+    '</DevicePresets>'
+    '<DeviceChain></DeviceChain>'
+    '</InstrumentBranchPreset></BranchPresets>'
+    '</GroupDevicePreset></Ableton>'
+)
+
+
+def test_nested_path_injects_keymidi_in_inner_param():
+    out = patch_macro_mappings(NESTED_RACK, "instrument", [{
+        "macro": 1,
+        "path": [{"chain": 0, "device": 0}, {"chain": 0, "device": 0}],
+        "parameter": "Gain",
+    }])
+    km = _gain_keymidi(out)
+    assert km is not None
+    assert '<Channel Value="16" />' in km
+    assert '<NoteOrController Value="0" />' in km
+    g = _re.search(r'<Gain>.*?</Gain>', out, _re.S).group(0)
+    assert g.index('<LomId') < g.index('<KeyMidi>') < g.index('<Manual')
+
+
+def test_flat_equiv_to_single_step_path():
+    flat = patch_macro_mappings(MAP_RACK, "audio_effect",
+                                [{"macro": 3, "chain": 0, "device": 0, "parameter": "Gain"}])
+    via_path = patch_macro_mappings(MAP_RACK, "audio_effect",
+                                    [{"macro": 3, "path": [{"chain": 0, "device": 0}],
+                                      "parameter": "Gain"}])
+    assert flat == via_path
+
+
+def test_descend_detects_nested_branch_tag_differs():
+    # outer = instrument, inner = audio_effect: descent must switch branch_tag
+    dtag, s, e = _descend_to_device(
+        NESTED_RACK, "InstrumentBranchPreset",
+        [{"chain": 0, "device": 0}, {"chain": 0, "device": 0}])
+    assert dtag == "StereoGain"
+
+
+def test_path_descend_into_non_rack_errors():
+    # MAP_RACK chain0/device0 is a plain StereoGain, not a rack -> cannot descend
+    with pytest.raises(ValueError, match="not a rack"):
+        patch_macro_mappings(MAP_RACK, "audio_effect", [{
+            "macro": 1,
+            "path": [{"chain": 0, "device": 0}, {"chain": 0, "device": 0}],
+            "parameter": "Gain",
+        }])
+
+
+def test_path_chain_out_of_range_carries_step_index():
+    with pytest.raises(ValueError, match="path step 1"):
+        patch_macro_mappings(NESTED_RACK, "instrument", [{
+            "macro": 1,
+            "path": [{"chain": 0, "device": 0}, {"chain": 9, "device": 0}],
+            "parameter": "Gain",
+        }])
+
+
+def test_path_device_out_of_range_carries_step_index():
+    with pytest.raises(ValueError, match="path step 0"):
+        patch_macro_mappings(NESTED_RACK, "instrument", [{
+            "macro": 1,
+            "path": [{"chain": 0, "device": 9}, {"chain": 0, "device": 0}],
+            "parameter": "Gain",
+        }])
+
+
+def test_path_and_flat_both_given_rejected():
+    with pytest.raises(ValueError, match="EITHER 'path' OR"):
+        patch_macro_mappings(MAP_RACK, "audio_effect", [{
+            "macro": 1, "chain": 0, "device": 0,
+            "path": [{"chain": 0, "device": 0}], "parameter": "Gain",
+        }])
+
+
+def test_path_empty_rejected():
+    with pytest.raises(ValueError, match="non-empty"):
+        patch_macro_mappings(MAP_RACK, "audio_effect",
+                             [{"macro": 1, "path": [], "parameter": "Gain"}])
+
+
+def test_path_step_missing_device_rejected():
+    with pytest.raises(ValueError, match="path step 0 requires 'device'"):
+        patch_macro_mappings(MAP_RACK, "audio_effect",
+                             [{"macro": 1, "path": [{"chain": 0}], "parameter": "Gain"}])
+
+
+def test_nested_param_not_found_lists_available():
+    with pytest.raises(ValueError, match="Available:.*Balance"):
+        patch_macro_mappings(NESTED_RACK, "instrument", [{
+            "macro": 1,
+            "path": [{"chain": 0, "device": 0}, {"chain": 0, "device": 0}],
+            "parameter": "Nope",
+        }])
+
+
+# ---- v2 Feature A: custom / inverted mapping ranges ----
+# Encoding confirmed by save-diff (2026-05-29): the range is the param's
+# <MidiControllerRange><Min>/<Max> in NATIVE units; inversion = Min > Max;
+# default (omitted) leaves the intrinsic full-range block untouched; KeyMidi is
+# unaffected by the range. MAP_RACK's <Gain> carries <Min Value="0"/><Max Value="1"/>.
+
+def _gain_range(xml):
+    g = _re.search(r'<Gain>.*?</Gain>', xml, _re.S).group(0)
+    mcr = _re.search(r'<MidiControllerRange>.*?</MidiControllerRange>', g, _re.S).group(0)
+    lo = _re.search(r'<Min Value="([^"]*)"', mcr).group(1)
+    hi = _re.search(r'<Max Value="([^"]*)"', mcr).group(1)
+    return lo, hi
+
+
+def test_custom_range_writes_min_max():
+    out = patch_macro_mappings(MAP_RACK, "audio_effect", [{
+        "macro": 1, "chain": 0, "device": 0, "parameter": "Gain",
+        "range": {"min": 0.2511886358, "max": 1},
+    }])
+    assert _gain_range(out) == ("0.2511886358", "1")
+    # KeyMidi still injected, range did not disturb it
+    assert '<NoteOrController Value="0" />' in _gain_keymidi(out)
+
+
+def test_inverted_range_writes_min_gt_max_verbatim():
+    out = patch_macro_mappings(MAP_RACK, "audio_effect", [{
+        "macro": 1, "chain": 0, "device": 0, "parameter": "Gain",
+        "range": {"min": 1, "max": 0.2511886358},
+    }])
+    # written verbatim, NOT sorted -> Min > Max encodes inversion
+    assert _gain_range(out) == ("1", "0.2511886358")
+
+
+def test_no_range_leaves_midicontrollerrange_untouched():
+    out = patch_macro_mappings(MAP_RACK, "audio_effect",
+                               [{"macro": 1, "chain": 0, "device": 0, "parameter": "Gain"}])
+    assert _gain_range(out) == ("0", "1")  # MAP_RACK's intrinsic full range, unchanged
+
+
+def test_range_on_nested_path():
+    out = patch_macro_mappings(NESTED_RACK, "instrument", [{
+        "macro": 2,
+        "path": [{"chain": 0, "device": 0}, {"chain": 0, "device": 0}],
+        "parameter": "Gain",
+        "range": {"min": 0.5, "max": 0.8},
+    }])
+    # range landed in the INNER Gain's MidiControllerRange, with KeyMidi intact
+    assert _gain_range(out) == ("0.5", "0.8")
+    assert '<NoteOrController Value="1" />' in _gain_keymidi(out)
+
+
+def test_range_requires_both_min_and_max():
+    with pytest.raises(ValueError, match="requires both 'min' and 'max'"):
+        patch_macro_mappings(MAP_RACK, "audio_effect", [{
+            "macro": 1, "chain": 0, "device": 0, "parameter": "Gain",
+            "range": {"min": 0.5},
+        }])
+
+
+def test_range_non_numeric_rejected():
+    with pytest.raises(ValueError, match="min/max must be numbers"):
+        patch_macro_mappings(MAP_RACK, "audio_effect", [{
+            "macro": 1, "chain": 0, "device": 0, "parameter": "Gain",
+            "range": {"min": "loud", "max": 1},
+        }])
+
+
+def test_range_non_finite_rejected():
+    with pytest.raises(ValueError, match="must be finite"):
+        patch_macro_mappings(MAP_RACK, "audio_effect", [{
+            "macro": 1, "chain": 0, "device": 0, "parameter": "Gain",
+            "range": {"min": 0, "max": float("inf")},
+        }])
+
+
+def test_range_on_param_without_controller_range_errors():
+    # MAP_RACK's <Balance> has no <MidiControllerRange>; a range there must raise.
+    with pytest.raises(ValueError, match="no <MidiControllerRange>"):
+        patch_macro_mappings(MAP_RACK, "audio_effect", [{
+            "macro": 1, "chain": 0, "device": 0, "parameter": "Balance",
+            "range": {"min": 0, "max": 1},
+        }])
+
+
+# --- v2 Feature B: REAL factory nested-rack descent (regression guard) ---
+# A nested rack in a chain is a <GroupDevicePreset> whose chains live in a
+# <BranchPresets> SIBLING of its <Device> — NOT an <AbletonDevicePreset> with
+# chains inside the device element. This test descends a genuine factory rack so a
+# future structural regression (e.g. reverting to AbletonDevicePreset-only) fails.
+
+def _factory_nested_rack():
+    """First factory rack whose chain 0 contains a nested-rack <GroupDevicePreset>;
+    returns (path, rack_type, branch_tag, device_index) or None.
+    """
+    for f in sorted(glob.glob(
+            "/Applications/Ableton*Live*.app/Contents/App-Resources/Core Library/"
+            "Racks/**/*.adg", recursive=True)):
+        try:
+            with gzip.open(f, "rt", errors="replace") as fh:
+                x = fh.read()
+            top = detect_rack_type(x)
+        except Exception:
+            continue
+        btag = RACK_TYPES[top]["branch_tag"]
+        chains = top_branches(x, btag)
+        if not chains:
+            continue
+        b = x[chains[0][0]:chains[0][1]]
+        dp = _find_child(b, "DevicePresets")
+        if not dp:
+            continue
+        dpx = b[dp[0]:dp[1]]
+        wraps = [t for (t, s, e) in _child_elements(dpx)
+                 if t in ("AbletonDevicePreset", "GroupDevicePreset")]
+        for di, t in enumerate(wraps):
+            if t == "GroupDevicePreset":
+                return f, top, btag, di
+    return None
+
+
+@pytest.mark.skipif(_factory_nested_rack() is None,
+                    reason="no factory rack with a nested GroupDevicePreset")
+def test_real_factory_nested_descent_reaches_inner_device():
+    f, top, btag, di = _factory_nested_rack()
+    with gzip.open(f, "rt", errors="replace") as fh:
+        xml = fh.read()
+    # one level: chain0/device<di> resolves to the nested rack's GroupDevice element
+    dtag, s, e = _descend_to_device(xml, btag, [{"chain": 0, "device": di}])
+    assert dtag.endswith("GroupDevice")
+    nested_kind = detect_rack_type(xml[s:e])
+    assert nested_kind in RACK_TYPES
+    # two levels: into the nested rack's chain0/device0 (a real, non-rack device)
+    dtag2, s2, e2 = _descend_to_device(
+        xml, btag, [{"chain": 0, "device": di}, {"chain": 0, "device": 0}])
+    # the deep device element exposes parameter tags (it's a real device span)
+    deep_tags = {t for (t, a, b) in _child_elements(xml[s2:e2])}
+    assert deep_tags, "deep device element has no child params"

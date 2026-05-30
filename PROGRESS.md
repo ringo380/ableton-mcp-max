@@ -4,14 +4,25 @@
 clone_rack, rename_rack_macros, set_rack_zones); Phase B v1 = v0.3.0 (add_rack_macro_mappings via
 `<KeyMidi>` encoding). Both merged + released + marketplace ableton ref bumped; offline 307/307; all
 live-verified. Phases 0–11 also done. See "Preset-patch backdoor" section for full detail.
-**Next action (resume here): rack macro-mapping v2 — USER CONFIRMED wanted (2026-05-29).** Two features
-on a NEW branch off main (v0.3.0): (1) custom/inverted mapping RANGES — FIRST do a user-performed
-save-diff in Live (map a macro, drag its range to a custom sub-range + an inverted one, save vs a
-default baseline, diff) to confirm where the range is stored (hypothesis: the target param's
-`<MidiControllerRange>` Min/Max — v1 found it UNCHANGED for default maps), then add optional min/max to
-`add_rack_macro_mappings`; (2) nested rack-in-rack param addressing (extend `_locate_param` to descend
-into a rack device's branches). Code: `rack_preset_utils.py` + `add_rack_macro_mappings` in server.py +
-tests; model on the v1 plan/spec; ship as v0.4.0. gh login must be ringo380.
+**Next action (resume here): rack macro-mapping v2 — CODE COMPLETE + BOTH FEATURES LIVE-VERIFIED
+(2026-05-30); ready to ship v0.4.0.** Branch `feat/rack-macro-mapping-v2` (off main). Offline-green
+(326/326). (1) custom/inverted RANGES — save-diff CONFIRMED range = target param's `<MidiControllerRange>`
+`<Min>/<Max>` in NATIVE units, inversion = swap Min/Max, default untouched (spec "v2 FINDINGS");
+`_set_controller_range` + optional `range:{min,max}`. **LIVE-VERIFIED**: cloned MCP_V2_RangeVerify,
+custom 0.25→1 + inverted 1→0.25 both written verbatim, Live parsed both, macro auto-renamed "Gain"
+(binding proof). (2) nested rack addressing — `path` array + recursive `_descend_to_device`. **LIVE TEST
+CAUGHT A BUG (fixed):** a nested rack in a chain is a `<GroupDevicePreset>` (chains in a `<BranchPresets>`
+SIBLING of `<Device>`), NOT `<AbletonDevicePreset>`; device enumeration must count both wrappers + descend
+into the BranchPresets sibling. Synthetic fixture had invented the wrong shape; real `path` map on "Basic
+Heavy Guitar Amp" returned "device index 2 out of range" against the OLD server. Fixed
+`_locate_device_in_region`/`_descend_to_device` + corrected NESTED_RACK fixture + added real-file
+`test_real_factory_nested_descent_reaches_inner_device` regression guard (spec "Nested-rack XML
+structure"). **LIVE-VERIFIED after restart**: `path:[{chain:0,device:2},{chain:0,device:0}]` → nested
+Cabinet `DryWet` wrote `KeyMidi NoteOrController=8` into chain0's Cabinet ONLY (sibling chain1 untouched;
+14 pre-existing factory mappings intact) — read back from the written `.adg`. server.py docstring +
+plugin.json + pyproject → 0.4.0. **REMAINING: commit → PR → merge → release v0.4.0 → marketplace ref bump
+(`node scripts/build-readme.js` + push marketplace repo).** gh login must be ringo380. Plan:
+`~/.claude/plans/alright-let-s-plot-out-goofy-lantern.md`.
 
 ## Phases
 | Phase | Title | Status | Completed |
