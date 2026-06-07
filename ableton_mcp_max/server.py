@@ -7,6 +7,7 @@ import os
 import re
 import gzip
 import glob
+import time
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, List, Optional, Union
@@ -91,6 +92,58 @@ logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("AbletonMCPServer")
 
+# Single source of truth for the command types that MUTATE Live's state. These
+# are the wire command types the Remote Script schedules on Live's main thread
+# (remote_script/AbletonMCP/__init__.py mutation dispatch list). The server uses
+# this set to decide (a) whether to apply a settle delay after the write and
+# (b) the read timeout. Keep IN SYNC with the Remote Script list. Note: the
+# server's load_instrument_or_effect/load_drum_kit tools send "load_browser_item"
+# over the wire, so only "load_browser_item" appears here.
+MUTATING_COMMANDS = frozenset({
+    "create_midi_track", "set_track_name", "create_clip", "add_notes_to_clip",
+    "set_clip_name", "set_tempo", "fire_clip", "stop_clip", "start_playback",
+    "stop_playback", "load_browser_item", "set_device_parameter",
+    "set_mixer_property", "set_routing", "replace_clip_notes",
+    "remove_clip_notes", "set_clip_property", "set_clip_loop", "quantize_clip",
+    "duplicate_clip", "delete_clip", "modify_clip_notes", "delete_device",
+    "set_device_on", "set_rack_macro", "set_chain_property", "fire_scene",
+    "create_scene", "delete_scene", "duplicate_scene", "set_scene_name",
+    "set_scene_property", "continue_playback", "set_metronome",
+    "set_arrangement_record", "set_session_record", "set_punch",
+    "set_song_position", "jump_by", "set_arrangement_loop", "jump_to_cue",
+    "back_to_arrangement", "re_enable_automation", "set_automation",
+    "clear_automation", "create_automation_envelope", "clear_all_automation",
+    "register_listener", "unregister_listener", "create_cue_at_playhead",
+    "delete_cue_at_playhead", "duplicate_clip_to_arrangement",
+    "delete_arrangement_clip", "create_audio_track", "create_return_track",
+    "delete_track", "delete_return_track", "duplicate_track", "undo", "redo",
+    "set_groove_amount", "set_swing_amount", "set_clip_trigger_quantization",
+    "set_midi_recording_quantization", "set_nudge", "set_selected_track",
+    "set_selected_scene", "set_detail_clip", "set_highlighted_clip_slot",
+    "set_track_fold", "capture_midi", "capture_and_insert_scene",
+    "trigger_session_record", "stop_all_clips", "tap_tempo",
+})
+
+# Client read timeouts. The mutation timeout MUST stay strictly greater than the
+# Remote Script's main_thread_task timeout (10s, see __init__.py) so a slow Live
+# op surfaces the Remote Script's clean "Timeout waiting for operation to
+# complete" rather than a bare client-side socket timeout.
+_REMOTE_TASK_TIMEOUT = 10.0
+_READ_TIMEOUT = _REMOTE_TASK_TIMEOUT      # read-only commands
+_MUTATE_TIMEOUT = _REMOTE_TASK_TIMEOUT + 5.0  # mutating commands (> remote task)
+_SETTLE_DELAY = 0.1  # seconds; applied around mutating writes (see Phase C)
+
+
+class _SendPhaseError(Exception):
+    """Socket failure while SENDING a command (it never reached Live, so a
+    retry cannot double-apply a mutation)."""
+
+
+class _RecvPhaseError(Exception):
+    """Socket failure while RECEIVING a response (the command MAY have executed
+    in Live, so only idempotent commands are safe to retry)."""
+
+
 @dataclass
 class AbletonConnection:
     host: str
@@ -169,90 +222,97 @@ class AbletonConnection:
         else:
             raise Exception("No data received")
 
-    def send_command(self, command_type: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Send a command to Ableton and return the response"""
+    def _reset_socket(self):
+        """Drop the current socket so the next attempt reconnects cleanly."""
+        if self.sock:
+            try:
+                self.sock.close()
+            except Exception:
+                pass
+        self.sock = None
+
+    def _attempt(self, command, is_modifying):
+        """One send→receive round-trip on the current socket.
+
+        Raises _SendPhaseError if the failure happened before the command
+        reached Live (safe to retry, even mutations), or _RecvPhaseError if it
+        happened while awaiting the response (the command MAY have executed, so
+        only idempotent commands are safe to retry). Application-level errors
+        (status == "error") propagate as a plain Exception (connection is fine).
+        """
+        # SEND phase: a failure here means Live never saw the command.
+        try:
+            self.sock.sendall(json.dumps(command).encode('utf-8'))
+        except Exception as e:
+            raise _SendPhaseError(e)
+
+        if is_modifying:
+            time.sleep(_SETTLE_DELAY)
+        self.sock.settimeout(_MUTATE_TIMEOUT if is_modifying else _READ_TIMEOUT)
+
+        # RECEIVE phase: a failure here means the command may have run.
+        try:
+            response_data = self.receive_full_response(self.sock)
+            response = json.loads(response_data.decode('utf-8'))
+        except Exception as e:
+            raise _RecvPhaseError(e)
+
+        if response.get("status") == "error":
+            logger.error(f"Ableton error: {response.get('message')}")
+            raise Exception(response.get("message", "Unknown error from Ableton"))
+
+        if is_modifying:
+            time.sleep(_SETTLE_DELAY)
+        return response.get("result", {})
+
+    def send_command(self, command_type: str, params: Dict[str, Any] = None,
+                     idempotent: bool = None) -> Dict[str, Any]:
+        """Send a command to Ableton and return the result.
+
+        Transparently recovers from a stale/dropped socket: a send-phase failure
+        is always retried once (the command never reached Live), and a
+        receive-phase failure is retried once only when the command is
+        idempotent. `idempotent` defaults to True for read-only commands and
+        False for mutations (MUTATING_COMMANDS); pass it explicitly to override.
+        """
         if not self.sock and not self.connect():
             raise ConnectionError("Not connected to Ableton")
-        
-        command = {
-            "type": command_type,
-            "params": params or {}
-        }
-        
-        # Check if this is a state-modifying command
-        is_modifying_command = command_type in [
-            "create_midi_track", "create_audio_track", "set_track_name",
-            "create_clip", "add_notes_to_clip", "set_clip_name",
-            "set_tempo", "fire_clip", "stop_clip", "set_device_parameter",
-            "start_playback", "stop_playback", "load_instrument_or_effect",
-            "replace_clip_notes", "remove_clip_notes", "set_clip_property",
-            "set_clip_loop", "quantize_clip", "duplicate_clip", "delete_clip",
-            "modify_clip_notes",
-            "delete_device", "set_device_on", "set_rack_macro",
-            "set_chain_property",
-            "fire_scene", "create_scene", "delete_scene", "duplicate_scene",
-            "set_scene_name", "set_scene_property", "continue_playback",
-            "set_metronome", "set_arrangement_record", "set_session_record",
-            "set_punch", "set_song_position", "jump_by", "set_arrangement_loop",
-            "jump_to_cue", "back_to_arrangement", "re_enable_automation",
-            "set_groove_amount", "set_swing_amount",
-            "set_clip_trigger_quantization", "set_midi_recording_quantization",
-            "set_nudge", "set_selected_track", "set_selected_scene",
-            "set_detail_clip", "set_highlighted_clip_slot", "set_track_fold",
-        ]
-        
+
+        command = {"type": command_type, "params": params or {}}
+        is_modifying = command_type in MUTATING_COMMANDS
+        if idempotent is None:
+            idempotent = not is_modifying
+
+        logger.info(f"Sending command: {command_type} with params: {params}")
         try:
-            logger.info(f"Sending command: {command_type} with params: {params}")
-            
-            # Send the command
-            self.sock.sendall(json.dumps(command).encode('utf-8'))
-            logger.info(f"Command sent, waiting for response...")
-            
-            # For state-modifying commands, add a small delay to give Ableton time to process
-            if is_modifying_command:
-                import time
-                time.sleep(0.1)  # 100ms delay
-            
-            # Set timeout based on command type
-            timeout = 15.0 if is_modifying_command else 10.0
-            self.sock.settimeout(timeout)
-            
-            # Receive the response
-            response_data = self.receive_full_response(self.sock)
-            logger.info(f"Received {len(response_data)} bytes of data")
-            
-            # Parse the response
-            response = json.loads(response_data.decode('utf-8'))
-            logger.info(f"Response parsed, status: {response.get('status', 'unknown')}")
-            
-            if response.get("status") == "error":
-                logger.error(f"Ableton error: {response.get('message')}")
-                raise Exception(response.get("message", "Unknown error from Ableton"))
-            
-            # For state-modifying commands, add another small delay after receiving response
-            if is_modifying_command:
-                import time
-                time.sleep(0.1)  # 100ms delay
-            
-            return response.get("result", {})
-        except socket.timeout:
-            logger.error("Socket timeout while waiting for response from Ableton")
-            self.sock = None
-            raise Exception("Timeout waiting for Ableton response")
-        except (ConnectionError, BrokenPipeError, ConnectionResetError) as e:
-            logger.error(f"Socket connection error: {str(e)}")
-            self.sock = None
-            raise Exception(f"Connection to Ableton lost: {str(e)}")
-        except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON response from Ableton: {str(e)}")
-            if 'response_data' in locals() and response_data:
-                logger.error(f"Raw response (first 200 bytes): {response_data[:200]}")
-            self.sock = None
-            raise Exception(f"Invalid response from Ableton: {str(e)}")
-        except Exception as e:
-            logger.error(f"Error communicating with Ableton: {str(e)}")
-            self.sock = None
-            raise Exception(f"Communication error with Ableton: {str(e)}")
+            return self._attempt(command, is_modifying)
+        except _SendPhaseError as e:
+            # Command never reached Live → safe to reconnect and retry once.
+            logger.warning(f"Send-phase failure for {command_type} ({e}); "
+                           f"reconnecting and retrying once")
+            self._reset_socket()
+            if not self.connect():
+                raise Exception("Connection to Ableton lost; reconnect failed")
+            try:
+                return self._attempt(command, is_modifying)
+            except (_SendPhaseError, _RecvPhaseError) as e2:
+                self._reset_socket()
+                raise Exception(f"Communication error with Ableton: {e2}")
+        except _RecvPhaseError as e:
+            self._reset_socket()
+            if idempotent:
+                logger.warning(f"Recv-phase failure for {command_type} ({e}); "
+                               f"idempotent retry")
+                if self.connect():
+                    try:
+                        return self._attempt(command, is_modifying)
+                    except (_SendPhaseError, _RecvPhaseError) as e2:
+                        self._reset_socket()
+                        raise Exception(
+                            f"Communication error with Ableton: {e2}")
+            # Non-idempotent: socket is reset for the next call, but we do NOT
+            # retry: the mutation may already have applied in Live.
+            raise Exception(f"Communication error with Ableton: {e}")
 
 @asynccontextmanager
 async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
@@ -288,24 +348,15 @@ _ableton_connection = None
 def get_ableton_connection():
     """Get or create a persistent Ableton connection"""
     global _ableton_connection
-    
+
+    # Reuse the existing connection object. We do NOT pre-probe liveness here
+    # (a zero-byte send can't detect a half-open socket). Instead, send_command
+    # transparently reconnects on a send-phase failure, so a stale socket is
+    # recovered on first use without a useless extra round-trip.
     if _ableton_connection is not None:
-        try:
-            # Test the connection with a simple ping
-            # We'll try to send an empty message, which should fail if the connection is dead
-            # but won't affect Ableton if it's alive
-            _ableton_connection.sock.settimeout(1.0)
-            _ableton_connection.sock.sendall(b'')
-            return _ableton_connection
-        except Exception as e:
-            logger.warning(f"Existing connection is no longer valid: {str(e)}")
-            try:
-                _ableton_connection.disconnect()
-            except:
-                pass
-            _ableton_connection = None
-    
-    # Connection doesn't exist or is invalid, create a new one
+        return _ableton_connection
+
+    # Connection doesn't exist, create a new one
     if _ableton_connection is None:
         # Try to connect up to 3 times with a short delay between attempts
         max_attempts = 3

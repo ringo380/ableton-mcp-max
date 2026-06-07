@@ -1,28 +1,20 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Preset-patch rack tools (task #5) SHIPPED. Phase A = v0.2.0 (inspect_rack_preset,
-clone_rack, rename_rack_macros, set_rack_zones); Phase B v1 = v0.3.0 (add_rack_macro_mappings via
-`<KeyMidi>` encoding). Both merged + released + marketplace ableton ref bumped; offline 307/307; all
-live-verified. Phases 0–11 also done. See "Preset-patch backdoor" section for full detail.
-**Next action (resume here): rack macro-mapping v2 — CODE COMPLETE + BOTH FEATURES LIVE-VERIFIED
-(2026-05-30); ready to ship v0.4.0.** Branch `feat/rack-macro-mapping-v2` (off main). Offline-green
-(326/326). (1) custom/inverted RANGES — save-diff CONFIRMED range = target param's `<MidiControllerRange>`
-`<Min>/<Max>` in NATIVE units, inversion = swap Min/Max, default untouched (spec "v2 FINDINGS");
-`_set_controller_range` + optional `range:{min,max}`. **LIVE-VERIFIED**: cloned MCP_V2_RangeVerify,
-custom 0.25→1 + inverted 1→0.25 both written verbatim, Live parsed both, macro auto-renamed "Gain"
-(binding proof). (2) nested rack addressing — `path` array + recursive `_descend_to_device`. **LIVE TEST
-CAUGHT A BUG (fixed):** a nested rack in a chain is a `<GroupDevicePreset>` (chains in a `<BranchPresets>`
-SIBLING of `<Device>`), NOT `<AbletonDevicePreset>`; device enumeration must count both wrappers + descend
-into the BranchPresets sibling. Synthetic fixture had invented the wrong shape; real `path` map on "Basic
-Heavy Guitar Amp" returned "device index 2 out of range" against the OLD server. Fixed
-`_locate_device_in_region`/`_descend_to_device` + corrected NESTED_RACK fixture + added real-file
-`test_real_factory_nested_descent_reaches_inner_device` regression guard (spec "Nested-rack XML
-structure"). **LIVE-VERIFIED after restart**: `path:[{chain:0,device:2},{chain:0,device:0}]` → nested
-Cabinet `DryWet` wrote `KeyMidi NoteOrController=8` into chain0's Cabinet ONLY (sibling chain1 untouched;
-14 pre-existing factory mappings intact) — read back from the written `.adg`. server.py docstring +
-plugin.json + pyproject → 0.4.0. **REMAINING: commit → PR → merge → release v0.4.0 → marketplace ref bump
-(`node scripts/build-readme.js` + push marketplace repo).** gh login must be ringo380. Plan:
-`~/.claude/plans/alright-let-s-plot-out-goofy-lantern.md`.
+**Current focus:** Robustness/Efficiency/Polish initiative (post-v0.4.0). Phases 0–11 + all
+preset-patch rack tools (through v0.4.0, rack macro-mapping v2) SHIPPED, merged, released, marketplace
+ref bumped, live-verified. Plan: `docs/superpowers/plans/2026-06-07-robustness-efficiency-polish.md`.
+Order A → B → C → E → D.
+**Next action (resume here):** Phase A (Connection robustness) is CODE-COMPLETE + OFFLINE-VERIFIED
+(334/334; +`tests/test_connection.py`), on branch `feat/connection-robustness`, server.py-only.
+**Needs a Claude Code restart to live-verify** (server.py loads at session start; use AbletonDev tools):
+kill+reopen Live mid-session, confirm next read auto-recovers without manual retry; confirm a
+previously-missing mutation (e.g. set_mixer_property) now gets the settle delay. What landed in Phase A:
+(1) `send_command` transparent reconnect split into send-phase (retry once, safe even for mutations,
+command never reached Live) vs recv-phase (retry once only if idempotent); (2) removed the dead
+`sendall(b'')` liveness probe; (3) `MUTATING_COMMANDS` frozenset = single source of truth (the old
+server list was missing 24 real mutations, so they skipped the settle delay AND got the 10s read
+timeout); a test parses the remote list + asserts equality (drift guard); (4) `_MUTATE_TIMEOUT`=15s >
+remote task timeout 10s. After live-verify: PR, merge, continue Phase B. gh = ringo380.
 
 ## Phases
 | Phase | Title | Status | Completed |
