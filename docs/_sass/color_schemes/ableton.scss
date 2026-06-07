@@ -1,0 +1,32 @@
+// Dark, Ableton-Live-inspired color scheme for just-the-docs.
+// Charcoal surfaces, warm amber accent, light text.
+
+$color-scheme: dark;
+
+// Surfaces
+$body-background-color: #141414;
+$sidebar-color: #1b1b1b;
+$search-background-color: #1b1b1b;
+$table-background-color: #1b1b1b;
+$code-background-color: #1e1e1e;
+$feedback-color: darken(#1b1b1b, 3%);
+
+// Text
+$body-text-color: #d6d6d6;
+$body-heading-color: #ffffff;
+$nav-child-link-color: #b8b8b8;
+$search-result-preview-color: #9a9a9a;
+$link-color: #f6a417; // Ableton amber
+
+// Lines / borders
+$border-color: #2c2c2c;
+
+// Buttons
+$btn-primary-color: #f6a417;
+$base-button-color: #262626;
+
+// Accent used by callouts / labels
+$blue-000: #f6a417;
+$blue-100: #f6a417;
+$blue-200: #e0930f;
+$blue-300: #c97f08;

@@ -1,0 +1,62 @@
+// Extra styling layered on top of the `ableton` color scheme.
+
+// Hero block on the landing page
+.hero {
+  margin: 0 0 2.5rem;
+  padding: 2.5rem 0 2rem;
+  border-bottom: 1px solid $border-color;
+
+  &__eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.72rem;
+    color: #f6a417;
+    font-weight: 600;
+  }
+
+  &__title {
+    font-size: 2.4rem;
+    line-height: 1.1;
+    margin: 0.4rem 0 0.6rem;
+    color: #fff;
+  }
+
+  &__tagline {
+    font-size: 1.05rem;
+    color: #b8b8b8;
+    max-width: 44rem;
+  }
+}
+
+// Amber-accented stat row
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin: 1.5rem 0 0;
+
+  &__num {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #f6a417;
+    line-height: 1;
+  }
+
+  &__label {
+    font-size: 0.78rem;
+    color: #9a9a9a;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+}
+
+// Make inline code (tool names) pop a touch warmer
+code.language-plaintext,
+.highlight .nf {
+  color: #f6a417;
+}
+
+// Tighten the category link headings on the tools index
+.site-content h2 > a {
+  text-decoration: none;
+}

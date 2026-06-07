@@ -1,0 +1,35 @@
+title: ableton-mcp-max
+description: >-
+  Control Ableton Live 11 from Claude - 106 MCP tools for tracks, clips, MIDI,
+  devices, mixing, automation, arrangement, scenes, transport, and preset generation.
+remote_theme: just-the-docs/just-the-docs
+
+color_scheme: ableton
+
+# Served from the /docs folder of the repo via GitHub Pages.
+# url/baseurl are set for the project-pages URL ringo380.github.io/ableton-mcp-max
+url: https://ringo380.github.io
+baseurl: /ableton-mcp-max
+
+# just-the-docs options
+search_enabled: true
+search:
+  heading_level: 2
+  previews: 3
+heading_anchors: true
+
+aux_links:
+  GitHub: https://github.com/ringo380/ableton-mcp-max
+  Marketplace: https://github.com/ringo380/robworks-claude-code-plugins
+aux_links_new_tab: true
+
+footer_content: >-
+  ableton-mcp-max - MIT licensed. Built by Ryan Robson / Robworks Software LLC.
+  Not affiliated with or endorsed by Ableton AG.
+
+# Keep the committed superpowers specs/plans out of the built site.
+exclude:
+  - superpowers/
+  - Gemfile
+  - Gemfile.lock
+  - vendor/

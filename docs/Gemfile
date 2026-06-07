@@ -1,0 +1,10 @@
+source "https://rubygems.org"
+
+# GitHub Pages builds this site server-side with the github-pages gem.
+# This Gemfile is for optional local previews: `bundle install && bundle exec jekyll serve`
+gem "github-pages", group: :jekyll_plugins
+gem "just-the-docs"
+
+# Windows / JRuby timezone data
+gem "tzinfo-data", platforms: [:mingw, :x64_mingw, :mswin, :jruby]
+gem "webrick", "~> 1.8"
