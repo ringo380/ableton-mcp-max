@@ -128,7 +128,7 @@ Parameters:
 undo()
 ```
 
-Undo the last action. WARNING: this walks Live's GLOBAL undo stack — it can
+Undo the last action. WARNING: this walks Live's GLOBAL undo stack; it can
 undo actions the user performed by hand, not just MCP changes. No-op (clean
 result) if there is nothing to undo.
 

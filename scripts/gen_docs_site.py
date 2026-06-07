@@ -68,6 +68,9 @@ CATEGORIES = [
     ("listeners", "Listeners", "Subscribe to real-time Live Object Model changes and poll for events.", [
         "register_listener", "poll_changes", "unregister_listener", "list_listeners",
     ]),
+    ("batch", "Batch & Transactions", "Collapse several mutations into a single atomic Live task / socket round-trip.", [
+        "batch",
+    ]),
 ]
 
 SKIP_PARAMS = {"self", "ctx", "context"}
@@ -168,7 +171,7 @@ def render_category(slug, title, blurb, names, tools, order):
     return "\n".join(lines) + "\n"
 
 
-def render_index():
+def render_index(total):
     lines = [
         "---",
         "layout: default",
@@ -179,7 +182,7 @@ def render_index():
         "",
         "# Tool Reference",
         "",
-        "All **106 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:",
+        f"All **{total} tools** exposed by the `ableton` MCP, grouped by area. Pick a category:",
         "",
     ]
     for slug, title, blurb, names in [(c[0], c[1], c[2], c[3]) for c in CATEGORIES]:
@@ -201,7 +204,7 @@ def main():
     assert not extra, f"Categorized names that don't exist: {sorted(extra)}"
     assert len(mapped) == len(set(mapped)), "Duplicate tool in category map"
     os.makedirs(TOOLS_DIR, exist_ok=True)
-    open(os.path.join(TOOLS_DIR, "index.md"), "w").write(render_index())
+    open(os.path.join(TOOLS_DIR, "index.md"), "w").write(render_index(len(tools)))
     for i, (slug, title, blurb, names) in enumerate(CATEGORIES, start=1):
         path = os.path.join(TOOLS_DIR, f"{slug}.md")
         open(path, "w").write(render_category(slug, title, blurb, names, tools, i))

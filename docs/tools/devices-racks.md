@@ -29,9 +29,17 @@ List all automatable parameters of a device on a track, with current
 value, min, max, whether it's quantized, and (for quantized params) the
 list of selectable value items.
 
+REGULAR tracks only: there is no track_type argument, so devices on
+return/master tracks are not reachable here. (get_device_info,
+get_rack_macros, set_rack_macro, set_chain_property, set_device_on and
+delete_device DO take track_type if you need return/master devices.)
+
 Parameters:
-- track_index: index of the track
+- track_index: index of the regular track
 - device_index: index of the device on that track (0 = first device)
+
+Returns JSON with the device name and a parameters list (each: index, name,
+value, min, max, is_quantized, value_items).
 
 ## set_device_parameter
 
@@ -46,8 +54,12 @@ set_device_parameter(
 
 Set a single device/instrument parameter.
 
+REGULAR tracks only: there is no track_type argument, so devices on
+return/master tracks cannot be set here (use set_rack_macro /
+set_chain_property / set_device_on, which take track_type, for those).
+
 Parameters:
-- track_index: index of the track
+- track_index: index of the regular track
 - device_index: index of the device on that track
 - parameter: parameter index (int) OR parameter name (str, case-insensitive)
 - value: target value (clamped to the parameter's min/max). For quantized

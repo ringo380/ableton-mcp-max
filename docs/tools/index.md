@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **106 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **107 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -80,4 +80,10 @@ Walk the browser, load presets and drum kits, and generate presets via the prese
 Subscribe to real-time Live Object Model changes and poll for events.
 
 `register_listener`, `poll_changes`, `unregister_listener`, `list_listeners`
+
+## [Batch & Transactions](./batch.html)
+
+Collapse several mutations into a single atomic Live task / socket round-trip.
+
+`batch`
 
