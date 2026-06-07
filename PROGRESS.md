@@ -30,6 +30,17 @@ plan: create-track→name→load_browser_item→create_clip→add_notes batch re
 round-trip; stop_on_error with a bad middle member returns partial + failed_index; timing < 5 separate
 calls.
 
+**Phase C (Efficiency: settle tuning) CODE-COMPLETE + OFFLINE-VERIFIED (351/351).** server.py-only
+(Claude Code restart, no Live bounce). Removed the unconditional pre-send 100ms delay for ALL mutations
+(the recv blocks until Live responds anyway) and made the post-write 100ms settle CONDITIONAL: only
+`_SLOW_SETTLE_COMMANDS` (the documented async-settling song/transport + structural ops) keep it; precise
+writes (device params, mixer, clip notes/props, automation, rack macros, browser loads) now pay zero
+artificial latency (they're synchronous within the scheduled task, already settled at response time).
+`_attempt` gained `slow_settle`; send_batch passes slow_settle=True. NOTE: response-limit work (bounding
+get_browser_tree/get_browser_items_at_path/get_arrangement_clips) was MOVED to Phase D so those readers
+get their return-shape standardized once, not twice. Live-verify: a previously-laggy op (set_song_position)
+still reads back correctly via a separate get_transport; precise writes feel snappier.
+
 ## Phases
 | Phase | Title | Status | Completed |
 |-------|-------|--------|-----------|

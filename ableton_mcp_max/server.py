@@ -125,6 +125,23 @@ MUTATING_COMMANDS = frozenset({
     "trigger_session_record", "stop_all_clips", "tap_tempo",
 })
 
+# Subset of MUTATING_COMMANDS whose Live write settles ASYNCHRONOUSLY, so a
+# follow-up read can see the pre-write value without a brief pause (see the
+# write-lag findings in PROGRESS.md: song/transport-level props and structural
+# track/scene changes). Only these keep a post-write settle delay; every other
+# mutation is applied synchronously within the scheduled task and is already
+# settled by the time the response returns, so it pays no delay. (Even for these,
+# a separate follow-up read remains the reliable confirmation.)
+_SLOW_SETTLE_COMMANDS = frozenset({
+    "set_song_position", "jump_by", "set_arrangement_record",
+    "set_session_record", "trigger_session_record", "set_punch",
+    "set_arrangement_loop", "back_to_arrangement", "jump_to_cue",
+    "undo", "redo", "create_midi_track", "create_audio_track",
+    "create_return_track", "delete_track", "delete_return_track",
+    "duplicate_track", "create_scene", "delete_scene", "duplicate_scene",
+    "capture_and_insert_scene",
+})
+
 # Client read timeouts. The mutation timeout MUST stay strictly greater than the
 # Remote Script's main_thread_task timeout (10s, see __init__.py) so a slow Live
 # op surfaces the Remote Script's clean "Timeout waiting for operation to
@@ -232,7 +249,7 @@ class AbletonConnection:
                 pass
         self.sock = None
 
-    def _attempt(self, command, is_modifying, timeout=None):
+    def _attempt(self, command, is_modifying, timeout=None, slow_settle=False):
         """One send→receive round-trip on the current socket.
 
         Raises _SendPhaseError if the failure happened before the command
@@ -240,6 +257,11 @@ class AbletonConnection:
         happened while awaiting the response (the command MAY have executed, so
         only idempotent commands are safe to retry). Application-level errors
         (status == "error") propagate as a plain Exception (connection is fine).
+
+        No pre-send delay: the receive blocks until Live responds anyway. A
+        post-receive settle is applied only when slow_settle is set (the
+        async-settling ops in _SLOW_SETTLE_COMMANDS), so the common mutation
+        pays no artificial latency.
         """
         # SEND phase: a failure here means Live never saw the command.
         try:
@@ -247,8 +269,6 @@ class AbletonConnection:
         except Exception as e:
             raise _SendPhaseError(e)
 
-        if is_modifying:
-            time.sleep(_SETTLE_DELAY)
         if timeout is None:
             timeout = _MUTATE_TIMEOUT if is_modifying else _READ_TIMEOUT
         self.sock.settimeout(timeout)
@@ -264,7 +284,7 @@ class AbletonConnection:
             logger.error(f"Ableton error: {response.get('message')}")
             raise Exception(response.get("message", "Unknown error from Ableton"))
 
-        if is_modifying:
+        if slow_settle:
             time.sleep(_SETTLE_DELAY)
         return response.get("result", {})
 
@@ -283,12 +303,13 @@ class AbletonConnection:
 
         command = {"type": command_type, "params": params or {}}
         is_modifying = command_type in MUTATING_COMMANDS
+        slow = command_type in _SLOW_SETTLE_COMMANDS
         if idempotent is None:
             idempotent = not is_modifying
 
         logger.info(f"Sending command: {command_type} with params: {params}")
         try:
-            return self._attempt(command, is_modifying)
+            return self._attempt(command, is_modifying, slow_settle=slow)
         except _SendPhaseError as e:
             # Command never reached Live → safe to reconnect and retry once.
             logger.warning(f"Send-phase failure for {command_type} ({e}); "
@@ -297,7 +318,7 @@ class AbletonConnection:
             if not self.connect():
                 raise Exception("Connection to Ableton lost; reconnect failed")
             try:
-                return self._attempt(command, is_modifying)
+                return self._attempt(command, is_modifying, slow_settle=slow)
             except (_SendPhaseError, _RecvPhaseError) as e2:
                 self._reset_socket()
                 raise Exception(f"Communication error with Ableton: {e2}")
@@ -308,7 +329,8 @@ class AbletonConnection:
                                f"idempotent retry")
                 if self.connect():
                     try:
-                        return self._attempt(command, is_modifying)
+                        return self._attempt(command, is_modifying,
+                                             slow_settle=slow)
                     except (_SendPhaseError, _RecvPhaseError) as e2:
                         self._reset_socket()
                         raise Exception(
@@ -337,7 +359,7 @@ class AbletonConnection:
         logger.info(f"Sending batch of {len(commands)} commands "
                     f"(stop_on_error={stop_on_error})")
         try:
-            return self._attempt(command, True, timeout=timeout)
+            return self._attempt(command, True, timeout=timeout, slow_settle=True)
         except _SendPhaseError as e:
             logger.warning(f"Batch send-phase failure ({e}); "
                            f"reconnecting and retrying once")
@@ -345,7 +367,7 @@ class AbletonConnection:
             if not self.connect():
                 raise Exception("Connection to Ableton lost; reconnect failed")
             try:
-                return self._attempt(command, True, timeout=timeout)
+                return self._attempt(command, True, timeout=timeout, slow_settle=True)
             except (_SendPhaseError, _RecvPhaseError) as e2:
                 self._reset_socket()
                 raise Exception(f"Communication error with Ableton: {e2}")

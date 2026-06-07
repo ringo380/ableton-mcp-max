@@ -76,6 +76,40 @@ def test_mutate_timeout_exceeds_remote_task_timeout():
     assert server._MUTATE_TIMEOUT > server._REMOTE_TASK_TIMEOUT
 
 
+def test_slow_settle_is_subset_of_mutations():
+    # Every async-settling op must itself be a recognized mutation.
+    assert server._SLOW_SETTLE_COMMANDS <= server.MUTATING_COMMANDS
+
+
+def test_slow_settle_classification():
+    # Documented async-settling song op keeps a settle; a precise device write
+    # does not.
+    assert "set_song_position" in server._SLOW_SETTLE_COMMANDS
+    assert "set_device_parameter" not in server._SLOW_SETTLE_COMMANDS
+
+
+def test_fast_mutation_does_not_sleep(monkeypatch):
+    # A non-slow mutation must not incur a settle sleep.
+    slept = {"n": 0}
+    monkeypatch.setattr(server.time, "sleep",
+                        lambda _s: slept.__setitem__("n", slept["n"] + 1))
+    conn = _conn(FakeSocket(response={"status": "success", "result": {}}))
+    conn.send_command("set_device_parameter",
+                      {"track_index": 0, "device_index": 0,
+                       "parameter_index": 1, "value": 0.5})
+    assert slept["n"] == 0
+
+
+def test_slow_mutation_sleeps_once(monkeypatch):
+    slept = {"n": 0}
+    monkeypatch.setattr(server, "_SETTLE_DELAY", 0.01)
+    monkeypatch.setattr(server.time, "sleep",
+                        lambda _s: slept.__setitem__("n", slept["n"] + 1))
+    conn = _conn(FakeSocket(response={"status": "success", "result": {}}))
+    conn.send_command("set_song_position", {"time_beats": 8.0})
+    assert slept["n"] == 1
+
+
 def test_send_command_success_returns_result():
     conn = _conn(FakeSocket(response={"status": "success", "result": {"v": 9}}))
     assert conn.send_command("get_session_info") == {"v": 9}
