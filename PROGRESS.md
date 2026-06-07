@@ -16,6 +16,20 @@ server list was missing 24 real mutations, so they skipped the settle delay AND 
 timeout); a test parses the remote list + asserts equality (drift guard); (4) `_MUTATE_TIMEOUT`=15s >
 remote task timeout 10s. After live-verify: PR, merge, continue Phase B. gh = ringo380.
 
+**Phase B (Batch protocol) CODE-COMPLETE + OFFLINE-VERIFIED (347/347; +`tests/test_batch.py`).**
+BOTH halves edited, so needs `bash scripts/install_remote_script.sh` + quit/reopen Live AND a Claude
+Code restart to live-verify. What landed: (1) remote `_dispatch_main_thread(command_type, params)`
+method extracted from the inline `main_thread_task` if/elif (single-command path + batch loop now share
+ONE dispatch table; else-branch raises on unknown); (2) new remote `batch` command runs members in ONE
+scheduled main-thread task, honors `stop_on_error`, returns {count, completed, failed_index, results};
+(3) server `AbletonConnection.send_batch()` (one round-trip, timeout scales 10+2*N, treated as a single
+mutation so only send-phase retried) + `batch` MCP tool + `batch_utils.py` (validate shape, reject
+empty/>64/nested-batch/non-mutation members, coerce stop_on_error). Reads + async-settle orchestrations
+(cue points) are NOT batchable by design; load_drum_kit left as-is (interleaves reads). Live-verify
+plan: create-track→name→load_browser_item→create_clip→add_notes batch returns 5 ordered results in one
+round-trip; stop_on_error with a bad middle member returns partial + failed_index; timing < 5 separate
+calls.
+
 ## Phases
 | Phase | Title | Status | Completed |
 |-------|-------|--------|-----------|

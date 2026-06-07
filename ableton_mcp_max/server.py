@@ -86,6 +86,7 @@ from ableton_mcp_max.arrangement_utils import (
     coerce_time,
     coerce_index,
 )
+from ableton_mcp_max.batch_utils import validate_batch, coerce_stop_on_error
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -231,7 +232,7 @@ class AbletonConnection:
                 pass
         self.sock = None
 
-    def _attempt(self, command, is_modifying):
+    def _attempt(self, command, is_modifying, timeout=None):
         """One send→receive round-trip on the current socket.
 
         Raises _SendPhaseError if the failure happened before the command
@@ -248,7 +249,9 @@ class AbletonConnection:
 
         if is_modifying:
             time.sleep(_SETTLE_DELAY)
-        self.sock.settimeout(_MUTATE_TIMEOUT if is_modifying else _READ_TIMEOUT)
+        if timeout is None:
+            timeout = _MUTATE_TIMEOUT if is_modifying else _READ_TIMEOUT
+        self.sock.settimeout(timeout)
 
         # RECEIVE phase: a failure here means the command may have run.
         try:
@@ -312,6 +315,42 @@ class AbletonConnection:
                             f"Communication error with Ableton: {e2}")
             # Non-idempotent: socket is reset for the next call, but we do NOT
             # retry: the mutation may already have applied in Live.
+            raise Exception(f"Communication error with Ableton: {e}")
+
+    def send_batch(self, commands, stop_on_error=True):
+        """Run several mutating commands in ONE Remote Script task / one socket
+        round-trip. `commands` is a list of {"type", "params"} members (already
+        validated). Returns the batch result dict
+        {count, completed, failed_index, results}.
+
+        The batch is treated as a single mutation: only send-phase failures are
+        retried (the whole batch never reached Live), never recv-phase (members
+        may have applied). The read timeout scales with the member count and is
+        kept above the Remote Script's batch task timeout (10 + 2*N s).
+        """
+        if not self.sock and not self.connect():
+            raise ConnectionError("Not connected to Ableton")
+        command = {"type": "batch",
+                   "params": {"commands": commands,
+                              "stop_on_error": stop_on_error}}
+        timeout = _REMOTE_TASK_TIMEOUT + 2.0 * max(1, len(commands)) + 5.0
+        logger.info(f"Sending batch of {len(commands)} commands "
+                    f"(stop_on_error={stop_on_error})")
+        try:
+            return self._attempt(command, True, timeout=timeout)
+        except _SendPhaseError as e:
+            logger.warning(f"Batch send-phase failure ({e}); "
+                           f"reconnecting and retrying once")
+            self._reset_socket()
+            if not self.connect():
+                raise Exception("Connection to Ableton lost; reconnect failed")
+            try:
+                return self._attempt(command, True, timeout=timeout)
+            except (_SendPhaseError, _RecvPhaseError) as e2:
+                self._reset_socket()
+                raise Exception(f"Communication error with Ableton: {e2}")
+        except _RecvPhaseError as e:
+            self._reset_socket()
             raise Exception(f"Communication error with Ableton: {e}")
 
 @asynccontextmanager
@@ -411,6 +450,56 @@ def get_session_info(ctx: Context) -> str:
     except Exception as e:
         logger.error(f"Error getting session info from Ableton: {str(e)}")
         return f"Error getting session info: {str(e)}"
+
+
+@mcp.tool()
+def batch(ctx: Context, commands: List[Dict[str, Any]],
+          stop_on_error: bool = True) -> str:
+    """Run several state-mutating commands in ONE Live task / one socket round-trip.
+
+    Collapses N writes into a single scheduled main-thread task, removing the
+    per-command settle/latency overhead and making the sequence atomic under
+    stop_on_error. Use this whenever you would otherwise fire several mutations
+    back-to-back (e.g. create a track, name it, load an instrument, create a
+    clip, add notes).
+
+    Each member is {"type": <command>, "params": {...}} where <command> is the
+    WIRE name of a mutating op and params are exactly what that op's remote
+    handler expects. Examples of <command>: "create_midi_track" (params {index}),
+    "set_track_name" ({track_index, name}), "create_clip" ({track_index,
+    clip_index, length}), "add_notes_to_clip" ({track_index, clip_index, notes}),
+    "set_device_parameter" ({track_index, device_index, parameter_index, value}),
+    "set_mixer_property" ({track_index, property, value, track_type, send_index}).
+    Note: to load an instrument/effect by URI use type "load_browser_item" with
+    params {track_index, item_uri} (the same call load_instrument_or_effect makes).
+    Members run SYNCHRONOUSLY in the given order.
+
+    IMPORTANT constraints:
+    - Only MUTATIONS are batchable. Read commands (get_*) are rejected; call those
+      separately. Name/index resolution that needs a read first (e.g. resolving a
+      device parameter by name) must be done before building the batch.
+    - Do NOT batch operations that depend on a previous write SETTLING
+      asynchronously before the next one reads it (e.g. set_song_position then a
+      cue toggle). Those must stay separate calls; members here share one Live
+      task with no settle between them.
+
+    Parameters:
+    - commands: list of {type, params} mutation members (1..64).
+    - stop_on_error: if true (default), stop at the first failing member and
+      return partial results; if false, attempt every member.
+
+    Returns JSON {count, completed, failed_index,
+    results:[{status, result|message}]} where failed_index is -1 when all ran.
+    """
+    try:
+        members = validate_batch(commands, MUTATING_COMMANDS)
+        flag = coerce_stop_on_error(stop_on_error)
+        ableton = get_ableton_connection()
+        result = ableton.send_batch(members, flag)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error running batch: {str(e)}")
+        return f"Error running batch: {str(e)}"
 
 @mcp.tool()
 def get_track_info(ctx: Context, track_index: int) -> str:
