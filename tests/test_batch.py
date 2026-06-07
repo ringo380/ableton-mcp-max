@@ -167,3 +167,36 @@ def test_send_batch_recv_phase_failure_no_retry(monkeypatch):
     with pytest.raises(Exception):
         conn.send_batch([{"type": "set_tempo", "params": {}}])
     assert calls["n"] == 0  # batch contains mutations -> never recv-retry
+
+
+# --- the batch MCP tool (tool-level, Phase E) -----------------------------
+
+class FakeConn:
+    def __init__(self, result):
+        self.result = result
+        self.calls = []
+
+    def send_batch(self, commands, stop_on_error=True):
+        self.calls.append((commands, stop_on_error))
+        return self.result
+
+
+def test_batch_tool_marshals_and_returns_json(monkeypatch):
+    fake = FakeConn(BATCH_RESULT["result"])
+    monkeypatch.setattr(server, "get_ableton_connection", lambda: fake)
+    out = server.batch(None,
+                       commands=[{"type": "set_tempo", "params": {"tempo": 120}}],
+                       stop_on_error=True)
+    parsed = json.loads(out)
+    assert parsed["completed"] == 2
+    # validated + normalized members reached send_batch
+    assert fake.calls[0][0] == [{"type": "set_tempo", "params": {"tempo": 120}}]
+    assert fake.calls[0][1] is True
+
+
+def test_batch_tool_rejects_non_mutation_without_calling_connection(monkeypatch):
+    fake = FakeConn(BATCH_RESULT["result"])
+    monkeypatch.setattr(server, "get_ableton_connection", lambda: fake)
+    out = server.batch(None, commands=[{"type": "get_session_info"}])
+    assert out.startswith("Error running batch:")
+    assert fake.calls == []  # validation failed before any round-trip
