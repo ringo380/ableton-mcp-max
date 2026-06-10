@@ -1,24 +1,42 @@
 # ableton-mcp-max — Progress
 
-**Current focus:** Robustness/Efficiency/Polish initiative (post-v0.4.0). Phases 0–11 + all
-preset-patch rack tools (through v0.4.0, rack macro-mapping v2) SHIPPED, merged, released, marketplace
-ref bumped, live-verified. Plan: `docs/superpowers/plans/2026-06-07-robustness-efficiency-polish.md`.
-Order A → B → C → E → D.
-**Next action (resume here):** Phase A (Connection robustness) is CODE-COMPLETE + OFFLINE-VERIFIED
-(334/334; +`tests/test_connection.py`), on branch `feat/connection-robustness`, server.py-only.
-**Needs a Claude Code restart to live-verify** (server.py loads at session start; use AbletonDev tools):
-kill+reopen Live mid-session, confirm next read auto-recovers without manual retry; confirm a
-previously-missing mutation (e.g. set_mixer_property) now gets the settle delay. What landed in Phase A:
+**Current focus:** Robustness/Efficiency/Polish initiative (post-v0.4.0) - Phases A-E ALL MERGED to
+`main` (offline-verified, 353/353 tests; branch `feat/connection-robustness` fast-forward-merged +
+deleted; repo settled, working tree clean). A public GitHub Pages docs site is now live (see below).
+Phases 0-11 + all preset-patch rack tools (through v0.4.0, rack macro-mapping v2) remain SHIPPED,
+released, marketplace ref bumped, live-verified. Plan:
+`docs/superpowers/plans/2026-06-07-robustness-efficiency-polish.md`. (Built order was A -> B -> C -> E -> D.)
+
+**Next action (resume here):** LIVE-VERIFY the merged A-E work (offline-verified only - none live-tested
+yet), then do the DEFERRED polish sweep. Needs `bash scripts/install_remote_script.sh` + quit/reopen
+Live (Phase B edited the Remote Script) AND a Claude Code restart, then via AbletonDev tools: (A)
+kill+reopen Live mid-session, confirm the next read auto-recovers without manual retry, and a
+previously-missing mutation (e.g. set_mixer_property) now gets the settle delay; (B) a
+create-track -> name -> load -> create_clip -> add_notes `batch` returns 5 ordered results in one
+round-trip, and stop_on_error with a bad middle member returns partial + failed_index; (C)
+set_song_position still reads back via a separate get_transport, precise writes feel snappier. AFTER
+live-verify: tackle the DEFERRED sweep (intentionally not done blind) - broad ~107-tool return-envelope
+standardization (write tools return ad-hoc strings vs JSON), additive param-name consistency (`index`
+vs `track_index`), and source-side response limits on
+get_browser_tree/get_browser_items_at_path/get_arrangement_clips. gh = ringo380.
+
+**Docs site (shipped 2026-06-07):** GitHub Pages live at https://ringo380.github.io/ableton-mcp-max/ -
+Jekyll (just-the-docs, dark Ableton theme) under `docs/`: landing + install guide + all 107 tools across
+13 category pages, with built-in search. Source = `main` `/docs`. Regenerate the tool pages with
+`python3 scripts/gen_docs_site.py` (AST-based; asserts every tool is categorized so it can't drift).
+README + `.claude-plugin/plugin.json` homepage both link to it.
+
+**Phase A detail (Connection robustness) - MERGED, server.py-only.** What landed:
 (1) `send_command` transparent reconnect split into send-phase (retry once, safe even for mutations,
 command never reached Live) vs recv-phase (retry once only if idempotent); (2) removed the dead
 `sendall(b'')` liveness probe; (3) `MUTATING_COMMANDS` frozenset = single source of truth (the old
 server list was missing 24 real mutations, so they skipped the settle delay AND got the 10s read
 timeout); a test parses the remote list + asserts equality (drift guard); (4) `_MUTATE_TIMEOUT`=15s >
-remote task timeout 10s. After live-verify: PR, merge, continue Phase B. gh = ringo380.
+remote task timeout 10s.
 
-**Phase B (Batch protocol) CODE-COMPLETE + OFFLINE-VERIFIED (347/347; +`tests/test_batch.py`).**
-BOTH halves edited, so needs `bash scripts/install_remote_script.sh` + quit/reopen Live AND a Claude
-Code restart to live-verify. What landed: (1) remote `_dispatch_main_thread(command_type, params)`
+**Phase B (Batch protocol) - MERGED; OFFLINE-VERIFIED (347/347; +`tests/test_batch.py`), live-verify
+pending.** BOTH halves edited, so live-verify needs `bash scripts/install_remote_script.sh` +
+quit/reopen Live AND a Claude Code restart. What landed: (1) remote `_dispatch_main_thread(command_type, params)`
 method extracted from the inline `main_thread_task` if/elif (single-command path + batch loop now share
 ONE dispatch table; else-branch raises on unknown); (2) new remote `batch` command runs members in ONE
 scheduled main-thread task, honors `stop_on_error`, returns {count, completed, failed_index, results};
@@ -30,8 +48,8 @@ plan: create-track→name→load_browser_item→create_clip→add_notes batch re
 round-trip; stop_on_error with a bad middle member returns partial + failed_index; timing < 5 separate
 calls.
 
-**Phase D (LLM-consumer polish, SAFE subset) + Phase E (offline tool tests) CODE-COMPLETE +
-OFFLINE-VERIFIED (353/353).** server.py + docs + tests (Claude Code restart only). Landed: (1)
+**Phase D (LLM-consumer polish, SAFE subset) + Phase E (offline tool tests) - MERGED; OFFLINE-VERIFIED
+(353/353).** server.py + docs + tests. Landed: (1)
 `commands/tool-index.md` - domain-grouped catalogue of all 107 tools, auto-generated by
 `scripts/build_tool_index.py` (ast-based; asserts every tool is filed in a group, so it can't drift -
 caught undo/redo when first run); includes cross-cutting reminders (device track_type asymmetry, batch,
@@ -45,8 +63,8 @@ param-name consistency (`index` vs `track_index`), plus source-side response lim
 get_browser_tree/get_browser_items_at_path/get_arrangement_clips - these are mechanical sweeps best
 guarded by live verification of A-D first.
 
-**Phase C (Efficiency: settle tuning) CODE-COMPLETE + OFFLINE-VERIFIED (351/351).** server.py-only
-(Claude Code restart, no Live bounce). Removed the unconditional pre-send 100ms delay for ALL mutations
+**Phase C (Efficiency: settle tuning) - MERGED; OFFLINE-VERIFIED (351/351), live-verify pending.**
+server.py-only. Removed the unconditional pre-send 100ms delay for ALL mutations
 (the recv blocks until Live responds anyway) and made the post-write 100ms settle CONDITIONAL: only
 `_SLOW_SETTLE_COMMANDS` (the documented async-settling song/transport + structural ops) keep it; precise
 writes (device params, mixer, clip notes/props, automation, rack macros, browser loads) now pay zero
