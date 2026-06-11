@@ -1,23 +1,29 @@
 # ableton-mcp-max — Progress
 
 **Current focus:** Robustness/Efficiency/Polish initiative (post-v0.4.0) - Phases A-E ALL MERGED to
-`main` (offline-verified, 353/353 tests; branch `feat/connection-robustness` fast-forward-merged +
-deleted; repo settled, working tree clean). A public GitHub Pages docs site is now live (see below).
-Phases 0-11 + all preset-patch rack tools (through v0.4.0, rack macro-mapping v2) remain SHIPPED,
-released, marketplace ref bumped, live-verified. Plan:
+`main` AND LIVE-VERIFIED (2026-06-11; offline 353/353 + live-tested against Live 11.3.43). Branch
+`feat/connection-robustness` fast-forward-merged + deleted; repo settled, working tree clean. A public
+GitHub Pages docs site is live (see below). Phases 0-11 + all preset-patch rack tools (through v0.4.0,
+rack macro-mapping v2) remain SHIPPED, released, marketplace ref bumped, live-verified. Plan:
 `docs/superpowers/plans/2026-06-07-robustness-efficiency-polish.md`. (Built order was A -> B -> C -> E -> D.)
 
-**Next action (resume here):** LIVE-VERIFY the merged A-E work (offline-verified only - none live-tested
-yet), then do the DEFERRED polish sweep. Needs `bash scripts/install_remote_script.sh` + quit/reopen
-Live (Phase B edited the Remote Script) AND a Claude Code restart, then via AbletonDev tools: (A)
-kill+reopen Live mid-session, confirm the next read auto-recovers without manual retry, and a
-previously-missing mutation (e.g. set_mixer_property) now gets the settle delay; (B) a
-create-track -> name -> load -> create_clip -> add_notes `batch` returns 5 ordered results in one
-round-trip, and stop_on_error with a bad middle member returns partial + failed_index; (C)
-set_song_position still reads back via a separate get_transport, precise writes feel snappier. AFTER
-live-verify: tackle the DEFERRED sweep (intentionally not done blind) - broad ~107-tool return-envelope
-standardization (write tools return ad-hoc strings vs JSON), additive param-name consistency (`index`
-vs `track_index`), and source-side response limits on
+**Live-verify results (2026-06-11):** ALL PASS. (A) After kill+reopen Live mid-session, a single
+get_session_info auto-recovered on the first call - transparent reconnect to the new Live with no manual
+retry; standalone set_mixer_property write+separate-readback also confirmed. (B) A 5-member batch
+(create_midi_track -> set_track_name -> create_clip -> add_notes_to_clip -> set_mixer_property) returned
+count=5/completed=5/failed_index=-1 in one round-trip with all side effects landed (verified via separate
+reads); stop_on_error batch with a bad middle member returned completed=1/failed_index=1, ran member 0,
+skipped member 2 (confirmed vol applied, pan untouched). (C) set_song_position returned the stale 0.0
+(expected write-lag) but a separate get_transport read back 8.0 - conditional settle intact.
+**Setup bugs found+fixed live (committed 024d524):** `install_remote_script.sh` (1) `chown` failed under
+a clobbered PATH -> install left root-owned (Live skips it); (2) wrote backups INSIDE the Remote Scripts
+dir, where Live tried to `import AbletonMCP.bak.<ts>` -> SyntaxError every launch (22 had accumulated).
+Both fixed (absolute chown, backups -> `~/.ableton-mcp-rs-backups`, auto-relocate strays, clear pycache).
+NOTE: the AbletonMCP Control Surface must be selected in Live once; it then auto-rebinds 9877 on relaunch.
+
+**Next action (resume here):** the DEFERRED polish sweep (now unblocked - A-E live-verified). Intentionally
+not done blind: broad ~107-tool return-envelope standardization (write tools return ad-hoc strings vs
+JSON), additive param-name consistency (`index` vs `track_index`), and source-side response limits on
 get_browser_tree/get_browser_items_at_path/get_arrangement_clips. gh = ringo380.
 
 **Docs site (shipped 2026-06-07):** GitHub Pages live at https://ringo380.github.io/ableton-mcp-max/ -
@@ -26,7 +32,7 @@ Jekyll (just-the-docs, dark Ableton theme) under `docs/`: landing + install guid
 `python3 scripts/gen_docs_site.py` (AST-based; asserts every tool is categorized so it can't drift).
 README + `.claude-plugin/plugin.json` homepage both link to it.
 
-**Phase A detail (Connection robustness) - MERGED, server.py-only.** What landed:
+**Phase A detail (Connection robustness) - MERGED + LIVE-VERIFIED 2026-06-11, server.py-only.** What landed:
 (1) `send_command` transparent reconnect split into send-phase (retry once, safe even for mutations,
 command never reached Live) vs recv-phase (retry once only if idempotent); (2) removed the dead
 `sendall(b'')` liveness probe; (3) `MUTATING_COMMANDS` frozenset = single source of truth (the old
@@ -34,9 +40,8 @@ server list was missing 24 real mutations, so they skipped the settle delay AND 
 timeout); a test parses the remote list + asserts equality (drift guard); (4) `_MUTATE_TIMEOUT`=15s >
 remote task timeout 10s.
 
-**Phase B (Batch protocol) - MERGED; OFFLINE-VERIFIED (347/347; +`tests/test_batch.py`), live-verify
-pending.** BOTH halves edited, so live-verify needs `bash scripts/install_remote_script.sh` +
-quit/reopen Live AND a Claude Code restart. What landed: (1) remote `_dispatch_main_thread(command_type, params)`
+**Phase B (Batch protocol) - MERGED + LIVE-VERIFIED 2026-06-11 (offline 347/347; +`tests/test_batch.py`).**
+BOTH halves edited. What landed: (1) remote `_dispatch_main_thread(command_type, params)`
 method extracted from the inline `main_thread_task` if/elif (single-command path + batch loop now share
 ONE dispatch table; else-branch raises on unknown); (2) new remote `batch` command runs members in ONE
 scheduled main-thread task, honors `stop_on_error`, returns {count, completed, failed_index, results};
@@ -63,7 +68,7 @@ param-name consistency (`index` vs `track_index`), plus source-side response lim
 get_browser_tree/get_browser_items_at_path/get_arrangement_clips - these are mechanical sweeps best
 guarded by live verification of A-D first.
 
-**Phase C (Efficiency: settle tuning) - MERGED; OFFLINE-VERIFIED (351/351), live-verify pending.**
+**Phase C (Efficiency: settle tuning) - MERGED + LIVE-VERIFIED 2026-06-11 (offline 351/351).**
 server.py-only. Removed the unconditional pre-send 100ms delay for ALL mutations
 (the recv blocks until Live responds anyway) and made the post-write 100ms settle CONDITIONAL: only
 `_SLOW_SETTLE_COMMANDS` (the documented async-settling song/transport + structural ops) keep it; precise
