@@ -102,6 +102,10 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   are not batchable.
 - **Loads hot-swap.** `load_instrument_or_effect` / `load_preset` replace the
   device on the track; load onto an empty track to avoid clobbering a patch.
+- **Uniform return envelope.** Every tool returns `{"ok": true, "data": …}` on
+  success or `{"ok": false, "error": …}` on failure. Check `ok` first; a tool's
+  "Returns JSON {…}" describes the `data` payload. Large readers cap with `limit`
+  (default 200) and report `count`/`returned`/`truncated` in `data`.
 """
 
 

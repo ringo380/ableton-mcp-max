@@ -7,6 +7,17 @@ allowed-tools: ["Bash"]
 
 The hard-won rules for driving Ableton Live through this MCP reliably. Load this into context before a multi-step Live session, or whenever a Live call behaves unexpectedly.
 
+## Return envelope: every tool returns `{ok, data|error}`
+
+Every tool returns a JSON string in one uniform shape:
+
+- Success → `{"ok": true, "data": <result>}`
+- Failure → `{"ok": false, "error": "<message>"}`
+
+Check `ok` first; never string-sniff for "Error". A tool's docstring `Returns JSON {…}` describes the **`data`** payload (what's nested under `data` on success). Reads put their object under `data`; write tools put a short confirmation message or the affected fields under `data`. Errors are surfaced as `{"ok": false, "error": …}` rather than raised, so a failed call still returns a parseable string.
+
+Large readers (`get_browser_tree`, `get_browser_items_at_path`, `get_arrangement_clips`, `list_device_presets`) cap their lists with a `limit` (default 200) and report `count` / `returned` / `truncated` inside `data` — raise `limit` or narrow the path/category for more.
+
 ## Verify, don't trust the return value (write-lag)
 
 Song-level property writes apply **asynchronously inside Live**, even within one Remote-Script task. A handler that sets a property and returns it in the same call frequently returns the **pre-write** value. The mutation is reliable; the confirmation dict is not.

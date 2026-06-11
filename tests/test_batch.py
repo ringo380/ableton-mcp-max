@@ -188,7 +188,8 @@ def test_batch_tool_marshals_and_returns_json(monkeypatch):
                        commands=[{"type": "set_tempo", "params": {"tempo": 120}}],
                        stop_on_error=True)
     parsed = json.loads(out)
-    assert parsed["completed"] == 2
+    assert parsed["ok"] is True
+    assert parsed["data"]["completed"] == 2
     # validated + normalized members reached send_batch
     assert fake.calls[0][0] == [{"type": "set_tempo", "params": {"tempo": 120}}]
     assert fake.calls[0][1] is True
@@ -198,5 +199,7 @@ def test_batch_tool_rejects_non_mutation_without_calling_connection(monkeypatch)
     fake = FakeConn(BATCH_RESULT["result"])
     monkeypatch.setattr(server, "get_ableton_connection", lambda: fake)
     out = server.batch(None, commands=[{"type": "get_session_info"}])
-    assert out.startswith("Error running batch:")
+    parsed = json.loads(out)
+    assert parsed["ok"] is False
+    assert "batch" in parsed["error"].lower()
     assert fake.calls == []  # validation failed before any round-trip
