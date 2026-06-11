@@ -22,18 +22,26 @@ Walk the browser, load presets and drum kits, and generate presets via the prese
 ## get_browser_tree
 
 ```python
-get_browser_tree(category_type: str = 'all')
+get_browser_tree(category_type: str = 'all', limit: int = 200)
 ```
 
-Get a hierarchical tree of browser categories from Ableton.
+Get the browser category tree from Ableton, flattened to a depth-first node
+list (each node carries its `depth`, so the hierarchy is reconstructable).
 
 Parameters:
-- category_type: Type of categories to get ('all', 'instruments', 'sounds', 'drums', 'audio_effects', 'midi_effects')
+- category_type: Type of categories to get ('all', 'instruments', 'sounds',
+  'drums', 'audio_effects', 'midi_effects')
+- limit: Max nodes to return (default 200). The list is truncated past this
+  to stay within size limits; narrow `category_type` or raise `limit`.
+
+Returns JSON {category_type, total_folders, count, returned, truncated,
+nodes:[{name, path, depth, has_more}, ...]}. `count` is the full total;
+`nodes` holds at most `limit` of them.
 
 ## get_browser_items_at_path
 
 ```python
-get_browser_items_at_path(path: str)
+get_browser_items_at_path(path: str, limit: int = 200)
 ```
 
 Get browser items at a specific path in Ableton's browser.
@@ -41,6 +49,11 @@ Get browser items at a specific path in Ableton's browser.
 Parameters:
 - path: Path in the format "category/folder/subfolder"
         where category is one of the available browser categories in Ableton
+- limit: Max items to return (default 200). The list is truncated past this
+        to stay within size limits; narrow `path` or raise `limit` for more.
+
+Returns JSON {path, count, returned, truncated, items:[...]} (plus any other
+fields Live returns). `count` is the full total; `items` holds at most `limit`.
 
 ## load_drum_kit
 

@@ -2350,56 +2350,62 @@ def re_enable_automation(ctx: Context) -> str:
         return f"Error re-enabling automation: {str(e)}"
 
 @mcp.tool()
-def get_browser_tree(ctx: Context, category_type: str = "all") -> str:
+def get_browser_tree(ctx: Context, category_type: str = "all", limit: int = 200) -> str:
     """
-    Get a hierarchical tree of browser categories from Ableton.
-    
+    Get the browser category tree from Ableton, flattened to a depth-first node
+    list (each node carries its `depth`, so the hierarchy is reconstructable).
+
     Parameters:
-    - category_type: Type of categories to get ('all', 'instruments', 'sounds', 'drums', 'audio_effects', 'midi_effects')
+    - category_type: Type of categories to get ('all', 'instruments', 'sounds',
+      'drums', 'audio_effects', 'midi_effects')
+    - limit: Max nodes to return (default 200). The list is truncated past this
+      to stay within size limits; narrow `category_type` or raise `limit`.
+
+    Returns JSON {category_type, total_folders, count, returned, truncated,
+    nodes:[{name, path, depth, has_more}, ...]}. `count` is the full total;
+    `nodes` holds at most `limit` of them.
     """
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("get_browser_tree", {
             "category_type": category_type
         })
-        
+
         # Check if we got any categories
         if "available_categories" in result and len(result.get("categories", [])) == 0:
             available_cats = result.get("available_categories", [])
             return (f"No categories found for '{category_type}'. "
                    f"Available browser categories: {', '.join(available_cats)}")
-        
-        # Format the tree in a more readable way
-        total_folders = result.get("total_folders", 0)
-        formatted_output = f"Browser tree for '{category_type}' (showing {total_folders} folders):\n\n"
-        
-        def format_tree(item, indent=0):
-            output = ""
-            if item:
-                prefix = "  " * indent
-                name = item.get("name", "Unknown")
-                path = item.get("path", "")
-                has_more = item.get("has_more", False)
-                
-                # Add this item
-                output += f"{prefix}• {name}"
-                if path:
-                    output += f" (path: {path})"
-                if has_more:
-                    output += " [...]"
-                output += "\n"
-                
-                # Add children
-                for child in item.get("children", []):
-                    output += format_tree(child, indent + 1)
-            return output
-        
-        # Format each category
+
+        # Flatten the tree depth-first into a node list.
+        nodes = []
+
+        def walk(item, depth=0):
+            if not item:
+                return
+            nodes.append({
+                "name": item.get("name", "Unknown"),
+                "path": item.get("path", ""),
+                "depth": depth,
+                "has_more": item.get("has_more", False),
+            })
+            for child in item.get("children", []):
+                walk(child, depth + 1)
+
         for category in result.get("categories", []):
-            formatted_output += format_tree(category)
-            formatted_output += "\n"
-        
-        return formatted_output
+            walk(category)
+
+        total = len(nodes)
+        shown = nodes[:limit] if limit and limit > 0 else nodes
+        payload = {
+            "category_type": category_type,
+            "total_folders": result.get("total_folders", 0),
+            "count": total,
+            "returned": len(shown),
+            "truncated": len(shown) < total,
+            "nodes": shown,
+        }
+        return json.dumps(payload, indent=2)
     except Exception as e:
         error_msg = str(e)
         if "Browser is not available" in error_msg:
@@ -2413,27 +2419,39 @@ def get_browser_tree(ctx: Context, category_type: str = "all") -> str:
             return f"Error getting browser tree: {error_msg}"
 
 @mcp.tool()
-def get_browser_items_at_path(ctx: Context, path: str) -> str:
+def get_browser_items_at_path(ctx: Context, path: str, limit: int = 200) -> str:
     """
     Get browser items at a specific path in Ableton's browser.
-    
+
     Parameters:
     - path: Path in the format "category/folder/subfolder"
             where category is one of the available browser categories in Ableton
+    - limit: Max items to return (default 200). The list is truncated past this
+            to stay within size limits; narrow `path` or raise `limit` for more.
+
+    Returns JSON {path, count, returned, truncated, items:[...]} (plus any other
+    fields Live returns). `count` is the full total; `items` holds at most `limit`.
     """
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("get_browser_items_at_path", {
             "path": path
         })
-        
+
         # Check if there was an error with available categories
         if "error" in result and "available_categories" in result:
             error = result.get("error", "")
             available_cats = result.get("available_categories", [])
             return (f"Error: {error}\n"
                    f"Available browser categories: {', '.join(available_cats)}")
-        
+
+        items = result.get("items", [])
+        total = result.get("count", len(items))
+        shown = items[:limit] if limit and limit > 0 else items
+        result["count"] = total
+        result["returned"] = len(shown)
+        result["truncated"] = len(shown) < total
+        result["items"] = shown
         return json.dumps(result, indent=2)
     except Exception as e:
         error_msg = str(e)
@@ -3310,15 +3328,18 @@ def delete_cue_point(ctx: Context, index: int) -> str:
         return f"Error deleting cue point: {str(e)}"
 
 @mcp.tool()
-def get_arrangement_clips(ctx: Context, track_index: int) -> str:
+def get_arrangement_clips(ctx: Context, track_index: int, limit: int = 200) -> str:
     """
     List the clips on a track's Arrangement timeline.
 
     Parameters:
     - track_index: Index of the track.
+    - limit: Max clips to return (default 200). The list is truncated past this
+      to stay within size limits; raise `limit` for more.
 
-    Returns JSON {track_index, count, clips:[{index, name, start_time,
-    end_time, length, is_midi_clip}, ...]}.
+    Returns JSON {track_index, count, returned, truncated, clips:[{index, name,
+    start_time, end_time, length, is_midi_clip}, ...]}. `count` is the full
+    total; `clips` holds at most `limit` of them.
     """
     try:
         idx = coerce_index(track_index)
@@ -3326,7 +3347,17 @@ def get_arrangement_clips(ctx: Context, track_index: int) -> str:
         result = ableton.send_command("get_arrangement_clips", {
             "track_index": idx,
         })
-        return json.dumps(result, indent=2)
+        clips = result.get("clips", [])
+        total = result.get("count", len(clips))
+        shown = clips[:limit] if limit and limit > 0 else clips
+        payload = {
+            "track_index": result.get("track_index", idx),
+            "count": total,
+            "returned": len(shown),
+            "truncated": len(shown) < total,
+            "clips": shown,
+        }
+        return json.dumps(payload, indent=2)
     except Exception as e:
         logger.error(f"Error getting arrangement clips: {str(e)}")
         return f"Error getting arrangement clips: {str(e)}"

@@ -101,16 +101,19 @@ the 'back to arrangement' override).
 ## get_arrangement_clips
 
 ```python
-get_arrangement_clips(track_index: int)
+get_arrangement_clips(track_index: int, limit: int = 200)
 ```
 
 List the clips on a track's Arrangement timeline.
 
 Parameters:
 - track_index: Index of the track.
+- limit: Max clips to return (default 200). The list is truncated past this
+  to stay within size limits; raise `limit` for more.
 
-Returns JSON {track_index, count, clips:[{index, name, start_time,
-end_time, length, is_midi_clip}, ...]}.
+Returns JSON {track_index, count, returned, truncated, clips:[{index, name,
+start_time, end_time, length, is_midi_clip}, ...]}. `count` is the full
+total; `clips` holds at most `limit` of them.
 
 ## duplicate_clip_to_arrangement
 
