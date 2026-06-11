@@ -103,6 +103,20 @@ def _err(message):
     """Wrap a tool failure in the uniform {ok, error} envelope."""
     return json.dumps({"ok": False, "error": str(message)}, indent=2)
 
+
+def _resolve_index(primary, alias, *, default=None, label="index"):
+    """Resolve a descriptive index parameter that also accepts the legacy
+    `index` alias. Pass the canonical name OR `index` (not both); with a
+    `default`, either may be omitted."""
+    if primary is not None and alias is not None and primary != alias:
+        raise ValueError("Pass only one of `%s` or `index`, not both" % label)
+    value = primary if primary is not None else alias
+    if value is None:
+        if default is not None:
+            return default
+        raise ValueError("`%s` is required" % label)
+    return value
+
 # Single source of truth for the command types that MUTATE Live's state. These
 # are the wire command types the Remote Script schedules on Live's main thread
 # (remote_script/AbletonMCP/__init__.py mutation dispatch list). The server uses
@@ -1082,16 +1096,18 @@ def set_routing(
         logger.error(f"Error setting routing: {str(e)}")
         return _err(f"Error setting routing: {str(e)}")
 @mcp.tool()
-def create_midi_track(ctx: Context, index: int = -1) -> str:
+def create_midi_track(ctx: Context, track_index: int = None, index: int = None) -> str:
     """
     Create a new MIDI track in the Ableton session.
-    
+
     Parameters:
-    - index: The index to insert the track at (-1 = end of list)
+    - track_index: The index to insert the track at (-1 = end of list).
+      (`index` is accepted as a legacy alias.)
     """
     try:
+        idx = _resolve_index(track_index, index, default=-1, label="track_index")
         ableton = get_ableton_connection()
-        result = ableton.send_command("create_midi_track", {"index": index})
+        result = ableton.send_command("create_midi_track", {"index": idx})
         return _ok(f"Created new MIDI track: {result.get('name', 'unknown')}")
     except Exception as e:
         logger.error(f"Error creating MIDI track: {str(e)}")
@@ -1113,15 +1129,17 @@ def set_track_name(ctx: Context, track_index: int, name: str) -> str:
         logger.error(f"Error setting track name: {str(e)}")
         return _err(f"Error setting track name: {str(e)}")
 @mcp.tool()
-def create_audio_track(ctx: Context, index: int = -1) -> str:
+def create_audio_track(ctx: Context, track_index: int = None, index: int = None) -> str:
     """
     Create a new audio track.
 
     Parameters:
-    - index: Insert position (-1 = end of list)
+    - track_index: Insert position (-1 = end of list). (`index` is accepted as a
+      legacy alias.)
     """
     try:
-        resolved = coerce_create_index(index)
+        resolved = coerce_create_index(
+            _resolve_index(track_index, index, default=-1, label="track_index"))
         ableton = get_ableton_connection()
         result = ableton.send_command("create_audio_track", {"index": resolved})
         return _ok(result)
@@ -1141,16 +1159,18 @@ def create_return_track(ctx: Context) -> str:
         logger.error(f"Error creating return track: {str(e)}")
         return _err(f"Error creating return track: {str(e)}")
 @mcp.tool()
-def delete_track(ctx: Context, index: int) -> str:
+def delete_track(ctx: Context, track_index: int = None, index: int = None) -> str:
     """
     Delete the regular (audio/MIDI) track at the given index. Remaining tracks
     re-index; re-read get_session_info afterward.
 
     Parameters:
-    - index: The index of the track to delete
+    - track_index: The index of the track to delete. (`index` is accepted as a
+      legacy alias.)
     """
     try:
-        resolved = coerce_track_index(index)
+        resolved = coerce_track_index(
+            _resolve_index(track_index, index, label="track_index"))
         ableton = get_ableton_connection()
         result = ableton.send_command("delete_track", {"index": resolved})
         return _ok(result)
@@ -1158,16 +1178,18 @@ def delete_track(ctx: Context, index: int) -> str:
         logger.error(f"Error deleting track: {str(e)}")
         return _err(f"Error deleting track: {str(e)}")
 @mcp.tool()
-def delete_return_track(ctx: Context, index: int) -> str:
+def delete_return_track(ctx: Context, track_index: int = None, index: int = None) -> str:
     """
     Delete the return track at the given index. Remaining return tracks
     re-index; re-read get_session_info afterward.
 
     Parameters:
-    - index: The index of the return track to delete
+    - track_index: The index of the return track to delete. (`index` is accepted
+      as a legacy alias.)
     """
     try:
-        resolved = coerce_track_index(index)
+        resolved = coerce_track_index(
+            _resolve_index(track_index, index, label="track_index"))
         ableton = get_ableton_connection()
         result = ableton.send_command("delete_return_track", {"index": resolved})
         return _ok(result)
@@ -1175,16 +1197,18 @@ def delete_return_track(ctx: Context, index: int) -> str:
         logger.error(f"Error deleting return track: {str(e)}")
         return _err(f"Error deleting return track: {str(e)}")
 @mcp.tool()
-def duplicate_track(ctx: Context, index: int) -> str:
+def duplicate_track(ctx: Context, track_index: int = None, index: int = None) -> str:
     """
     Duplicate the regular track at the given index. Live inserts the copy and
     selects it; the returned new_index is the copy's position.
 
     Parameters:
-    - index: The index of the track to duplicate
+    - track_index: The index of the track to duplicate. (`index` is accepted as
+      a legacy alias.)
     """
     try:
-        resolved = coerce_track_index(index)
+        resolved = coerce_track_index(
+            _resolve_index(track_index, index, label="track_index"))
         ableton = get_ableton_connection()
         result = ableton.send_command("duplicate_track", {"index": resolved})
         return _ok(result)
@@ -1741,16 +1765,18 @@ def fire_scene(ctx: Context, scene_index: int) -> str:
         logger.error(f"Error firing scene: {str(e)}")
         return _err(f"Error firing scene: {str(e)}")
 @mcp.tool()
-def create_scene(ctx: Context, index: int = -1) -> str:
+def create_scene(ctx: Context, scene_index: int = None, index: int = None) -> str:
     """
     Create a new scene.
 
     Parameters:
-    - index: Position to insert at; -1 (default) appends at the end
+    - scene_index: Position to insert at; -1 (default) appends at the end.
+      (`index` is accepted as a legacy alias.)
     """
     try:
+        idx = _resolve_index(scene_index, index, default=-1, label="scene_index")
         ableton = get_ableton_connection()
-        result = ableton.send_command("create_scene", {"index": index})
+        result = ableton.send_command("create_scene", {"index": idx})
         return _ok(result)
     except Exception as e:
         logger.error(f"Error creating scene: {str(e)}")
@@ -3189,7 +3215,7 @@ def create_cue_point(ctx: Context, time: float) -> str:
         logger.error(f"Error creating cue point: {str(e)}")
         return _err(f"Error creating cue point: {str(e)}")
 @mcp.tool()
-def delete_cue_point(ctx: Context, index: int) -> str:
+def delete_cue_point(ctx: Context, cue_index: int = None, index: int = None) -> str:
     """
     Delete a cue point (locator) by its index (as listed by get_cue_points).
 
@@ -3198,10 +3224,11 @@ def delete_cue_point(ctx: Context, index: int) -> str:
     playhead.
 
     Parameters:
-    - index: Index into the ordered cue-point list (>= 0).
+    - cue_index: Index into the ordered cue-point list (>= 0). (`index` is
+      accepted as a legacy alias.)
     """
     try:
-        idx = coerce_index(index)
+        idx = coerce_index(_resolve_index(cue_index, index, label="cue_index"))
         ableton = get_ableton_connection()
         cues = ableton.send_command("get_cue_points", {})
         cue_list = cues.get("cue_points", [])

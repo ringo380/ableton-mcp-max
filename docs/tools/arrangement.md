@@ -48,7 +48,7 @@ Parameters:
 ## delete_cue_point
 
 ```python
-delete_cue_point(index: int)
+delete_cue_point(cue_index: int = None, index: int = None)
 ```
 
 Delete a cue point (locator) by its index (as listed by get_cue_points).
@@ -58,7 +58,8 @@ up the cue's time, move the playhead there, toggle it off, restore the
 playhead.
 
 Parameters:
-- index: Index into the ordered cue-point list (>= 0).
+- cue_index: Index into the ordered cue-point list (>= 0). (`index` is
+  accepted as a legacy alias.)
 
 ## jump_to_cue
 

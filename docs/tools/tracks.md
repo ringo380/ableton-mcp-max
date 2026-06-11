@@ -59,24 +59,26 @@ Rejected cleanly if the track is not a group track.
 ## create_midi_track
 
 ```python
-create_midi_track(index: int = -1)
+create_midi_track(track_index: int = None, index: int = None)
 ```
 
 Create a new MIDI track in the Ableton session.
 
 Parameters:
-- index: The index to insert the track at (-1 = end of list)
+- track_index: The index to insert the track at (-1 = end of list).
+  (`index` is accepted as a legacy alias.)
 
 ## create_audio_track
 
 ```python
-create_audio_track(index: int = -1)
+create_audio_track(track_index: int = None, index: int = None)
 ```
 
 Create a new audio track.
 
 Parameters:
-- index: Insert position (-1 = end of list)
+- track_index: Insert position (-1 = end of list). (`index` is accepted as a
+  legacy alias.)
 
 ## create_return_track
 
@@ -89,38 +91,41 @@ Create a new return track (added at the end of the return-track list).
 ## delete_track
 
 ```python
-delete_track(index: int)
+delete_track(track_index: int = None, index: int = None)
 ```
 
 Delete the regular (audio/MIDI) track at the given index. Remaining tracks
 re-index; re-read get_session_info afterward.
 
 Parameters:
-- index: The index of the track to delete
+- track_index: The index of the track to delete. (`index` is accepted as a
+  legacy alias.)
 
 ## delete_return_track
 
 ```python
-delete_return_track(index: int)
+delete_return_track(track_index: int = None, index: int = None)
 ```
 
 Delete the return track at the given index. Remaining return tracks
 re-index; re-read get_session_info afterward.
 
 Parameters:
-- index: The index of the return track to delete
+- track_index: The index of the return track to delete. (`index` is accepted
+  as a legacy alias.)
 
 ## duplicate_track
 
 ```python
-duplicate_track(index: int)
+duplicate_track(track_index: int = None, index: int = None)
 ```
 
 Duplicate the regular track at the given index. Live inserts the copy and
 selects it; the returned new_index is the copy's position.
 
 Parameters:
-- index: The index of the track to duplicate
+- track_index: The index of the track to duplicate. (`index` is accepted as
+  a legacy alias.)
 
 ## undo
 
