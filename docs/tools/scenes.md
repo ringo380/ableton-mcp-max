@@ -42,13 +42,14 @@ Parameters:
 ## create_scene
 
 ```python
-create_scene(index: int = -1)
+create_scene(scene_index: int = None, index: int = None)
 ```
 
 Create a new scene.
 
 Parameters:
-- index: Position to insert at; -1 (default) appends at the end
+- scene_index: Position to insert at; -1 (default) appends at the end.
+  (`index` is accepted as a legacy alias.)
 
 ## delete_scene
 

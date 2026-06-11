@@ -93,6 +93,30 @@ logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("AbletonMCPServer")
 
+
+def _ok(data):
+    """Wrap a successful tool result in the uniform {ok, data} envelope."""
+    return json.dumps({"ok": True, "data": data}, indent=2)
+
+
+def _err(message):
+    """Wrap a tool failure in the uniform {ok, error} envelope."""
+    return json.dumps({"ok": False, "error": str(message)}, indent=2)
+
+
+def _resolve_index(primary, alias, *, default=None, label="index"):
+    """Resolve a descriptive index parameter that also accepts the legacy
+    `index` alias. Pass the canonical name OR `index` (not both); with a
+    `default`, either may be omitted."""
+    if primary is not None and alias is not None and primary != alias:
+        raise ValueError("Pass only one of `%s` or `index`, not both" % label)
+    value = primary if primary is not None else alias
+    if value is None:
+        if default is not None:
+            return default
+        raise ValueError("`%s` is required" % label)
+    return value
+
 # Single source of truth for the command types that MUTATE Live's state. These
 # are the wire command types the Remote Script schedules on Live's main thread
 # (remote_script/AbletonMCP/__init__.py mutation dispatch list). The server uses
@@ -468,12 +492,10 @@ def get_session_info(ctx: Context) -> str:
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("get_session_info")
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error getting session info from Ableton: {str(e)}")
-        return f"Error getting session info: {str(e)}"
-
-
+        return _err(f"Error getting session info: {str(e)}")
 @mcp.tool()
 def batch(ctx: Context, commands: List[Dict[str, Any]],
           stop_on_error: bool = True) -> str:
@@ -518,11 +540,10 @@ def batch(ctx: Context, commands: List[Dict[str, Any]],
         flag = coerce_stop_on_error(stop_on_error)
         ableton = get_ableton_connection()
         result = ableton.send_batch(members, flag)
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error running batch: {str(e)}")
-        return f"Error running batch: {str(e)}"
-
+        return _err(f"Error running batch: {str(e)}")
 @mcp.tool()
 def get_track_info(ctx: Context, track_index: int) -> str:
     """
@@ -534,11 +555,10 @@ def get_track_info(ctx: Context, track_index: int) -> str:
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("get_track_info", {"track_index": track_index})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error getting track info from Ableton: {str(e)}")
-        return f"Error getting track info: {str(e)}"
-
+        return _err(f"Error getting track info: {str(e)}")
 @mcp.tool()
 def get_view_selection(ctx: Context) -> str:
     """Read the current Live view selection: selected track (index/name/type),
@@ -547,11 +567,10 @@ def get_view_selection(ctx: Context) -> str:
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("get_view_selection")
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error getting view selection: {str(e)}")
-        return f"Error getting view selection: {str(e)}"
-
+        return _err(f"Error getting view selection: {str(e)}")
 @mcp.tool()
 def set_selected_track(
     ctx: Context, track_index: int, track_type: str = "regular"
@@ -570,11 +589,10 @@ def set_selected_track(
         result = ableton.send_command(
             "set_selected_track", {"track_index": idx, "track_type": ttype}
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting selected track: {str(e)}")
-        return f"Error setting selected track: {str(e)}"
-
+        return _err(f"Error setting selected track: {str(e)}")
 @mcp.tool()
 def set_selected_scene(ctx: Context, scene_index: int) -> str:
     """
@@ -587,11 +605,10 @@ def set_selected_scene(ctx: Context, scene_index: int) -> str:
         idx = coerce_view_index(scene_index)
         ableton = get_ableton_connection()
         result = ableton.send_command("set_selected_scene", {"scene_index": idx})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting selected scene: {str(e)}")
-        return f"Error setting selected scene: {str(e)}"
-
+        return _err(f"Error setting selected scene: {str(e)}")
 @mcp.tool()
 def set_detail_clip(ctx: Context, track_index: int, clip_slot_index: int) -> str:
     """
@@ -608,11 +625,10 @@ def set_detail_clip(ctx: Context, track_index: int, clip_slot_index: int) -> str
         result = ableton.send_command(
             "set_detail_clip", {"track_index": t, "clip_slot_index": s}
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting detail clip: {str(e)}")
-        return f"Error setting detail clip: {str(e)}"
-
+        return _err(f"Error setting detail clip: {str(e)}")
 @mcp.tool()
 def set_highlighted_clip_slot(
     ctx: Context, track_index: int, scene_index: int
@@ -631,11 +647,10 @@ def set_highlighted_clip_slot(
         result = ableton.send_command(
             "set_highlighted_clip_slot", {"track_index": t, "scene_index": s}
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting highlighted clip slot: {str(e)}")
-        return f"Error setting highlighted clip slot: {str(e)}"
-
+        return _err(f"Error setting highlighted clip slot: {str(e)}")
 @mcp.tool()
 def set_track_fold(
     ctx: Context, track_index: int, folded: Union[bool, int, str]
@@ -656,11 +671,10 @@ def set_track_fold(
         result = ableton.send_command(
             "set_track_fold", {"track_index": idx, "folded": value}
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting track fold: {str(e)}")
-        return f"Error setting track fold: {str(e)}"
-
+        return _err(f"Error setting track fold: {str(e)}")
 @mcp.tool()
 def get_device_parameters(ctx: Context, track_index: int, device_index: int) -> str:
     """
@@ -686,11 +700,10 @@ def get_device_parameters(ctx: Context, track_index: int, device_index: int) -> 
             "get_device_parameters",
             {"track_index": track_index, "device_index": device_index},
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error getting device parameters: {str(e)}")
-        return f"Error getting device parameters: {str(e)}"
-
+        return _err(f"Error getting device parameters: {str(e)}")
 @mcp.tool()
 def set_device_parameter(
     ctx: Context,
@@ -731,11 +744,10 @@ def set_device_parameter(
                 "value": value,
             },
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting device parameter: {str(e)}")
-        return f"Error setting device parameter: {str(e)}"
-
+        return _err(f"Error setting device parameter: {str(e)}")
 @mcp.tool()
 def get_device_info(
     ctx: Context, track_index: int, device_index: int, track_type: str = "regular"
@@ -760,11 +772,10 @@ def get_device_info(
                 "track_type": track_type,
             },
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error getting device info: {str(e)}")
-        return f"Error getting device info: {str(e)}"
-
+        return _err(f"Error getting device info: {str(e)}")
 @mcp.tool()
 def delete_device(
     ctx: Context, track_index: int, device_index: int, track_type: str = "regular"
@@ -787,11 +798,10 @@ def delete_device(
                 "track_type": track_type,
             },
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error deleting device: {str(e)}")
-        return f"Error deleting device: {str(e)}"
-
+        return _err(f"Error deleting device: {str(e)}")
 @mcp.tool()
 def set_device_on(
     ctx: Context,
@@ -821,11 +831,10 @@ def set_device_on(
                 "track_type": track_type,
             },
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting device on/off: {str(e)}")
-        return f"Error setting device on/off: {str(e)}"
-
+        return _err(f"Error setting device on/off: {str(e)}")
 @mcp.tool()
 def get_rack_macros(
     ctx: Context, track_index: int, device_index: int, track_type: str = "regular"
@@ -849,11 +858,10 @@ def get_rack_macros(
                 "track_type": track_type,
             },
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error getting rack macros: {str(e)}")
-        return f"Error getting rack macros: {str(e)}"
-
+        return _err(f"Error getting rack macros: {str(e)}")
 @mcp.tool()
 def set_rack_macro(
     ctx: Context,
@@ -896,11 +904,10 @@ def set_rack_macro(
                 "track_type": track_type,
             },
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting rack macro: {str(e)}")
-        return f"Error setting rack macro: {str(e)}"
-
+        return _err(f"Error setting rack macro: {str(e)}")
 @mcp.tool()
 def get_rack_chains(
     ctx: Context, track_index: int, device_index: int, track_type: str = "regular"
@@ -924,11 +931,10 @@ def get_rack_chains(
                 "track_type": track_type,
             },
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error getting rack chains: {str(e)}")
-        return f"Error getting rack chains: {str(e)}"
-
+        return _err(f"Error getting rack chains: {str(e)}")
 @mcp.tool()
 def set_chain_property(
     ctx: Context,
@@ -965,11 +971,10 @@ def set_chain_property(
                 "track_type": track_type,
             },
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting chain property: {str(e)}")
-        return f"Error setting chain property: {str(e)}"
-
+        return _err(f"Error setting chain property: {str(e)}")
 @mcp.tool()
 def get_mixer(ctx: Context, track_index: int, track_type: str = "regular") -> str:
     """
@@ -986,11 +991,10 @@ def get_mixer(ctx: Context, track_index: int, track_type: str = "regular") -> st
             "get_mixer",
             {"track_index": track_index, "track_type": track_type},
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error getting mixer state: {str(e)}")
-        return f"Error getting mixer state: {str(e)}"
-
+        return _err(f"Error getting mixer state: {str(e)}")
 @mcp.tool()
 def set_mixer_property(
     ctx: Context,
@@ -1016,7 +1020,7 @@ def set_mixer_property(
         canonical = normalize_property(property)
         validate_property(track_type, canonical)
         if canonical == "send" and send_index < 0:
-            return "Error: property 'send' requires send_index >= 0"
+            return _err("Error: property 'send' requires send_index >= 0")
         ableton = get_ableton_connection()
         result = ableton.send_command(
             "set_mixer_property",
@@ -1028,11 +1032,10 @@ def set_mixer_property(
                 "send_index": send_index,
             },
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting mixer property: {str(e)}")
-        return f"Error setting mixer property: {str(e)}"
-
+        return _err(f"Error setting mixer property: {str(e)}")
 @mcp.tool()
 def get_routing(ctx: Context, track_index: int, track_type: str = "regular") -> str:
     """
@@ -1051,11 +1054,10 @@ def get_routing(ctx: Context, track_index: int, track_type: str = "regular") -> 
             "get_routing",
             {"track_index": track_index, "track_type": track_type},
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error getting routing: {str(e)}")
-        return f"Error getting routing: {str(e)}"
-
+        return _err(f"Error getting routing: {str(e)}")
 @mcp.tool()
 def set_routing(
     ctx: Context,
@@ -1089,28 +1091,27 @@ def set_routing(
                 "value": value,
             },
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting routing: {str(e)}")
-        return f"Error setting routing: {str(e)}"
-
+        return _err(f"Error setting routing: {str(e)}")
 @mcp.tool()
-def create_midi_track(ctx: Context, index: int = -1) -> str:
+def create_midi_track(ctx: Context, track_index: int = None, index: int = None) -> str:
     """
     Create a new MIDI track in the Ableton session.
-    
+
     Parameters:
-    - index: The index to insert the track at (-1 = end of list)
+    - track_index: The index to insert the track at (-1 = end of list).
+      (`index` is accepted as a legacy alias.)
     """
     try:
+        idx = _resolve_index(track_index, index, default=-1, label="track_index")
         ableton = get_ableton_connection()
-        result = ableton.send_command("create_midi_track", {"index": index})
-        return f"Created new MIDI track: {result.get('name', 'unknown')}"
+        result = ableton.send_command("create_midi_track", {"index": idx})
+        return _ok(f"Created new MIDI track: {result.get('name', 'unknown')}")
     except Exception as e:
         logger.error(f"Error creating MIDI track: {str(e)}")
-        return f"Error creating MIDI track: {str(e)}"
-
-
+        return _err(f"Error creating MIDI track: {str(e)}")
 @mcp.tool()
 def set_track_name(ctx: Context, track_index: int, name: str) -> str:
     """
@@ -1123,30 +1124,28 @@ def set_track_name(ctx: Context, track_index: int, name: str) -> str:
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("set_track_name", {"track_index": track_index, "name": name})
-        return f"Renamed track to: {result.get('name', name)}"
+        return _ok(f"Renamed track to: {result.get('name', name)}")
     except Exception as e:
         logger.error(f"Error setting track name: {str(e)}")
-        return f"Error setting track name: {str(e)}"
-
-
+        return _err(f"Error setting track name: {str(e)}")
 @mcp.tool()
-def create_audio_track(ctx: Context, index: int = -1) -> str:
+def create_audio_track(ctx: Context, track_index: int = None, index: int = None) -> str:
     """
     Create a new audio track.
 
     Parameters:
-    - index: Insert position (-1 = end of list)
+    - track_index: Insert position (-1 = end of list). (`index` is accepted as a
+      legacy alias.)
     """
     try:
-        resolved = coerce_create_index(index)
+        resolved = coerce_create_index(
+            _resolve_index(track_index, index, default=-1, label="track_index"))
         ableton = get_ableton_connection()
         result = ableton.send_command("create_audio_track", {"index": resolved})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error creating audio track: {str(e)}")
-        return f"Error creating audio track: {str(e)}"
-
-
+        return _err(f"Error creating audio track: {str(e)}")
 @mcp.tool()
 def create_return_track(ctx: Context) -> str:
     """
@@ -1155,69 +1154,67 @@ def create_return_track(ctx: Context) -> str:
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("create_return_track", {})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error creating return track: {str(e)}")
-        return f"Error creating return track: {str(e)}"
-
-
+        return _err(f"Error creating return track: {str(e)}")
 @mcp.tool()
-def delete_track(ctx: Context, index: int) -> str:
+def delete_track(ctx: Context, track_index: int = None, index: int = None) -> str:
     """
     Delete the regular (audio/MIDI) track at the given index. Remaining tracks
     re-index; re-read get_session_info afterward.
 
     Parameters:
-    - index: The index of the track to delete
+    - track_index: The index of the track to delete. (`index` is accepted as a
+      legacy alias.)
     """
     try:
-        resolved = coerce_track_index(index)
+        resolved = coerce_track_index(
+            _resolve_index(track_index, index, label="track_index"))
         ableton = get_ableton_connection()
         result = ableton.send_command("delete_track", {"index": resolved})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error deleting track: {str(e)}")
-        return f"Error deleting track: {str(e)}"
-
-
+        return _err(f"Error deleting track: {str(e)}")
 @mcp.tool()
-def delete_return_track(ctx: Context, index: int) -> str:
+def delete_return_track(ctx: Context, track_index: int = None, index: int = None) -> str:
     """
     Delete the return track at the given index. Remaining return tracks
     re-index; re-read get_session_info afterward.
 
     Parameters:
-    - index: The index of the return track to delete
+    - track_index: The index of the return track to delete. (`index` is accepted
+      as a legacy alias.)
     """
     try:
-        resolved = coerce_track_index(index)
+        resolved = coerce_track_index(
+            _resolve_index(track_index, index, label="track_index"))
         ableton = get_ableton_connection()
         result = ableton.send_command("delete_return_track", {"index": resolved})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error deleting return track: {str(e)}")
-        return f"Error deleting return track: {str(e)}"
-
-
+        return _err(f"Error deleting return track: {str(e)}")
 @mcp.tool()
-def duplicate_track(ctx: Context, index: int) -> str:
+def duplicate_track(ctx: Context, track_index: int = None, index: int = None) -> str:
     """
     Duplicate the regular track at the given index. Live inserts the copy and
     selects it; the returned new_index is the copy's position.
 
     Parameters:
-    - index: The index of the track to duplicate
+    - track_index: The index of the track to duplicate. (`index` is accepted as
+      a legacy alias.)
     """
     try:
-        resolved = coerce_track_index(index)
+        resolved = coerce_track_index(
+            _resolve_index(track_index, index, label="track_index"))
         ableton = get_ableton_connection()
         result = ableton.send_command("duplicate_track", {"index": resolved})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error duplicating track: {str(e)}")
-        return f"Error duplicating track: {str(e)}"
-
-
+        return _err(f"Error duplicating track: {str(e)}")
 @mcp.tool()
 def undo(ctx: Context) -> str:
     """
@@ -1228,12 +1225,10 @@ def undo(ctx: Context) -> str:
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("undo", {})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error performing undo: {str(e)}")
-        return f"Error performing undo: {str(e)}"
-
-
+        return _err(f"Error performing undo: {str(e)}")
 @mcp.tool()
 def redo(ctx: Context) -> str:
     """
@@ -1243,12 +1238,10 @@ def redo(ctx: Context) -> str:
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("redo", {})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error performing redo: {str(e)}")
-        return f"Error performing redo: {str(e)}"
-
-
+        return _err(f"Error performing redo: {str(e)}")
 @mcp.tool()
 def create_clip(ctx: Context, track_index: int, clip_index: int, length: float = 4.0) -> str:
     """
@@ -1266,11 +1259,10 @@ def create_clip(ctx: Context, track_index: int, clip_index: int, length: float =
             "clip_index": clip_index, 
             "length": length
         })
-        return f"Created new clip at track {track_index}, slot {clip_index} with length {length} beats"
+        return _ok(f"Created new clip at track {track_index}, slot {clip_index} with length {length} beats")
     except Exception as e:
         logger.error(f"Error creating clip: {str(e)}")
-        return f"Error creating clip: {str(e)}"
-
+        return _err(f"Error creating clip: {str(e)}")
 @mcp.tool()
 def add_notes_to_clip(
     ctx: Context, 
@@ -1297,11 +1289,10 @@ def add_notes_to_clip(
             "clip_index": clip_index,
             "notes": notes
         })
-        return f"Added {len(notes)} notes to clip at track {track_index}, slot {clip_index}"
+        return _ok(f"Added {len(notes)} notes to clip at track {track_index}, slot {clip_index}")
     except Exception as e:
         logger.error(f"Error adding notes to clip: {str(e)}")
-        return f"Error adding notes to clip: {str(e)}"
-
+        return _err(f"Error adding notes to clip: {str(e)}")
 @mcp.tool()
 def set_clip_name(ctx: Context, track_index: int, clip_index: int, name: str) -> str:
     """
@@ -1319,11 +1310,10 @@ def set_clip_name(ctx: Context, track_index: int, clip_index: int, name: str) ->
             "clip_index": clip_index,
             "name": name
         })
-        return f"Renamed clip at track {track_index}, slot {clip_index} to '{name}'"
+        return _ok(f"Renamed clip at track {track_index}, slot {clip_index} to '{name}'")
     except Exception as e:
         logger.error(f"Error setting clip name: {str(e)}")
-        return f"Error setting clip name: {str(e)}"
-
+        return _err(f"Error setting clip name: {str(e)}")
 # --- Phase 3: Clip & MIDI editing ---
 
 @mcp.tool()
@@ -1342,11 +1332,10 @@ def get_clip_info(ctx: Context, track_index: int, clip_index: int) -> str:
             "get_clip_info",
             {"track_index": track_index, "clip_index": clip_index},
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error getting clip info: {str(e)}")
-        return f"Error getting clip info: {str(e)}"
-
+        return _err(f"Error getting clip info: {str(e)}")
 @mcp.tool()
 def get_clip_notes(
     ctx: Context,
@@ -1383,11 +1372,10 @@ def get_clip_notes(
                 "pitch_span": pitch_span,
             },
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error getting clip notes: {str(e)}")
-        return f"Error getting clip notes: {str(e)}"
-
+        return _err(f"Error getting clip notes: {str(e)}")
 @mcp.tool()
 def replace_clip_notes(
     ctx: Context,
@@ -1411,11 +1399,10 @@ def replace_clip_notes(
             "replace_clip_notes",
             {"track_index": track_index, "clip_index": clip_index, "notes": notes},
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error replacing clip notes: {str(e)}")
-        return f"Error replacing clip notes: {str(e)}"
-
+        return _err(f"Error replacing clip notes: {str(e)}")
 @mcp.tool()
 def remove_clip_notes(
     ctx: Context,
@@ -1450,11 +1437,10 @@ def remove_clip_notes(
                 "pitch_span": pitch_span,
             },
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error removing clip notes: {str(e)}")
-        return f"Error removing clip notes: {str(e)}"
-
+        return _err(f"Error removing clip notes: {str(e)}")
 @mcp.tool()
 def modify_clip_notes(
     ctx: Context,
@@ -1478,7 +1464,7 @@ def modify_clip_notes(
         cleaned = []
         for n in notes:
             if "note_id" not in n:
-                return "Error: every note must include a note_id (see get_clip_notes)"
+                return _err("Error: every note must include a note_id (see get_clip_notes)")
             entry = {"note_id": int(n["note_id"])}
             for f in NOTE_MOD_FIELDS:
                 if f in n:
@@ -1489,11 +1475,10 @@ def modify_clip_notes(
             "modify_clip_notes",
             {"track_index": track_index, "clip_index": clip_index, "notes": cleaned},
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error modifying clip notes: {str(e)}")
-        return f"Error modifying clip notes: {str(e)}"
-
+        return _err(f"Error modifying clip notes: {str(e)}")
 @mcp.tool()
 def set_clip_property(
     ctx: Context,
@@ -1531,11 +1516,10 @@ def set_clip_property(
                 "value": coerced,
             },
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting clip property: {str(e)}")
-        return f"Error setting clip property: {str(e)}"
-
+        return _err(f"Error setting clip property: {str(e)}")
 @mcp.tool()
 def set_clip_loop(
     ctx: Context,
@@ -1566,11 +1550,10 @@ def set_clip_loop(
                 "looping": looping,
             },
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting clip loop: {str(e)}")
-        return f"Error setting clip loop: {str(e)}"
-
+        return _err(f"Error setting clip loop: {str(e)}")
 @mcp.tool()
 def quantize_clip(
     ctx: Context,
@@ -1600,11 +1583,10 @@ def quantize_clip(
                 "amount": amount,
             },
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error quantizing clip: {str(e)}")
-        return f"Error quantizing clip: {str(e)}"
-
+        return _err(f"Error quantizing clip: {str(e)}")
 @mcp.tool()
 def duplicate_clip(
     ctx: Context,
@@ -1630,11 +1612,10 @@ def duplicate_clip(
                 "target_clip_index": target_clip_index,
             },
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error duplicating clip: {str(e)}")
-        return f"Error duplicating clip: {str(e)}"
-
+        return _err(f"Error duplicating clip: {str(e)}")
 @mcp.tool()
 def delete_clip(ctx: Context, track_index: int, clip_index: int) -> str:
     """
@@ -1649,11 +1630,10 @@ def delete_clip(ctx: Context, track_index: int, clip_index: int) -> str:
             "delete_clip",
             {"track_index": track_index, "clip_index": clip_index},
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error deleting clip: {str(e)}")
-        return f"Error deleting clip: {str(e)}"
-
+        return _err(f"Error deleting clip: {str(e)}")
 @mcp.tool()
 def set_tempo(ctx: Context, tempo: float) -> str:
     """
@@ -1665,12 +1645,10 @@ def set_tempo(ctx: Context, tempo: float) -> str:
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("set_tempo", {"tempo": tempo})
-        return f"Set tempo to {tempo} BPM"
+        return _ok(f"Set tempo to {tempo} BPM")
     except Exception as e:
         logger.error(f"Error setting tempo: {str(e)}")
-        return f"Error setting tempo: {str(e)}"
-
-
+        return _err(f"Error setting tempo: {str(e)}")
 @mcp.tool()
 def load_instrument_or_effect(ctx: Context, track_index: int, uri: str) -> str:
     """
@@ -1691,16 +1669,15 @@ def load_instrument_or_effect(ctx: Context, track_index: int, uri: str) -> str:
         if result.get("loaded", False):
             new_devices = result.get("new_devices", [])
             if new_devices:
-                return f"Loaded instrument with URI '{uri}' on track {track_index}. New devices: {', '.join(new_devices)}"
+                return _ok(f"Loaded instrument with URI '{uri}' on track {track_index}. New devices: {', '.join(new_devices)}")
             else:
                 devices = result.get("devices_after", [])
-                return f"Loaded instrument with URI '{uri}' on track {track_index}. Devices on track: {', '.join(devices)}"
+                return _ok(f"Loaded instrument with URI '{uri}' on track {track_index}. Devices on track: {', '.join(devices)}")
         else:
-            return f"Failed to load instrument with URI '{uri}'"
+            return _err(f"Failed to load instrument with URI '{uri}'")
     except Exception as e:
         logger.error(f"Error loading instrument by URI: {str(e)}")
-        return f"Error loading instrument by URI: {str(e)}"
-
+        return _err(f"Error loading instrument by URI: {str(e)}")
 @mcp.tool()
 def fire_clip(ctx: Context, track_index: int, clip_index: int) -> str:
     """
@@ -1716,11 +1693,10 @@ def fire_clip(ctx: Context, track_index: int, clip_index: int) -> str:
             "track_index": track_index,
             "clip_index": clip_index
         })
-        return f"Started playing clip at track {track_index}, slot {clip_index}"
+        return _ok(f"Started playing clip at track {track_index}, slot {clip_index}")
     except Exception as e:
         logger.error(f"Error firing clip: {str(e)}")
-        return f"Error firing clip: {str(e)}"
-
+        return _err(f"Error firing clip: {str(e)}")
 @mcp.tool()
 def stop_clip(ctx: Context, track_index: int, clip_index: int) -> str:
     """
@@ -1736,33 +1712,30 @@ def stop_clip(ctx: Context, track_index: int, clip_index: int) -> str:
             "track_index": track_index,
             "clip_index": clip_index
         })
-        return f"Stopped clip at track {track_index}, slot {clip_index}"
+        return _ok(f"Stopped clip at track {track_index}, slot {clip_index}")
     except Exception as e:
         logger.error(f"Error stopping clip: {str(e)}")
-        return f"Error stopping clip: {str(e)}"
-
+        return _err(f"Error stopping clip: {str(e)}")
 @mcp.tool()
 def start_playback(ctx: Context) -> str:
     """Start playing the Ableton session."""
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("start_playback")
-        return "Started playback"
+        return _ok("Started playback")
     except Exception as e:
         logger.error(f"Error starting playback: {str(e)}")
-        return f"Error starting playback: {str(e)}"
-
+        return _err(f"Error starting playback: {str(e)}")
 @mcp.tool()
 def stop_playback(ctx: Context) -> str:
     """Stop playing the Ableton session."""
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("stop_playback")
-        return "Stopped playback"
+        return _ok("Stopped playback")
     except Exception as e:
         logger.error(f"Error stopping playback: {str(e)}")
-        return f"Error stopping playback: {str(e)}"
-
+        return _err(f"Error stopping playback: {str(e)}")
 # === Scenes ===============================================================
 
 @mcp.tool()
@@ -1772,11 +1745,10 @@ def get_scenes(ctx: Context) -> str:
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("get_scenes")
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error getting scenes: {str(e)}")
-        return f"Error getting scenes: {str(e)}"
-
+        return _err(f"Error getting scenes: {str(e)}")
 @mcp.tool()
 def fire_scene(ctx: Context, scene_index: int) -> str:
     """
@@ -1788,27 +1760,27 @@ def fire_scene(ctx: Context, scene_index: int) -> str:
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("fire_scene", {"scene_index": scene_index})
-        return f"Fired scene {scene_index}"
+        return _ok(f"Fired scene {scene_index}")
     except Exception as e:
         logger.error(f"Error firing scene: {str(e)}")
-        return f"Error firing scene: {str(e)}"
-
+        return _err(f"Error firing scene: {str(e)}")
 @mcp.tool()
-def create_scene(ctx: Context, index: int = -1) -> str:
+def create_scene(ctx: Context, scene_index: int = None, index: int = None) -> str:
     """
     Create a new scene.
 
     Parameters:
-    - index: Position to insert at; -1 (default) appends at the end
+    - scene_index: Position to insert at; -1 (default) appends at the end.
+      (`index` is accepted as a legacy alias.)
     """
     try:
+        idx = _resolve_index(scene_index, index, default=-1, label="scene_index")
         ableton = get_ableton_connection()
-        result = ableton.send_command("create_scene", {"index": index})
-        return json.dumps(result, indent=2)
+        result = ableton.send_command("create_scene", {"index": idx})
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error creating scene: {str(e)}")
-        return f"Error creating scene: {str(e)}"
-
+        return _err(f"Error creating scene: {str(e)}")
 @mcp.tool()
 def delete_scene(ctx: Context, scene_index: int) -> str:
     """
@@ -1820,11 +1792,10 @@ def delete_scene(ctx: Context, scene_index: int) -> str:
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("delete_scene", {"scene_index": scene_index})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error deleting scene: {str(e)}")
-        return f"Error deleting scene: {str(e)}"
-
+        return _err(f"Error deleting scene: {str(e)}")
 @mcp.tool()
 def duplicate_scene(ctx: Context, scene_index: int) -> str:
     """
@@ -1836,11 +1807,10 @@ def duplicate_scene(ctx: Context, scene_index: int) -> str:
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("duplicate_scene", {"scene_index": scene_index})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error duplicating scene: {str(e)}")
-        return f"Error duplicating scene: {str(e)}"
-
+        return _err(f"Error duplicating scene: {str(e)}")
 @mcp.tool()
 def set_scene_name(ctx: Context, scene_index: int, name: str) -> str:
     """
@@ -1854,11 +1824,10 @@ def set_scene_name(ctx: Context, scene_index: int, name: str) -> str:
         ableton = get_ableton_connection()
         result = ableton.send_command(
             "set_scene_name", {"scene_index": scene_index, "name": name})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting scene name: {str(e)}")
-        return f"Error setting scene name: {str(e)}"
-
+        return _err(f"Error setting scene name: {str(e)}")
 @mcp.tool()
 def set_scene_property(
     ctx: Context,
@@ -1887,11 +1856,10 @@ def set_scene_property(
             "set_scene_property",
             {"scene_index": scene_index, "property": canonical, "value": coerced},
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting scene property: {str(e)}")
-        return f"Error setting scene property: {str(e)}"
-
+        return _err(f"Error setting scene property: {str(e)}")
 # === Transport ============================================================
 
 @mcp.tool()
@@ -1905,11 +1873,10 @@ def get_transport(ctx: Context) -> str:
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("get_transport")
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error getting transport: {str(e)}")
-        return f"Error getting transport: {str(e)}"
-
+        return _err(f"Error getting transport: {str(e)}")
 @mcp.tool()
 def set_groove_amount(ctx: Context, amount: Union[float, int, str]) -> str:
     """
@@ -1925,11 +1892,10 @@ def set_groove_amount(ctx: Context, amount: Union[float, int, str]) -> str:
         value = coerce_unit_float(amount, "groove_amount")
         ableton = get_ableton_connection()
         result = ableton.send_command("set_groove_amount", {"value": value})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting groove amount: {str(e)}")
-        return f"Error setting groove amount: {str(e)}"
-
+        return _err(f"Error setting groove amount: {str(e)}")
 @mcp.tool()
 def set_swing_amount(ctx: Context, amount: Union[float, int, str]) -> str:
     """
@@ -1944,11 +1910,10 @@ def set_swing_amount(ctx: Context, amount: Union[float, int, str]) -> str:
         value = coerce_unit_float(amount, "swing_amount")
         ableton = get_ableton_connection()
         result = ableton.send_command("set_swing_amount", {"value": value})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting swing amount: {str(e)}")
-        return f"Error setting swing amount: {str(e)}"
-
+        return _err(f"Error setting swing amount: {str(e)}")
 @mcp.tool()
 def set_clip_trigger_quantization(
     ctx: Context, value: Union[int, str]
@@ -1968,11 +1933,10 @@ def set_clip_trigger_quantization(
         result = ableton.send_command(
             "set_clip_trigger_quantization", {"value": resolved}
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting clip trigger quantization: {str(e)}")
-        return f"Error setting clip trigger quantization: {str(e)}"
-
+        return _err(f"Error setting clip trigger quantization: {str(e)}")
 @mcp.tool()
 def set_midi_recording_quantization(
     ctx: Context, value: Union[int, str]
@@ -1992,11 +1956,10 @@ def set_midi_recording_quantization(
         result = ableton.send_command(
             "set_midi_recording_quantization", {"value": resolved}
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting MIDI recording quantization: {str(e)}")
-        return f"Error setting MIDI recording quantization: {str(e)}"
-
+        return _err(f"Error setting MIDI recording quantization: {str(e)}")
 @mcp.tool()
 def set_nudge(
     ctx: Context, direction: str, active: Union[bool, int, str]
@@ -2018,11 +1981,10 @@ def set_nudge(
         result = ableton.send_command(
             "set_nudge", {"direction": canon, "active": value}
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting nudge: {str(e)}")
-        return f"Error setting nudge: {str(e)}"
-
+        return _err(f"Error setting nudge: {str(e)}")
 # === Capture & Recording (Phase 11) =======================================
 
 @mcp.tool()
@@ -2044,11 +2006,10 @@ def capture_midi(ctx: Context, destination: str = "auto") -> str:
         name = resolve_capture_destination(destination)
         ableton = get_ableton_connection()
         result = ableton.send_command("capture_midi", {"destination": name})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error capturing MIDI: {str(e)}")
-        return f"Error capturing MIDI: {str(e)}"
-
+        return _err(f"Error capturing MIDI: {str(e)}")
 @mcp.tool()
 def capture_and_insert_scene(ctx: Context, mode: str = "all") -> str:
     """
@@ -2065,11 +2026,10 @@ def capture_and_insert_scene(ctx: Context, mode: str = "all") -> str:
         name = resolve_capture_mode(mode)
         ableton = get_ableton_connection()
         result = ableton.send_command("capture_and_insert_scene", {"mode": name})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error capturing scene: {str(e)}")
-        return f"Error capturing scene: {str(e)}"
-
+        return _err(f"Error capturing scene: {str(e)}")
 @mcp.tool()
 def trigger_session_record(
     ctx: Context, record_length: Union[float, int, str, None] = None
@@ -2091,11 +2051,10 @@ def trigger_session_record(
             params["record_length"] = length
         ableton = get_ableton_connection()
         result = ableton.send_command("trigger_session_record", params)
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error triggering session record: {str(e)}")
-        return f"Error triggering session record: {str(e)}"
-
+        return _err(f"Error triggering session record: {str(e)}")
 @mcp.tool()
 def stop_all_clips(
     ctx: Context,
@@ -2118,11 +2077,10 @@ def stop_all_clips(
             params["track_index"] = coerce_track_index(track_index)
         ableton = get_ableton_connection()
         result = ableton.send_command("stop_all_clips", params)
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error stopping all clips: {str(e)}")
-        return f"Error stopping all clips: {str(e)}"
-
+        return _err(f"Error stopping all clips: {str(e)}")
 @mcp.tool()
 def tap_tempo(ctx: Context) -> str:
     """
@@ -2134,11 +2092,10 @@ def tap_tempo(ctx: Context) -> str:
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("tap_tempo")
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error tapping tempo: {str(e)}")
-        return f"Error tapping tempo: {str(e)}"
-
+        return _err(f"Error tapping tempo: {str(e)}")
 @mcp.tool()
 def continue_playback(ctx: Context) -> str:
     """Resume playback from the current position (unlike start_playback, which
@@ -2146,11 +2103,10 @@ def continue_playback(ctx: Context) -> str:
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("continue_playback")
-        return "Continued playback"
+        return _ok("Continued playback")
     except Exception as e:
         logger.error(f"Error continuing playback: {str(e)}")
-        return f"Error continuing playback: {str(e)}"
-
+        return _err(f"Error continuing playback: {str(e)}")
 @mcp.tool()
 def set_metronome(ctx: Context, on: Union[bool, int, str]) -> str:
     """
@@ -2163,11 +2119,10 @@ def set_metronome(ctx: Context, on: Union[bool, int, str]) -> str:
         value = coerce_on_value(on)
         ableton = get_ableton_connection()
         result = ableton.send_command("set_metronome", {"on": value})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting metronome: {str(e)}")
-        return f"Error setting metronome: {str(e)}"
-
+        return _err(f"Error setting metronome: {str(e)}")
 @mcp.tool()
 def set_arrangement_record(ctx: Context, on: Union[bool, int, str]) -> str:
     """
@@ -2180,11 +2135,10 @@ def set_arrangement_record(ctx: Context, on: Union[bool, int, str]) -> str:
         value = coerce_on_value(on)
         ableton = get_ableton_connection()
         result = ableton.send_command("set_arrangement_record", {"on": value})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting arrangement record: {str(e)}")
-        return f"Error setting arrangement record: {str(e)}"
-
+        return _err(f"Error setting arrangement record: {str(e)}")
 @mcp.tool()
 def set_session_record(ctx: Context, on: Union[bool, int, str]) -> str:
     """
@@ -2197,11 +2151,10 @@ def set_session_record(ctx: Context, on: Union[bool, int, str]) -> str:
         value = coerce_on_value(on)
         ableton = get_ableton_connection()
         result = ableton.send_command("set_session_record", {"on": value})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting session record: {str(e)}")
-        return f"Error setting session record: {str(e)}"
-
+        return _err(f"Error setting session record: {str(e)}")
 @mcp.tool()
 def set_punch(
     ctx: Context,
@@ -2225,11 +2178,10 @@ def set_punch(
         if "punch_out" in fields:
             params["punch_out"] = fields["punch_out"]
         result = ableton.send_command("set_punch", params)
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting punch: {str(e)}")
-        return f"Error setting punch: {str(e)}"
-
+        return _err(f"Error setting punch: {str(e)}")
 @mcp.tool()
 def set_song_position(ctx: Context, time_beats: float) -> str:
     """
@@ -2242,11 +2194,10 @@ def set_song_position(ctx: Context, time_beats: float) -> str:
         value = coerce_song_time(time_beats)
         ableton = get_ableton_connection()
         result = ableton.send_command("set_song_position", {"time_beats": value})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting song position: {str(e)}")
-        return f"Error setting song position: {str(e)}"
-
+        return _err(f"Error setting song position: {str(e)}")
 @mcp.tool()
 def jump_by(ctx: Context, beats: float) -> str:
     """
@@ -2259,11 +2210,10 @@ def jump_by(ctx: Context, beats: float) -> str:
         value = coerce_jump_beats(beats)
         ableton = get_ableton_connection()
         result = ableton.send_command("jump_by", {"beats": value})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error jumping by beats: {str(e)}")
-        return f"Error jumping by beats: {str(e)}"
-
+        return _err(f"Error jumping by beats: {str(e)}")
 # === Arrangement ==========================================================
 
 @mcp.tool()
@@ -2272,11 +2222,10 @@ def get_cue_points(ctx: Context) -> str:
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("get_cue_points")
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error getting cue points: {str(e)}")
-        return f"Error getting cue points: {str(e)}"
-
+        return _err(f"Error getting cue points: {str(e)}")
 @mcp.tool()
 def set_arrangement_loop(
     ctx: Context,
@@ -2304,11 +2253,10 @@ def set_arrangement_loop(
         if "length" in fields:
             params["length"] = fields["length"]
         result = ableton.send_command("set_arrangement_loop", params)
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting arrangement loop: {str(e)}")
-        return f"Error setting arrangement loop: {str(e)}"
-
+        return _err(f"Error setting arrangement loop: {str(e)}")
 @mcp.tool()
 def jump_to_cue(ctx: Context, direction: str = "next") -> str:
     """
@@ -2321,11 +2269,10 @@ def jump_to_cue(ctx: Context, direction: str = "next") -> str:
         canonical = resolve_cue_direction(direction)
         ableton = get_ableton_connection()
         result = ableton.send_command("jump_to_cue", {"direction": canonical})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error jumping to cue: {str(e)}")
-        return f"Error jumping to cue: {str(e)}"
-
+        return _err(f"Error jumping to cue: {str(e)}")
 @mcp.tool()
 def back_to_arrangement(ctx: Context) -> str:
     """Re-engage the arrangement timeline after launching session clips (clears
@@ -2333,126 +2280,140 @@ def back_to_arrangement(ctx: Context) -> str:
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("back_to_arrangement")
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error returning to arrangement: {str(e)}")
-        return f"Error returning to arrangement: {str(e)}"
-
+        return _err(f"Error returning to arrangement: {str(e)}")
 @mcp.tool()
 def re_enable_automation(ctx: Context) -> str:
     """Re-enable automation that was overridden by manual control changes."""
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("re_enable_automation")
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error re-enabling automation: {str(e)}")
-        return f"Error re-enabling automation: {str(e)}"
-
+        return _err(f"Error re-enabling automation: {str(e)}")
 @mcp.tool()
-def get_browser_tree(ctx: Context, category_type: str = "all") -> str:
+def get_browser_tree(ctx: Context, category_type: str = "all", limit: int = 200) -> str:
     """
-    Get a hierarchical tree of browser categories from Ableton.
-    
+    Get the browser category tree from Ableton, flattened to a depth-first node
+    list (each node carries its `depth`, so the hierarchy is reconstructable).
+
     Parameters:
-    - category_type: Type of categories to get ('all', 'instruments', 'sounds', 'drums', 'audio_effects', 'midi_effects')
+    - category_type: Type of categories to get ('all', 'instruments', 'sounds',
+      'drums', 'audio_effects', 'midi_effects')
+    - limit: Max nodes to return (default 200). The list is truncated past this
+      to stay within size limits; narrow `category_type` or raise `limit`.
+
+    Returns JSON {category_type, total_folders, count, returned, truncated,
+    nodes:[{name, path, depth, has_more}, ...]}. `count` is the full total;
+    `nodes` holds at most `limit` of them.
     """
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("get_browser_tree", {
             "category_type": category_type
         })
-        
+
         # Check if we got any categories
         if "available_categories" in result and len(result.get("categories", [])) == 0:
             available_cats = result.get("available_categories", [])
-            return (f"No categories found for '{category_type}'. "
+            return _err(f"No categories found for '{category_type}'. "
                    f"Available browser categories: {', '.join(available_cats)}")
-        
-        # Format the tree in a more readable way
-        total_folders = result.get("total_folders", 0)
-        formatted_output = f"Browser tree for '{category_type}' (showing {total_folders} folders):\n\n"
-        
-        def format_tree(item, indent=0):
-            output = ""
-            if item:
-                prefix = "  " * indent
-                name = item.get("name", "Unknown")
-                path = item.get("path", "")
-                has_more = item.get("has_more", False)
-                
-                # Add this item
-                output += f"{prefix}• {name}"
-                if path:
-                    output += f" (path: {path})"
-                if has_more:
-                    output += " [...]"
-                output += "\n"
-                
-                # Add children
-                for child in item.get("children", []):
-                    output += format_tree(child, indent + 1)
-            return output
-        
-        # Format each category
+
+        # Flatten the tree depth-first into a node list.
+        nodes = []
+
+        def walk(item, depth=0):
+            if not item:
+                return
+            nodes.append({
+                "name": item.get("name", "Unknown"),
+                "path": item.get("path", ""),
+                "depth": depth,
+                "has_more": item.get("has_more", False),
+            })
+            for child in item.get("children", []):
+                walk(child, depth + 1)
+
         for category in result.get("categories", []):
-            formatted_output += format_tree(category)
-            formatted_output += "\n"
-        
-        return formatted_output
+            walk(category)
+
+        total = len(nodes)
+        shown = nodes[:limit] if limit and limit > 0 else nodes
+        payload = {
+            "category_type": category_type,
+            "total_folders": result.get("total_folders", 0),
+            "count": total,
+            "returned": len(shown),
+            "truncated": len(shown) < total,
+            "nodes": shown,
+        }
+        return _ok(payload)
     except Exception as e:
         error_msg = str(e)
         if "Browser is not available" in error_msg:
             logger.error(f"Browser is not available in Ableton: {error_msg}")
-            return f"Error: The Ableton browser is not available. Make sure Ableton Live is fully loaded and try again."
+            return _err(f"Error: The Ableton browser is not available. Make sure Ableton Live is fully loaded and try again.")
         elif "Could not access Live application" in error_msg:
             logger.error(f"Could not access Live application: {error_msg}")
-            return f"Error: Could not access the Ableton Live application. Make sure Ableton Live is running and the Remote Script is loaded."
+            return _err(f"Error: Could not access the Ableton Live application. Make sure Ableton Live is running and the Remote Script is loaded.")
         else:
             logger.error(f"Error getting browser tree: {error_msg}")
-            return f"Error getting browser tree: {error_msg}"
-
+            return _err(f"Error getting browser tree: {error_msg}")
 @mcp.tool()
-def get_browser_items_at_path(ctx: Context, path: str) -> str:
+def get_browser_items_at_path(ctx: Context, path: str, limit: int = 200) -> str:
     """
     Get browser items at a specific path in Ableton's browser.
-    
+
     Parameters:
     - path: Path in the format "category/folder/subfolder"
             where category is one of the available browser categories in Ableton
+    - limit: Max items to return (default 200). The list is truncated past this
+            to stay within size limits; narrow `path` or raise `limit` for more.
+
+    Returns JSON {path, count, returned, truncated, items:[...]} (plus any other
+    fields Live returns). `count` is the full total; `items` holds at most `limit`.
     """
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("get_browser_items_at_path", {
             "path": path
         })
-        
+
         # Check if there was an error with available categories
         if "error" in result and "available_categories" in result:
             error = result.get("error", "")
             available_cats = result.get("available_categories", [])
-            return (f"Error: {error}\n"
+            return _err(f"Error: {error}\n"
                    f"Available browser categories: {', '.join(available_cats)}")
-        
-        return json.dumps(result, indent=2)
+
+        items = result.get("items", [])
+        total = result.get("count", len(items))
+        shown = items[:limit] if limit and limit > 0 else items
+        result["count"] = total
+        result["returned"] = len(shown)
+        result["truncated"] = len(shown) < total
+        result["items"] = shown
+        return _ok(result)
     except Exception as e:
         error_msg = str(e)
         if "Browser is not available" in error_msg:
             logger.error(f"Browser is not available in Ableton: {error_msg}")
-            return f"Error: The Ableton browser is not available. Make sure Ableton Live is fully loaded and try again."
+            return _err(f"Error: The Ableton browser is not available. Make sure Ableton Live is fully loaded and try again.")
         elif "Could not access Live application" in error_msg:
             logger.error(f"Could not access Live application: {error_msg}")
-            return f"Error: Could not access the Ableton Live application. Make sure Ableton Live is running and the Remote Script is loaded."
+            return _err(f"Error: Could not access the Ableton Live application. Make sure Ableton Live is running and the Remote Script is loaded.")
         elif "Unknown or unavailable category" in error_msg:
             logger.error(f"Invalid browser category: {error_msg}")
-            return f"Error: {error_msg}. Please check the available categories using get_browser_tree."
+            return _err(f"Error: {error_msg}. Please check the available categories using get_browser_tree.")
         elif "Path part" in error_msg and "not found" in error_msg:
             logger.error(f"Path not found: {error_msg}")
-            return f"Error: {error_msg}. Please check the path and try again."
+            return _err(f"Error: {error_msg}. Please check the path and try again.")
         else:
             logger.error(f"Error getting browser items at path: {error_msg}")
-            return f"Error getting browser items at path: {error_msg}"
-
+            return _err(f"Error getting browser items at path: {error_msg}")
 @mcp.tool()
 def load_drum_kit(ctx: Context, track_index: int, rack_uri: str, kit_path: str) -> str:
     """
@@ -2473,22 +2434,21 @@ def load_drum_kit(ctx: Context, track_index: int, rack_uri: str, kit_path: str) 
         })
         
         if not result.get("loaded", False):
-            return f"Failed to load drum rack with URI '{rack_uri}'"
-        
+            return _err(f"Failed to load drum rack with URI '{rack_uri}'")
         # Step 2: Get the drum kit items at the specified path
         kit_result = ableton.send_command("get_browser_items_at_path", {
             "path": kit_path
         })
         
         if "error" in kit_result:
-            return f"Loaded drum rack but failed to find drum kit: {kit_result.get('error')}"
+            return _err(f"Loaded drum rack but failed to find drum kit: {kit_result.get('error')}")
         
         # Step 3: Find a loadable drum kit
         kit_items = kit_result.get("items", [])
         loadable_kits = [item for item in kit_items if item.get("is_loadable", False)]
         
         if not loadable_kits:
-            return f"Loaded drum rack but no loadable drum kits found at '{kit_path}'"
+            return _err(f"Loaded drum rack but no loadable drum kits found at '{kit_path}'")
         
         # Step 4: Load the first loadable kit
         kit_uri = loadable_kits[0].get("uri")
@@ -2497,11 +2457,10 @@ def load_drum_kit(ctx: Context, track_index: int, rack_uri: str, kit_path: str) 
             "item_uri": kit_uri
         })
         
-        return f"Loaded drum rack and kit '{loadable_kits[0].get('name')}' on track {track_index}"
+        return _ok(f"Loaded drum rack and kit '{loadable_kits[0].get('name')}' on track {track_index}")
     except Exception as e:
         logger.error(f"Error loading drum kit: {str(e)}")
-        return f"Error loading drum kit: {str(e)}"
-
+        return _err(f"Error loading drum kit: {str(e)}")
 @mcp.tool()
 def list_device_presets(ctx: Context, path: str, max_depth: int = 6,
                         limit: int = 100) -> str:
@@ -2534,11 +2493,10 @@ def list_device_presets(ctx: Context, path: str, max_depth: int = 6,
         if "error" in result and "available_categories" in result:
             error = result.get("error", "")
             available_cats = result.get("available_categories", [])
-            return (f"Error: {error}\n"
+            return _err(f"Error: {error}\n"
                    f"Available browser categories: {', '.join(available_cats)}")
         if "error" in result:
-            return f"Error: {result.get('error')}"
-
+            return _err(f"Error: {result.get('error')}")
         presets = result.get("presets", [])
         total = result.get("count", len(presets))
         shown = presets[:limit] if limit and limit > 0 else presets
@@ -2550,15 +2508,14 @@ def list_device_presets(ctx: Context, path: str, max_depth: int = 6,
             "truncated": truncated,
             "presets": shown,
         }
-        out = json.dumps(payload, separators=(",", ":"))
         if truncated:
-            out += (f"\n\nShowing first {len(shown)} of {total} presets. Narrow "
-                    f"`path` to a subfolder or raise `limit` to see the rest.")
-        return out
+            payload["note"] = (f"Showing first {len(shown)} of {total} presets. "
+                               f"Narrow `path` to a subfolder or raise `limit` to "
+                               f"see the rest.")
+        return _ok(payload)
     except Exception as e:
         logger.error(f"Error listing device presets: {str(e)}")
-        return f"Error listing device presets: {str(e)}"
-
+        return _err(f"Error listing device presets: {str(e)}")
 @mcp.tool()
 def load_preset(ctx: Context, track_index: int, path: str, name: str = None) -> str:
     """
@@ -2599,15 +2556,14 @@ def load_preset(ctx: Context, track_index: int, path: str, name: str = None) -> 
         if "error" in presets_result:
             available_cats = presets_result.get("available_categories")
             if available_cats:
-                return (f"Error: {presets_result.get('error')}\n"
+                return _err(f"Error: {presets_result.get('error')}\n"
                        f"Available browser categories: {', '.join(available_cats)}")
-            return f"Error: {presets_result.get('error')}"
-
+            return _err(f"Error: {presets_result.get('error')}")
         presets = presets_result.get("presets", [])
         chosen = match_recursive_preset(presets, leaf)
         uri = chosen.get("uri")
         if not uri:
-            return f"Preset '{chosen.get('name')}' has no loadable URI."
+            return _err(f"Preset '{chosen.get('name')}' has no loadable URI.")
 
         label = chosen.get("relative_path") or chosen.get("name")
         load_result = ableton.send_command("load_browser_item", {
@@ -2615,17 +2571,15 @@ def load_preset(ctx: Context, track_index: int, path: str, name: str = None) -> 
             "item_uri": uri,
         })
         if load_result.get("loaded", False):
-            return (f"Loaded preset '{label}' (uri '{uri}') "
+            return _ok(f"Loaded preset '{label}' (uri '{uri}') "
                    f"on track {track_index}.")
-        return f"Failed to load preset '{label}' (uri '{uri}')."
+        return _err(f"Failed to load preset '{label}' (uri '{uri}').")
     except ValueError as e:
         # match_recursive_preset / split_preset_path failures (clean messages).
-        return f"Error: {str(e)}"
+        return _err(f"Error: {str(e)}")
     except Exception as e:
         logger.error(f"Error loading preset: {str(e)}")
-        return f"Error loading preset: {str(e)}"
-
-
+        return _err(f"Error loading preset: {str(e)}")
 # --- Preset-patch infrastructure (device-agnostic) ----------------------
 # The LOM only exposes a device's automatable parameters; choosers, file refs,
 # and structural state live only in the preset XML. These helpers patch a
@@ -2848,12 +2802,10 @@ def list_wavetable_tables(ctx: Context) -> str:
             "unison_modes": UNISON_MODES,
             "voices": [MIN_VOICES, MAX_VOICES],
         }
-        return json.dumps(payload, separators=(",", ":"))
+        return _ok(payload)
     except Exception as e:
         logger.error(f"Error listing wavetable tables: {str(e)}")
-        return f"Error listing wavetable tables: {str(e)}"
-
-
+        return _err(f"Error listing wavetable tables: {str(e)}")
 @mcp.tool()
 def create_wavetable_preset(ctx: Context, name: str, table1: str,
                             table2: str = None, unison_mode: str = "classic",
@@ -2905,20 +2857,18 @@ def create_wavetable_preset(ctx: Context, name: str, table1: str,
         if track_index is not None:
             loaded, note = _load_user_preset(track_index, browser_path, safe)
 
-        return json.dumps({
+        return _ok({
             "written": True,
             "path": dest,
             "settings": summarize_wavetable_adv(xml),
             "loaded": loaded,
             "note": note,
-        }, separators=(",", ":"))
+        })
     except (ValueError, FileNotFoundError) as e:
-        return f"Error: {str(e)}"
+        return _err(f"Error: {str(e)}")
     except Exception as e:
         logger.error(f"Error creating wavetable preset: {str(e)}")
-        return f"Error creating wavetable preset: {str(e)}"
-
-
+        return _err(f"Error creating wavetable preset: {str(e)}")
 def _read_audio_meta(path):
     """Return (file_size_bytes, frames, sample_rate) for an audio file.
 
@@ -2974,7 +2924,7 @@ def create_simpler_instrument(ctx: Context, name: str, sample_path: str,
         sample_path = os.path.expanduser(str(sample_path))
         size, frames, rate = _read_audio_meta(sample_path)
         if frames <= 0:
-            return ("Error: could not read a frame count for %r. Only .wav and "
+            return _err("Error: could not read a frame count for %r. Only .wav and "
                     ".aif/.aiff are supported (other formats would load as a "
                     "silent, zero-length sample). Convert to WAV/AIFF first."
                     % os.path.basename(sample_path))
@@ -2991,7 +2941,7 @@ def create_simpler_instrument(ctx: Context, name: str, sample_path: str,
         if track_index is not None:
             loaded, note = _load_user_preset(track_index, browser_path, safe)
 
-        return json.dumps({
+        return _ok({
             "written": True,
             "path": dest,
             "sample": sample_path,
@@ -2999,14 +2949,12 @@ def create_simpler_instrument(ctx: Context, name: str, sample_path: str,
             "sample_rate": rate,
             "loaded": loaded,
             "note": note,
-        }, separators=(",", ":"))
+        })
     except (ValueError, FileNotFoundError) as e:
-        return f"Error: {str(e)}"
+        return _err(f"Error: {str(e)}")
     except Exception as e:
         logger.error(f"Error creating simpler instrument: {str(e)}")
-        return f"Error creating simpler instrument: {str(e)}"
-
-
+        return _err(f"Error creating simpler instrument: {str(e)}")
 @mcp.tool()
 def inspect_rack_preset(ctx: Context, template: str) -> str:
     """
@@ -3030,14 +2978,12 @@ def inspect_rack_preset(ctx: Context, template: str) -> str:
         xml, path = _read_rack_template(template)
         summary = summarize_rack_adg(xml)
         summary["template_path"] = path
-        return json.dumps(summary, separators=(",", ":"))
+        return _ok(summary)
     except (ValueError, FileNotFoundError) as e:
-        return f"Error: {str(e)}"
+        return _err(f"Error: {str(e)}")
     except Exception as e:
         logger.error(f"Error inspecting rack preset: {str(e)}")
-        return f"Error inspecting rack preset: {str(e)}"
-
-
+        return _err(f"Error inspecting rack preset: {str(e)}")
 @mcp.tool()
 def clone_rack(ctx: Context, template: str, name: str) -> str:
     """
@@ -3066,19 +3012,17 @@ def clone_rack(ctx: Context, template: str, name: str) -> str:
         meta = RACK_TYPES[kind]
         dest, browser_path = _write_user_preset(
             xml, safe, meta["device_folder"], category=meta["category"], ext="adg")
-        return json.dumps({
+        return _ok({
             "written": True,
             "path": dest,
             "browser_path": browser_path,
             "summary": summarize_rack_adg(xml),
-        }, separators=(",", ":"))
+        })
     except (ValueError, FileNotFoundError) as e:
-        return f"Error: {str(e)}"
+        return _err(f"Error: {str(e)}")
     except Exception as e:
         logger.error(f"Error cloning rack: {str(e)}")
-        return f"Error cloning rack: {str(e)}"
-
-
+        return _err(f"Error cloning rack: {str(e)}")
 def _user_rack_category(name):
     """Find which rack device-folder a User Library rack <name>.adg lives in.
 
@@ -3126,17 +3070,15 @@ def rename_rack_macros(ctx: Context, name: str, macro_names: dict = None,
         out = patch_macros(xml, names=names, colors=colors, defaults=defaults)
         dest, _bp = _write_user_preset(
             out, safe, device_folder, category=category, ext="adg")
-        return json.dumps({
+        return _ok({
             "written": True, "path": dest,
             "macros": summarize_rack_adg(out)["macros"],
-        }, separators=(",", ":"))
+        })
     except (ValueError, FileNotFoundError) as e:
-        return f"Error: {str(e)}"
+        return _err(f"Error: {str(e)}")
     except Exception as e:
         logger.error(f"Error renaming rack macros: {str(e)}")
-        return f"Error renaming rack macros: {str(e)}"
-
-
+        return _err(f"Error renaming rack macros: {str(e)}")
 @mcp.tool()
 def set_rack_zones(ctx: Context, name: str, zones: list) -> str:
     """
@@ -3163,28 +3105,26 @@ def set_rack_zones(ctx: Context, name: str, zones: list) -> str:
         category, device_folder, xml = _user_rack_category(safe)
         kind = detect_rack_type(xml)
         if not isinstance(zones, list):
-            return "Error: zones must be a list of {chain, key?, velocity?, chain_selector?} objects."
+            return _err("Error: zones must be a list of {chain, key?, velocity?, chain_selector?} objects.")
         out = xml
         for entry in zones:
             if not isinstance(entry, dict) or "chain" not in entry:
-                return "Error: each zones entry needs a 'chain' index."
+                return _err("Error: each zones entry needs a 'chain' index.")
             ci = int(entry["chain"])
             for zone_key in ("key", "velocity", "chain_selector"):
                 if zone_key in entry and entry[zone_key] is not None:
                     out = patch_chain_zone(out, kind, ci, zone_key, entry[zone_key])
         dest, _bp = _write_user_preset(
             out, safe, device_folder, category=category, ext="adg")
-        return json.dumps({
+        return _ok({
             "written": True, "path": dest,
             "chains": summarize_rack_adg(out)["chains"],
-        }, separators=(",", ":"))
+        })
     except (ValueError, FileNotFoundError) as e:
-        return f"Error: {str(e)}"
+        return _err(f"Error: {str(e)}")
     except Exception as e:
         logger.error(f"Error setting rack zones: {str(e)}")
-        return f"Error setting rack zones: {str(e)}"
-
-
+        return _err(f"Error setting rack zones: {str(e)}")
 @mcp.tool()
 def add_rack_macro_mappings(ctx: Context, name: str, mappings: list) -> str:
     """
@@ -3230,22 +3170,20 @@ def add_rack_macro_mappings(ctx: Context, name: str, mappings: list) -> str:
     try:
         safe = validate_preset_name(name)
         if not isinstance(mappings, list) or not mappings:
-            return "Error: mappings must be a non-empty list of {macro, chain, device, parameter} objects."
+            return _err("Error: mappings must be a non-empty list of {macro, chain, device, parameter} objects.")
         category, device_folder, xml = _user_rack_category(safe)
         kind = detect_rack_type(xml)
         out = patch_macro_mappings(xml, kind, mappings)
         dest, _bp = _write_user_preset(
             out, safe, device_folder, category=category, ext="adg")
-        return json.dumps({
+        return _ok({
             "written": True, "path": dest, "mappings": mappings,
-        }, separators=(",", ":"))
+        })
     except (ValueError, FileNotFoundError) as e:
-        return f"Error: {str(e)}"
+        return _err(f"Error: {str(e)}")
     except Exception as e:
         logger.error(f"Error adding rack macro mappings: {str(e)}")
-        return f"Error adding rack macro mappings: {str(e)}"
-
-
+        return _err(f"Error adding rack macro mappings: {str(e)}")
 @mcp.tool()
 def create_cue_point(ctx: Context, time: float) -> str:
     """
@@ -3272,13 +3210,12 @@ def create_cue_point(ctx: Context, time: float) -> str:
         result = ableton.send_command("create_cue_at_playhead", {})
         # Restore the playhead.
         ableton.send_command("set_song_position", {"time_beats": original})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error creating cue point: {str(e)}")
-        return f"Error creating cue point: {str(e)}"
-
+        return _err(f"Error creating cue point: {str(e)}")
 @mcp.tool()
-def delete_cue_point(ctx: Context, index: int) -> str:
+def delete_cue_point(ctx: Context, cue_index: int = None, index: int = None) -> str:
     """
     Delete a cue point (locator) by its index (as listed by get_cue_points).
 
@@ -3287,16 +3224,17 @@ def delete_cue_point(ctx: Context, index: int) -> str:
     playhead.
 
     Parameters:
-    - index: Index into the ordered cue-point list (>= 0).
+    - cue_index: Index into the ordered cue-point list (>= 0). (`index` is
+      accepted as a legacy alias.)
     """
     try:
-        idx = coerce_index(index)
+        idx = coerce_index(_resolve_index(cue_index, index, label="cue_index"))
         ableton = get_ableton_connection()
         cues = ableton.send_command("get_cue_points", {})
         cue_list = cues.get("cue_points", [])
         if idx >= len(cue_list):
             n = len(cue_list)
-            return ("Error: Cue index out of range (0..%d)" % (n - 1)
+            return _err("Error: Cue index out of range (0..%d)" % (n - 1)
                     if n else "Error: No cue points to delete")
         target_time = cue_list[idx]["time"]
         transport = ableton.send_command("get_transport", {})
@@ -3304,21 +3242,23 @@ def delete_cue_point(ctx: Context, index: int) -> str:
         ableton.send_command("set_song_position", {"time_beats": target_time})
         result = ableton.send_command("delete_cue_at_playhead", {})
         ableton.send_command("set_song_position", {"time_beats": original})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error deleting cue point: {str(e)}")
-        return f"Error deleting cue point: {str(e)}"
-
+        return _err(f"Error deleting cue point: {str(e)}")
 @mcp.tool()
-def get_arrangement_clips(ctx: Context, track_index: int) -> str:
+def get_arrangement_clips(ctx: Context, track_index: int, limit: int = 200) -> str:
     """
     List the clips on a track's Arrangement timeline.
 
     Parameters:
     - track_index: Index of the track.
+    - limit: Max clips to return (default 200). The list is truncated past this
+      to stay within size limits; raise `limit` for more.
 
-    Returns JSON {track_index, count, clips:[{index, name, start_time,
-    end_time, length, is_midi_clip}, ...]}.
+    Returns JSON {track_index, count, returned, truncated, clips:[{index, name,
+    start_time, end_time, length, is_midi_clip}, ...]}. `count` is the full
+    total; `clips` holds at most `limit` of them.
     """
     try:
         idx = coerce_index(track_index)
@@ -3326,11 +3266,20 @@ def get_arrangement_clips(ctx: Context, track_index: int) -> str:
         result = ableton.send_command("get_arrangement_clips", {
             "track_index": idx,
         })
-        return json.dumps(result, indent=2)
+        clips = result.get("clips", [])
+        total = result.get("count", len(clips))
+        shown = clips[:limit] if limit and limit > 0 else clips
+        payload = {
+            "track_index": result.get("track_index", idx),
+            "count": total,
+            "returned": len(shown),
+            "truncated": len(shown) < total,
+            "clips": shown,
+        }
+        return _ok(payload)
     except Exception as e:
         logger.error(f"Error getting arrangement clips: {str(e)}")
-        return f"Error getting arrangement clips: {str(e)}"
-
+        return _err(f"Error getting arrangement clips: {str(e)}")
 @mcp.tool()
 def duplicate_clip_to_arrangement(ctx: Context, track_index: int,
                                   source_slot_index: int,
@@ -3356,11 +3305,10 @@ def duplicate_clip_to_arrangement(ctx: Context, track_index: int,
             "source_slot_index": s_idx,
             "destination_time": dest,
         })
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error duplicating clip to arrangement: {str(e)}")
-        return f"Error duplicating clip to arrangement: {str(e)}"
-
+        return _err(f"Error duplicating clip to arrangement: {str(e)}")
 @mcp.tool()
 def delete_arrangement_clip(ctx: Context, track_index: int,
                             clip_index: int) -> str:
@@ -3380,11 +3328,10 @@ def delete_arrangement_clip(ctx: Context, track_index: int,
             "track_index": t_idx,
             "clip_index": c_idx,
         })
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error deleting arrangement clip: {str(e)}")
-        return f"Error deleting arrangement clip: {str(e)}"
-
+        return _err(f"Error deleting arrangement clip: {str(e)}")
 def _resolve_auto_target(ableton, track_index, target_type, device_index,
                          parameter, mixer_property, send_index):
     """Normalize an automation parameter target. For device targets, resolve a
@@ -3462,12 +3409,10 @@ def get_automation(
         }
         payload.update(target)
         result = ableton.send_command("get_automation", payload)
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error reading automation: {str(e)}")
-        return f"Error reading automation: {str(e)}"
-
-
+        return _err(f"Error reading automation: {str(e)}")
 @mcp.tool()
 def set_automation(
     ctx: Context,
@@ -3510,12 +3455,10 @@ def set_automation(
         }
         payload.update(target)
         result = ableton.send_command("set_automation", payload)
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error setting automation: {str(e)}")
-        return f"Error setting automation: {str(e)}"
-
-
+        return _err(f"Error setting automation: {str(e)}")
 @mcp.tool()
 def clear_automation(
     ctx: Context,
@@ -3551,12 +3494,10 @@ def clear_automation(
         }
         payload.update(target)
         result = ableton.send_command("clear_automation", payload)
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error clearing automation: {str(e)}")
-        return f"Error clearing automation: {str(e)}"
-
-
+        return _err(f"Error clearing automation: {str(e)}")
 @mcp.tool()
 def create_automation_envelope(
     ctx: Context,
@@ -3588,12 +3529,10 @@ def create_automation_envelope(
         }
         payload.update(target)
         result = ableton.send_command("create_automation_envelope", payload)
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error creating automation envelope: {str(e)}")
-        return f"Error creating automation envelope: {str(e)}"
-
-
+        return _err(f"Error creating automation envelope: {str(e)}")
 @mcp.tool()
 def clear_all_automation(
     ctx: Context,
@@ -3612,12 +3551,10 @@ def clear_all_automation(
             {"track_index": track_index, "clip_index": clip_index,
              "clip_location": loc},
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error clearing all automation: {str(e)}")
-        return f"Error clearing all automation: {str(e)}"
-
-
+        return _err(f"Error clearing all automation: {str(e)}")
 # === Phase 7: Change Listeners (polling buffer) ==========================
 # Live's observer API is push-based; this MCP is request/response. So the
 # Remote Script attaches a real Live listener whose callback buffers each
@@ -3675,12 +3612,10 @@ def register_listener(
         )
         ableton = get_ableton_connection()
         result = ableton.send_command("register_listener", {"descriptor": descriptor})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error registering listener: {str(e)}")
-        return f"Error registering listener: {str(e)}"
-
-
+        return _err(f"Error registering listener: {str(e)}")
 @mcp.tool()
 def poll_changes(
     ctx: Context,
@@ -3702,12 +3637,10 @@ def poll_changes(
             "poll_changes",
             {"listener_id": listener_id, "max_events": coerce_max_events(max_events)},
         )
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error polling changes: {str(e)}")
-        return f"Error polling changes: {str(e)}"
-
-
+        return _err(f"Error polling changes: {str(e)}")
 @mcp.tool()
 def unregister_listener(
     ctx: Context,
@@ -3721,12 +3654,10 @@ def unregister_listener(
         ableton = get_ableton_connection()
         result = ableton.send_command(
             "unregister_listener", {"listener_id": listener_id})
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error unregistering listener: {str(e)}")
-        return f"Error unregistering listener: {str(e)}"
-
-
+        return _err(f"Error unregistering listener: {str(e)}")
 @mcp.tool()
 def list_listeners(ctx: Context) -> str:
     """
@@ -3736,12 +3667,10 @@ def list_listeners(ctx: Context) -> str:
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("list_listeners")
-        return json.dumps(result, indent=2)
+        return _ok(result)
     except Exception as e:
         logger.error(f"Error listing listeners: {str(e)}")
-        return f"Error listing listeners: {str(e)}"
-
-
+        return _err(f"Error listing listeners: {str(e)}")
 # Main execution
 def main():
     """Run the MCP server"""

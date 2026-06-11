@@ -18,6 +18,10 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   are not batchable.
 - **Loads hot-swap.** `load_instrument_or_effect` / `load_preset` replace the
   device on the track; load onto an empty track to avoid clobbering a patch.
+- **Uniform return envelope.** Every tool returns `{"ok": true, "data": …}` on
+  success or `{"ok": false, "error": …}` on failure. Check `ok` first; a tool's
+  "Returns JSON {…}" describes the `data` payload. Large readers cap with `limit`
+  (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
 _107 tools._
@@ -149,7 +153,7 @@ _107 tools._
 
 ## Browser & preset loading
 
-- **`get_browser_tree`** - Get a hierarchical tree of browser categories from Ableton.
+- **`get_browser_tree`** - Get the browser category tree from Ableton, flattened to a depth-first node
 - **`get_browser_items_at_path`** - Get browser items at a specific path in Ableton's browser.
 - **`load_instrument_or_effect`** - Load an instrument or effect onto a track using its URI.
 - **`load_drum_kit`** - Load a drum rack and then load a specific drum kit into it.

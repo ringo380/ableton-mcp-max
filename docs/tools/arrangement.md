@@ -48,7 +48,7 @@ Parameters:
 ## delete_cue_point
 
 ```python
-delete_cue_point(index: int)
+delete_cue_point(cue_index: int = None, index: int = None)
 ```
 
 Delete a cue point (locator) by its index (as listed by get_cue_points).
@@ -58,7 +58,8 @@ up the cue's time, move the playhead there, toggle it off, restore the
 playhead.
 
 Parameters:
-- index: Index into the ordered cue-point list (>= 0).
+- cue_index: Index into the ordered cue-point list (>= 0). (`index` is
+  accepted as a legacy alias.)
 
 ## jump_to_cue
 
@@ -101,16 +102,19 @@ the 'back to arrangement' override).
 ## get_arrangement_clips
 
 ```python
-get_arrangement_clips(track_index: int)
+get_arrangement_clips(track_index: int, limit: int = 200)
 ```
 
 List the clips on a track's Arrangement timeline.
 
 Parameters:
 - track_index: Index of the track.
+- limit: Max clips to return (default 200). The list is truncated past this
+  to stay within size limits; raise `limit` for more.
 
-Returns JSON {track_index, count, clips:[{index, name, start_time,
-end_time, length, is_midi_clip}, ...]}.
+Returns JSON {track_index, count, returned, truncated, clips:[{index, name,
+start_time, end_time, length, is_midi_clip}, ...]}. `count` is the full
+total; `clips` holds at most `limit` of them.
 
 ## duplicate_clip_to_arrangement
 
