@@ -21,10 +21,23 @@ dir, where Live tried to `import AbletonMCP.bak.<ts>` -> SyntaxError every launc
 Both fixed (absolute chown, backups -> `~/.ableton-mcp-rs-backups`, auto-relocate strays, clear pycache).
 NOTE: the AbletonMCP Control Surface must be selected in Live once; it then auto-rebinds 9877 on relaunch.
 
-**Next action (resume here):** the DEFERRED polish sweep (now unblocked - A-E live-verified). Intentionally
-not done blind: broad ~107-tool return-envelope standardization (write tools return ad-hoc strings vs
-JSON), additive param-name consistency (`index` vs `track_index`), and source-side response limits on
-get_browser_tree/get_browser_items_at_path/get_arrangement_clips. gh = ringo380.
+**Deferred polish sweep - DONE + LIVE-VERIFIED (2026-06-11; PR #17 squash-merged at 232df35).** Three
+commits on `feat/polish-sweep` (merged + deleted): (1) reader response limits - `get_arrangement_clips`/
+`get_browser_items_at_path`/`get_browser_tree` take `limit` (default 200) + report
+`count`/`returned`/`truncated`; tree now returns a flattened depth-first JSON node list, not text.
+(2) uniform return envelope - EVERY tool returns `{"ok":true,"data":...}` / `{"ok":false,"error":...}`
+(new `_ok`/`_err`; documented centrally in best-practices + tool-index; per-tool "Returns JSON {...}"
+now describes the `data` payload). (3) additive descriptive index params - `track_index`/`scene_index`/
+`cue_index` canonical with `index` kept as a legacy alias (`_resolve_index`). Offline 364/364
+(+`tests/test_server_helpers.py`). Live-verify ALL PASS: items limit count=14/returned=3/truncated=true;
+read `{ok,data}` + bad-track `{ok:false,error}` + batch `{ok,data}`; both alias forms work, conflict
+rejected, both delete forms work. Done with a 2-pass regex transform (caught + fixed a self-inflicted
+`_ok` self-recursion). gh = ringo380.
+
+**Next action:** nothing functional queued - full feasible LOM coverage + polish complete. The envelope is
+a BREAKING output-contract change, so the next RELEASE should bump v0.4.0 -> **v0.5.0** (then
+`gh release create v0.5.0` -> bump `ref` in the marketplace repo's `marketplace.json` ->
+`node scripts/build-readme.js` -> push). Releases are user-triggered; not yet done.
 
 **Docs site (shipped 2026-06-07):** GitHub Pages live at https://ringo380.github.io/ableton-mcp-max/ -
 Jekyll (just-the-docs, dark Ableton theme) under `docs/`: landing + install guide + all 107 tools across
