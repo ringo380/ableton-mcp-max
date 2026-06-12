@@ -20,7 +20,7 @@
     "mode": "auto",
     "scope": "track",
     "check": { "field": "device_names", "op": "count_lt", "value": 12 },
-    "evidence_template": "{name} has {device_names} devices",
+    "evidence_template": "{name} device chain: {device_names}",
     "rationale": "Very long chains raise CPU load and complicate the signal path.",
     "remediation": "Freeze/flatten or trim the chain; move shared effects to returns.",
     "source": "sources.md#health-cpu-devices"

@@ -7,6 +7,8 @@ allowed-tools: ["Bash", "Read"]
 
 Check the open Live set against the curated rulesets and report findings by domain.
 
+> Load tools if deferred: `ToolSearch select:mcp__AbletonMCPMax__analyze_set`
+
 **Argument:** optional focus - `all` (default), `mixing`, `mastering`, `sound_design`, `health`.
 
 ## Honest scope

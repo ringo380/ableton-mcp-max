@@ -996,8 +996,16 @@ class AbletonMCP(ControlSurface):
         """One-shot read of the whole set for analysis. Reads only -- no mutation."""
         try:
             song = self._song
-            tracks = [self._track_summary(t, self._track_type(t)) for t in song.tracks]
-            returns = [self._track_summary(t, "return") for t in song.return_tracks]
+            tracks = []
+            for i, t in enumerate(song.tracks):
+                info = self._track_summary(t, self._track_type(t))
+                info["index"] = i
+                tracks.append(info)
+            returns = []
+            for i, t in enumerate(song.return_tracks):
+                info = self._track_summary(t, "return")
+                info["index"] = i
+                returns.append(info)
             master = song.master_track
             master_devices = []
             try:
