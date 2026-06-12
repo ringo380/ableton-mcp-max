@@ -74,3 +74,79 @@ def test_composition_all_any_not():
         {"not": {"field": "tracks[*].name", "op": "includes", "value": "Vocals"}},
     ]}
     assert evaluate_check(chk, SNAP) is True
+from ableton_mcp_max.analysis_utils import evaluate_rules
+
+
+RULES = [
+    {"id": "master.limiter_present", "domain": "mastering", "severity": "fail",
+     "mode": "auto", "scope": "master",
+     "check": {"field": "device_names", "op": "includes", "value": "Limiter"},
+     "evidence_template": "Master chain: {device_names}",
+     "remediation": "Add a Limiter as the last master device."},
+    {"id": "track.fader_headroom", "domain": "mixing", "severity": "warn",
+     "mode": "auto", "scope": "track",
+     "check": {"field": "mixer.volume_db", "op": "lte", "value": 0.0},
+     "evidence_template": "{name} fader at {mixer.volume_db} dB",
+     "remediation": "Gain-stage below 0 dB."},
+    {"id": "sound.reverb_tail_taste", "domain": "sound_design", "severity": "info",
+     "mode": "manual", "title": "Reverb tails sit in the groove",
+     "rationale": "Long tails at fast tempos can wash the mix."},
+    {"id": "master.loudness_target", "domain": "mastering", "severity": "warn",
+     "mode": "deferred", "signal_required": True,
+     "title": "Integrated loudness in target range"},
+]
+
+
+def test_evaluate_rules_master_pass():
+    snap = {"master": {"device_names": ["EQ Eight", "Limiter"]}, "tracks": [], "returns": []}
+    out = evaluate_rules(RULES, snap)
+    f = [x for x in out["findings"] if x["id"] == "master.limiter_present"][0]
+    assert f["status"] == "pass"
+    assert f["evidence"] == "Master chain: ['EQ Eight', 'Limiter']"
+
+
+def test_evaluate_rules_master_fail_and_evidence():
+    snap = {"master": {"device_names": ["EQ Eight"]}, "tracks": [], "returns": []}
+    out = evaluate_rules(RULES, snap)
+    f = [x for x in out["findings"] if x["id"] == "master.limiter_present"][0]
+    assert f["status"] == "fail"
+    assert f["remediation"] == "Add a Limiter as the last master device."
+
+
+def test_evaluate_rules_track_scope_emits_per_offender():
+    snap = {"master": {"device_names": ["Limiter"]}, "returns": [], "tracks": [
+        {"name": "Bass", "mixer": {"volume_db": -6.0}},
+        {"name": "Lead", "mixer": {"volume_db": 2.1}},
+    ]}
+    out = evaluate_rules(RULES, snap)
+    fader = [x for x in out["findings"] if x["id"] == "track.fader_headroom"]
+    assert len(fader) == 1
+    assert fader[0]["status"] == "warn"
+    assert fader[0]["entity"] == "Lead"
+
+
+def test_evaluate_rules_track_scope_all_pass_single_finding():
+    snap = {"master": {"device_names": ["Limiter"]}, "returns": [], "tracks": [
+        {"name": "Bass", "mixer": {"volume_db": -6.0}},
+    ]}
+    out = evaluate_rules(RULES, snap)
+    fader = [x for x in out["findings"] if x["id"] == "track.fader_headroom"]
+    assert len(fader) == 1 and fader[0]["status"] == "pass"
+
+
+def test_evaluate_rules_routes_manual_and_deferred():
+    snap = {"master": {"device_names": ["Limiter"]}, "tracks": [], "returns": []}
+    out = evaluate_rules(RULES, snap)
+    assert [m["id"] for m in out["manual_rules"]] == ["sound.reverb_tail_taste"]
+    assert [d["id"] for d in out["deferred_rules"]] == ["master.loudness_target"]
+    assert out["deferred_rules"][0]["reason"] == "needs metering"
+
+
+def test_summary_counts():
+    snap = {"master": {"device_names": ["EQ Eight"]}, "returns": [], "tracks": [
+        {"name": "Lead", "mixer": {"volume_db": 2.1}},
+    ]}
+    out = evaluate_rules(RULES, snap)
+    s = out["summary"]
+    assert s["fail"] == 1 and s["warn"] == 1
+    assert s["manual"] == 1 and s["deferred"] == 1

@@ -95,3 +95,75 @@ def _apply_op(op, actual, value):
     if op == "count_lt":
         return len(_as_list(actual)) < value
     raise ValueError("Unknown op '%s'" % op)
+
+
+_SCOPE_COLLECTION = {"track": "tracks", "return": "returns"}
+
+
+def evaluate_rules(rules, snapshot):
+    """Run a list of rule dicts against a normalized snapshot.
+
+    Returns ``{findings, manual_rules, deferred_rules, summary}``. ``auto`` rules
+    produce findings (status pass/fail/warn/info); ``manual`` rules are surfaced
+    for human/Claude judgment; ``deferred`` (or ``signal_required``) rules are
+    parked as needing metering.
+    """
+    findings, manual, deferred = [], [], []
+    for rule in rules:
+        mode = rule.get("mode", "auto")
+        if rule.get("signal_required") or mode == "deferred":
+            deferred.append({"id": rule["id"], "domain": rule["domain"],
+                             "title": rule.get("title", rule["id"]),
+                             "reason": "needs metering"})
+            continue
+        if mode == "manual":
+            manual.append({"id": rule["id"], "domain": rule["domain"],
+                           "title": rule.get("title", rule["id"]),
+                           "rationale": rule.get("rationale", "")})
+            continue
+        findings.extend(_eval_auto(rule, snapshot))
+    return {"findings": findings, "manual_rules": manual,
+            "deferred_rules": deferred, "summary": _summarize(findings, manual, deferred)}
+
+
+def _eval_auto(rule, snapshot):
+    scope = rule.get("scope", "set")
+    if scope == "set":
+        ok = evaluate_check(rule["check"], snapshot)
+        return [_finding(rule, ok, _evidence(rule, snapshot))]
+    if scope == "master":
+        root = snapshot.get("master") or {}
+        ok = evaluate_check(rule["check"], root)
+        return [_finding(rule, ok, _evidence(rule, root))]
+    entities = snapshot.get(_SCOPE_COLLECTION[scope]) or []
+    failed = [_finding(rule, False, _evidence(rule, e), entity=e.get("name"))
+              for e in entities if not evaluate_check(rule["check"], e)]
+    if failed:
+        return failed
+    return [_finding(rule, True, "all %ss pass" % scope)]
+
+
+def _finding(rule, ok, evidence, entity=None):
+    f = {"id": rule["id"], "domain": rule["domain"],
+         "status": "pass" if ok else rule["severity"],
+         "severity": rule["severity"], "evidence": evidence,
+         "remediation": rule.get("remediation", "")}
+    if entity:
+        f["entity"] = entity
+    return f
+
+
+def _evidence(rule, root):
+    tmpl = rule.get("evidence_template")
+    if not tmpl:
+        return ""
+    return re.sub(r"\{([^}]+)\}", lambda m: str(resolve_path(root, m.group(1))), tmpl)
+
+
+def _summarize(findings, manual, deferred):
+    counts = {"pass": 0, "fail": 0, "warn": 0, "info": 0}
+    for f in findings:
+        counts[f["status"]] = counts.get(f["status"], 0) + 1
+    counts["manual"] = len(manual)
+    counts["deferred"] = len(deferred)
+    return counts
