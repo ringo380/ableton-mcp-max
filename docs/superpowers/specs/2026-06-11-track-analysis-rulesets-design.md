@@ -1,4 +1,4 @@
-# Track Analysis Rulesets — Design
+# Track Analysis Rulesets - Design
 
 **Created**: 2026-06-11
 **Status**: Approved (ready for implementation plan)
@@ -6,8 +6,8 @@
 ## Overview
 
 Add a track/set analysis feature to the `ableton` plugin that checks an open Live 11
-set against curated best-practice guidelines across four domains — **mixing,
-mastering, sound design, and overall track health** — and produces a sectioned,
+set against curated best-practice guidelines across four domains - **mixing,
+mastering, sound design, and overall track health** - and produces a sectioned,
 remediation-oriented report.
 
 Guidelines are distilled once from authoritative sources into versioned, cited
@@ -19,7 +19,7 @@ orchestrates the call and layers judgment + remediation on top.
 ### Hard constraint: no audio signal data
 
 The LOM (and therefore our read tools) exposes track **structure and parameter
-values** but **no audio signal** — there is no peak/RMS/LUFS/spectrum reading
+values** but **no audio signal** - there is no peak/RMS/LUFS/spectrum reading
 available (the known field-wide gap; a future Max-for-Live audio-tap device would
 fill it). Therefore:
 
@@ -29,7 +29,7 @@ fill it). Therefore:
   naming.
 - Checks that need real metering (integrated loudness, true-peak headroom in dB,
   inter-track frequency masking, phase) are **not faked**. They are modelled as
-  `deferred` rules and surfaced under a "Needs metering — not yet measurable"
+  `deferred` rules and surfaced under a "Needs metering - not yet measurable"
   report section. The snapshot schema reserves a `signal` slot so the future
   audio-tap device drops in without a schema break.
 
@@ -37,7 +37,7 @@ fill it). Therefore:
 
 1. **Ruleset source:** curated static ruleset files, versioned in the repo, with
    citations. Re-digested only on deliberate update. No live web-fetch.
-2. **Engine shape:** both — MCP tool computes objective metrics/findings; the skill
+2. **Engine shape:** both - MCP tool computes objective metrics/findings; the skill
    layers curated guidelines + judgment.
 3. **Analysis scope:** whole set (all tracks + returns + master) with per-track
    drilldown; optional focus on one domain.
@@ -67,7 +67,7 @@ commands/
 ```
 
 `ruleset_utils.py` and `analysis_utils.py` are imported by **server.py only** (the
-Remote Script runs in Live's own Python and cannot import them) — consistent with the
+Remote Script runs in Live's own Python and cannot import them) - consistent with the
 existing `*_utils.py` convention.
 
 ### Data flow
@@ -85,7 +85,7 @@ existing `*_utils.py` convention.
    over the snapshot for `manual` items, composes a domain-sectioned human report.
 
 **Why a dedicated remote read** (vs looping existing read tools): one socket
-round-trip for the whole set instead of dozens — fast, low token cost, and the
+round-trip for the whole set instead of dozens - fast, low token cost, and the
 per-track walk is natural in Live's own process.
 
 ## Rule data model
@@ -115,12 +115,12 @@ Each rule is a declarative object. One source of truth; the Python evaluator run
 
 ### Modes
 
-- `auto` — engine produces a reproducible `pass`/`warn`/`fail` with evidence.
-- `manual` — engine can't judge (e.g. "is this reverb tail musically appropriate?");
+- `auto` - engine produces a reproducible `pass`/`warn`/`fail` with evidence.
+- `manual` - engine can't judge (e.g. "is this reverb tail musically appropriate?");
   the skill surfaces it as a checklist item with rationale and reasons over the
   snapshot to give a real assessment.
-- `deferred` (`signal_required: true`) — needs real metering; engine skips it; report
-  lists it under "Needs metering — not yet measurable".
+- `deferred` (`signal_required: true`) - needs real metering; engine skips it; report
+  lists it under "Needs metering - not yet measurable".
 
 ### Predicate evaluator (`analysis_utils.py`)
 
@@ -138,7 +138,7 @@ predicate vocabulary** (arbitrary Python per rule was explicitly rejected).
 
 ## Snapshot schema
 
-Normalized dict returned by `analyze_set.data.snapshot` (compact — `key_params`
+Normalized dict returned by `analyze_set.data.snapshot` (compact - `key_params`
 carries only the handful of params rules reference, to bound tokens):
 
 ```jsonc
@@ -165,7 +165,7 @@ carries only the handful of params rules reference, to bound tokens):
 
 Respects the device-tool asymmetry: return/master device data comes from
 `get_device_info`-style access, not `get_device_parameters` (regular-track-only).
-Group tracks have no `.arm` — read via try/except.
+Group tracks have no `.arm` - read via try/except.
 
 ## MCP tool contract
 
@@ -190,7 +190,7 @@ Group tracks have no `.arm` — read via try/except.
 } }
 ```
 
-`analyze_set` is a read — naturally idempotent, no settle delay, no write-lag concern.
+`analyze_set` is a read - naturally idempotent, no settle delay, no write-lag concern.
 The tool does the deterministic work (status + evidence + counts); the skill does the
 prose, prioritization, and per-track judgment.
 
@@ -199,8 +199,8 @@ prose, prioritization, and per-track judgment.
 `commands/analyze.md` → `/ableton:analyze [focus]` (same command-as-skill pattern as
 `best-practices`, `new-track`, `add-to-track`). Instructed flow:
 
-1. Connection triage (reuse `best-practices` etiquette — retry-once on first call).
-2. Call `analyze_set(focus)` — one round-trip; do **not** hand-loop the read tools.
+1. Connection triage (reuse `best-practices` etiquette - retry-once on first call).
+2. Call `analyze_set(focus)` - one round-trip; do **not** hand-loop the read tools.
 3. `Read` the relevant `rulesets/*.json` for rationale/citations + `manual` rule text.
 4. Compose the report; for `manual` rules, reason over the returned snapshot to give a
    real assessment, not just echo the checklist.
@@ -209,20 +209,20 @@ prose, prioritization, and per-track judgment.
 Report (printed in chat, sectioned by domain, worst-first):
 
 ```
-# Track Health Report — <set name> @ 120 BPM
+# Track Health Report - <set name> @ 120 BPM
 ## ❌ Fails (2)
-- [mastering] No limiter on master bus — add a Limiter (ceiling ~-1 dB) as last master device. (src)
-- [health] Track 4 "MIDI" unnamed/default — rename for a navigable session.
+- [mastering] No limiter on master bus - add a Limiter (ceiling ~-1 dB) as last master device. (src)
+- [health] Track 4 "MIDI" unnamed/default - rename for a navigable session.
 ## ⚠️ Warnings (5)
-- [mixing] Bass fader at +2.1 dB — gain-stage below 0 dB to preserve headroom. ...
+- [mixing] Bass fader at +2.1 dB - gain-stage below 0 dB to preserve headroom. ...
 ## 👂 Manual checks (judgment) (6)
-- [sound_design] Reverb tail on "Lead" (Decay 4.2 s) at 120 BPM may wash the mix — verify it sits in the groove.
-## 📏 Needs metering — not yet measurable (4)
-- [mastering] Integrated loudness vs target — requires audio metering (future audio-tap device).
-## ✅ Passed (18)  — collapsed count, expandable on request.
+- [sound_design] Reverb tail on "Lead" (Decay 4.2 s) at 120 BPM may wash the mix - verify it sits in the groove.
+## 📏 Needs metering - not yet measurable (4)
+- [mastering] Integrated loudness vs target - requires audio metering (future audio-tap device).
+## ✅ Passed (18)  - collapsed count, expandable on request.
 ```
 
-`focus` scopes which domains appear (default `all`). The report is **read-only** — it
+`focus` scopes which domains appear (default `all`). The report is **read-only** - it
 recommends, never mutates the set. A `--fix`-style follow-up that chains the existing
 write tools is explicitly out of v1 scope (YAGNI).
 
@@ -230,14 +230,14 @@ write tools is explicitly out of v1 scope (YAGNI).
 
 Offline, fits the project's pytest + py_compile gate (no signal/Live needed):
 
-- `tests/test_ruleset_utils.py` — every shipped `rulesets/*.json` loads + passes schema
+- `tests/test_ruleset_utils.py` - every shipped `rulesets/*.json` loads + passes schema
   validation (required keys; valid `severity`/`mode`/`op` enums; `check` present iff
   `mode == auto`; `source` anchor exists in `sources.md`). The drift guard.
-- `tests/test_analysis_utils.py` — predicate evaluator against synthetic snapshots
+- `tests/test_analysis_utils.py` - predicate evaluator against synthetic snapshots
   (one fixture per op, plus `all`/`any`/`not`), plus end-to-end "snapshot + ruleset →
   expected findings" cases (limiter-missing → fail; clean master → pass; fader > 0 →
   warn).
-- `tests/test_snapshot_normalize.py` — raw remote payload → normalized snapshot (group
+- `tests/test_snapshot_normalize.py` - raw remote payload → normalized snapshot (group
   track has no `.arm`; return-track subset; empty Simpler clips; `signal: null`
   reserved).
 - `uv run python -m py_compile remote_script/AbletonMCP/__init__.py` + server import
@@ -248,35 +248,35 @@ Offline, fits the project's pytest + py_compile gate (no signal/Live needed):
 ## Docs
 
 - Regenerate the tool-index (`scripts/build_tool_index.py`) and docs site
-  (`scripts/gen_docs_site.py`) — both assert every tool is categorized, so `analyze_set`
+  (`scripts/gen_docs_site.py`) - both assert every tool is categorized, so `analyze_set`
   must be filed under a new "Analysis" category.
 - Add `/ableton:analyze` to the README / docs command list.
 
 ## Rollout / phasing
 
-1. **Engine + data, offline** — `ruleset_utils`, `analysis_utils`, the 4 ruleset JSONs +
+1. **Engine + data, offline** - `ruleset_utils`, `analysis_utils`, the 4 ruleset JSONs +
    `sources.md`, full unit tests. No Live. (Curating accurate, cited guidelines is the
-   real work here — front-loaded into pure data + tests.)
-2. **Both halves wired** — remote `get_analysis_snapshot` + server `analyze_set` tool;
+   real work here - front-loaded into pure data + tests.)
+2. **Both halves wired** - remote `get_analysis_snapshot` + server `analyze_set` tool;
    install + dual-restart; live-verify the snapshot.
-3. **Skill + docs** — `commands/analyze.md`, report format, tool-index/docs regen,
+3. **Skill + docs** - `commands/analyze.md`, report format, tool-index/docs regen,
    README.
 
 Additive (new tool + new command), non-breaking on its own. Releases under v0.5.0 (the
-already-pending bump) or a follow-up minor — decided at release time.
+already-pending bump) or a follow-up minor - decided at release time.
 
 ## Files to create/modify
 
-- `ableton_mcp_max/rulesets/{mixing,mastering,sound_design,health}.json` — new
-- `ableton_mcp_max/rulesets/sources.md` — new (citations/attribution)
-- `ableton_mcp_max/ruleset_utils.py` — new (load + schema validate)
-- `ableton_mcp_max/analysis_utils.py` — new (normalize + predicate evaluator)
-- `ableton_mcp_max/server.py` — add `analyze_set` `@mcp.tool()`
-- `remote_script/AbletonMCP/__init__.py` — add `get_analysis_snapshot` read handler
-- `commands/analyze.md` — new skill
+- `ableton_mcp_max/rulesets/{mixing,mastering,sound_design,health}.json` - new
+- `ableton_mcp_max/rulesets/sources.md` - new (citations/attribution)
+- `ableton_mcp_max/ruleset_utils.py` - new (load + schema validate)
+- `ableton_mcp_max/analysis_utils.py` - new (normalize + predicate evaluator)
+- `ableton_mcp_max/server.py` - add `analyze_set` `@mcp.tool()`
+- `remote_script/AbletonMCP/__init__.py` - add `get_analysis_snapshot` read handler
+- `commands/analyze.md` - new skill
 - `tests/test_ruleset_utils.py`, `tests/test_analysis_utils.py`,
-  `tests/test_snapshot_normalize.py` — new
-- `commands/tool-index.md`, docs site pages, README — regenerated/updated
+  `tests/test_snapshot_normalize.py` - new
+- `commands/tool-index.md`, docs site pages, README - regenerated/updated
 
 ## Verification
 

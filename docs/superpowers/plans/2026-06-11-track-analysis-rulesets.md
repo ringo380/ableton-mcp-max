@@ -19,15 +19,15 @@ PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run --with p
 - Pure helper modules live in `ableton_mcp_max/<name>_utils.py`, imported by `server.py` ONLY, with a docstring header explaining they are server-side-only.
 - Tests live in `tests/test_<module>.py`, plain `pytest`, mirroring `tests/test_scene_utils.py`.
 - Tools: `@mcp.tool()` `def name(ctx: Context, ...) -> str:` with `try/except`, returning `_ok(result)` / `_err(msg)` (defined in `server.py:97-104`).
-- Reads are sent via `ableton.send_command("<type>")`; a read command type is NOT added to `MUTATING_COMMANDS` (so it stays idempotent — recv retry allowed, no settle delay).
+- Reads are sent via `ableton.send_command("<type>")`; a read command type is NOT added to `MUTATING_COMMANDS` (so it stays idempotent - recv retry allowed, no settle delay).
 - Remote reads: a `if command_type == "<type>":` branch in `_process_command` (`remote_script/AbletonMCP/__init__.py:586+`) calling a private `self._<name>()` method.
 - Commands: `commands/<name>.md` with frontmatter `description:` + `allowed-tools:`.
 
 ---
 
-## Phase 1 — Engine + data (offline, no Live)
+## Phase 1 - Engine + data (offline, no Live)
 
-### Task 1: `analysis_utils` — path resolver
+### Task 1: `analysis_utils` - path resolver
 
 **Files:**
 - Create: `ableton_mcp_max/analysis_utils.py`
@@ -75,7 +75,7 @@ def test_resolve_plain_list():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run --with pytest pytest -q tests/test_analysis_utils.py`
-Expected: FAIL — `ModuleNotFoundError` / `ImportError: cannot import name 'resolve_path'`.
+Expected: FAIL - `ModuleNotFoundError` / `ImportError: cannot import name 'resolve_path'`.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -135,7 +135,7 @@ git commit -m "feat(analysis): dotted-path resolver with list projection"
 
 ---
 
-### Task 2: `analysis_utils` — predicate operators + `evaluate_check`
+### Task 2: `analysis_utils` - predicate operators + `evaluate_check`
 
 **Files:**
 - Modify: `ableton_mcp_max/analysis_utils.py`
@@ -190,7 +190,7 @@ def test_composition_all_any_not():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run --with pytest pytest -q tests/test_analysis_utils.py`
-Expected: FAIL — `ImportError: cannot import name 'evaluate_check'`.
+Expected: FAIL - `ImportError: cannot import name 'evaluate_check'`.
 
 - [ ] **Step 3: Write minimal implementation (append to `analysis_utils.py`)**
 
@@ -267,7 +267,7 @@ git commit -m "feat(analysis): declarative predicate evaluator"
 
 ---
 
-### Task 3: `analysis_utils` — rule → findings engine (`evaluate_rules`)
+### Task 3: `analysis_utils` - rule → findings engine (`evaluate_rules`)
 
 **Files:**
 - Modify: `ableton_mcp_max/analysis_utils.py`
@@ -357,7 +357,7 @@ def test_summary_counts():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run --with pytest pytest -q tests/test_analysis_utils.py`
-Expected: FAIL — `ImportError: cannot import name 'evaluate_rules'`.
+Expected: FAIL - `ImportError: cannot import name 'evaluate_rules'`.
 
 - [ ] **Step 3: Write minimal implementation (append to `analysis_utils.py`)**
 
@@ -502,7 +502,7 @@ Static patches benefit from movement (LFO/automation/macros); Ableton's
 instrument and "Push/Live sound design" material emphasizes modulation.
 
 ## sound-design-reverb-taste
-Reverb/delay tails must fit the tempo and arrangement — a judgment call, not a
+Reverb/delay tails must fit the tempo and arrangement - a judgment call, not a
 measurable threshold.
 
 ## signal-loudness
@@ -677,7 +677,7 @@ Live Object Model. Deferred to a future audio-analysis device.
     "title": "Reverb/delay tails fit the tempo",
     "severity": "info",
     "mode": "manual",
-    "rationale": "Long tails at fast tempos can wash the mix — verify by ear.",
+    "rationale": "Long tails at fast tempos can wash the mix - verify by ear.",
     "source": "sources.md#sound-design-reverb-taste"
   }
 ]
@@ -692,7 +692,7 @@ git commit -m "feat(analysis): seed rulesets (health, mixing, mastering, sound_d
 
 ---
 
-### Task 5: `ruleset_utils` — load + schema validation (the drift guard)
+### Task 5: `ruleset_utils` - load + schema validation (the drift guard)
 
 **Files:**
 - Create: `ableton_mcp_max/ruleset_utils.py`
@@ -770,7 +770,7 @@ def test_validate_rule_rejects_missing_source_anchor():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run --with pytest pytest -q tests/test_ruleset_utils.py`
-Expected: FAIL — `ModuleNotFoundError: ableton_mcp_max.ruleset_utils`.
+Expected: FAIL - `ModuleNotFoundError: ableton_mcp_max.ruleset_utils`.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -889,7 +889,7 @@ def validate_all():
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run --with pytest pytest -q tests/test_ruleset_utils.py`
-Expected: PASS. (If `test_all_shipped_rulesets_validate` fails, a seed rule in Task 4 has a bad anchor/op — fix the JSON, not the test.)
+Expected: PASS. (If `test_all_shipped_rulesets_validate` fails, a seed rule in Task 4 has a bad anchor/op - fix the JSON, not the test.)
 
 - [ ] **Step 5: Commit**
 
@@ -900,7 +900,7 @@ git commit -m "feat(analysis): ruleset loader + schema validation drift guard"
 
 ---
 
-### Task 6: `analysis_utils.normalize_snapshot` — raw remote payload → normalized snapshot
+### Task 6: `analysis_utils.normalize_snapshot` - raw remote payload → normalized snapshot
 
 **Files:**
 - Modify: `ableton_mcp_max/analysis_utils.py`
@@ -985,7 +985,7 @@ def test_normalize_returns_subset():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run --with pytest pytest -q tests/test_snapshot_normalize.py`
-Expected: FAIL — `ImportError: cannot import name 'normalize_snapshot'`.
+Expected: FAIL - `ImportError: cannot import name 'normalize_snapshot'`.
 
 - [ ] **Step 3: Write minimal implementation (append to `analysis_utils.py`)**
 
@@ -1073,7 +1073,7 @@ Expected: PASS.
 - [ ] **Step 5: Run the FULL suite (Phase 1 regression gate)**
 
 Run: `PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run --with pytest pytest -q`
-Expected: PASS — existing 364 + new analysis/ruleset/snapshot tests, all green.
+Expected: PASS - existing 364 + new analysis/ruleset/snapshot tests, all green.
 
 - [ ] **Step 6: Commit**
 
@@ -1086,12 +1086,12 @@ git commit -m "feat(analysis): snapshot normalizer (dB, signal slot, arm guard)"
 
 ---
 
-## Phase 2 — Wire both halves (needs Live + dual restart)
+## Phase 2 - Wire both halves (needs Live + dual restart)
 
 ### Task 7: Remote `get_analysis_snapshot` read handler
 
 **Files:**
-- Modify: `remote_script/AbletonMCP/__init__.py` — add a `if`-branch in `_process_command` (near line 586) and a `_get_analysis_snapshot` method (near the other `_get_*` readers, ~line 813).
+- Modify: `remote_script/AbletonMCP/__init__.py` - add a `if`-branch in `_process_command` (near line 586) and a `_get_analysis_snapshot` method (near the other `_get_*` readers, ~line 813).
 
 > This is a READ. Do NOT add it to the mutation dispatch list and do NOT add it to the server's `MUTATING_COMMANDS`. Use Live 3.7-era Python: `%`-formatting, no f-strings, probe optional attributes with try/except (never `hasattr`).
 
@@ -1197,7 +1197,7 @@ Near the other `_get_*` methods (after `_get_track_info`, ~line 900), add:
         return "audio"
 
     def _get_analysis_snapshot(self):
-        """One-shot read of the whole set for analysis. Reads only — no mutation."""
+        """One-shot read of the whole set for analysis. Reads only - no mutation."""
         try:
             song = self._song
             tracks = [self._track_summary(t, self._track_type(t)) for t in song.tracks]
@@ -1254,7 +1254,7 @@ git commit -m "feat(remote): get_analysis_snapshot one-shot set read"
 ### Task 8: Server `analyze_set` MCP tool
 
 **Files:**
-- Modify: `ableton_mcp_max/server.py` — add imports near the other util imports (top), and the tool near the other read tools (after `get_session_info`, ~line 500).
+- Modify: `ableton_mcp_max/server.py` - add imports near the other util imports (top), and the tool near the other read tools (after `get_session_info`, ~line 500).
 
 - [ ] **Step 1: Add imports** (with the other `from ableton_mcp_max...` imports near the top)
 
@@ -1271,7 +1271,7 @@ def analyze_set(ctx: Context, focus: str = "all") -> str:
     """Analyze the open Live set against curated best-practice rulesets.
 
     focus: one of "all" (default), "mixing", "mastering", "sound_design",
-    "health" — selects which rule domains run.
+    "health" - selects which rule domains run.
 
     Reads the whole set in one round-trip, runs the deterministic ("auto") rules,
     and returns JSON {ok, data} where data = {snapshot, findings, manual_rules,
@@ -1376,13 +1376,13 @@ git add ableton_mcp_max/server.py tests/test_analyze_tool.py
 git commit -m "feat(server): analyze_set tool wiring rulesets to the snapshot"
 ```
 
-- [ ] **Step 7: Live-verify (manual — requires a Claude Code restart to load the new tool)**
+- [ ] **Step 7: Live-verify (manual - requires a Claude Code restart to load the new tool)**
 
 After restarting Claude Code, load the deferred tool: `ToolSearch select:mcp__AbletonDev__analyze_set` (working-tree server) and call `analyze_set(focus="all")` against the open set. Confirm: (a) the snapshot track/return/master names + device chains match the actual set; (b) `mastering.limiter_present` reflects whether the master really has a Limiter; (c) `summary` counts add up; (d) `deferred_rules` lists the loudness rule. Record results in PROGRESS.md.
 
 ---
 
-## Phase 3 — Skill + docs
+## Phase 3 - Skill + docs
 
 ### Task 9: `commands/analyze.md` skill
 
@@ -1401,24 +1401,24 @@ allowed-tools: ["Bash", "Read"]
 
 Check the open Live set against the curated rulesets and report findings by domain.
 
-**Argument:** optional focus — `all` (default), `mixing`, `mastering`, `sound_design`, `health`.
+**Argument:** optional focus - `all` (default), `mixing`, `mastering`, `sound_design`, `health`.
 
 ## Honest scope
 
 The Live Object Model exposes **structure and parameter values, not audio signal**.
 So this analysis checks configuration (limiter present, gain-stage sanity, device
 counts, routing, clip hygiene, leftover solo/mute, instrument presence). It does
-**not** measure loudness, true-peak headroom, or frequency masking — those are
+**not** measure loudness, true-peak headroom, or frequency masking - those are
 listed under "Needs metering" and must be checked by ear/meters in Live. Never
 invent dB/LUFS numbers.
 
 ## Steps
 
 1. **Connection triage.** The first MCP call after a restart can fail while the
-   server reconnects — retry once. If it persists, confirm Live is running and port
+   server reconnects - retry once. If it persists, confirm Live is running and port
    9877 is listening (see `/ableton:best-practices`).
 2. **Call the tool, once.** Call `analyze_set(focus=<arg or "all">)`. Do NOT hand-loop
-   the read tools — the tool gathers the whole set in one round-trip. Check `ok`
+   the read tools - the tool gathers the whole set in one round-trip. Check `ok`
    first; on `ok:false`, surface the `error` and stop.
 3. **Load rationale.** `Read` the relevant `ableton_mcp_max/rulesets/<domain>.json`
    for the full `rationale`/`remediation`/`source` of any rule you report, and the
@@ -1426,23 +1426,23 @@ invent dB/LUFS numbers.
    "why".
 4. **Judge the manual rules.** For each `manual_rules` entry, reason over the returned
    `snapshot` to give a real assessment (e.g. inspect reverb device presence on a
-   track and its tempo) — don't just echo the checklist item.
+   track and its tempo) - don't just echo the checklist item.
 5. **Write the report** (below). Order: Fails → Warnings → Manual → Needs metering →
-   Passed (count only). Scope sections to `focus`. The report is **read-only** — it
+   Passed (count only). Scope sections to `focus`. The report is **read-only** - it
    recommends; it never mutates the set.
 
 ## Report format
 
 ```
-# Track Health Report — <set summary> @ <tempo> BPM
+# Track Health Report - <set summary> @ <tempo> BPM
 ## ❌ Fails (<n>)
-- [<domain>] <evidence> — <remediation> (<source>)
+- [<domain>] <evidence> - <remediation> (<source>)
 ## ⚠️ Warnings (<n>)
-- [<domain>] <evidence> — <remediation>
+- [<domain>] <evidence> - <remediation>
 ## 👂 Manual checks (judgment) (<n>)
-- [<domain>] <title>: <your assessment from the snapshot> — <rationale>
-## 📏 Needs metering — not yet measurable (<n>)
-- [<domain>] <title> — requires audio metering (future audio-tap device).
+- [<domain>] <title>: <your assessment from the snapshot> - <rationale>
+## 📏 Needs metering - not yet measurable (<n>)
+- [<domain>] <title> - requires audio metering (future audio-tap device).
 ## ✅ Passed (<n>)   (expand on request)
 ```
 ```
@@ -1467,10 +1467,10 @@ git commit -m "feat(skill): /ableton:analyze report command"
 ### Task 10: Regenerate tool-index + docs site; README
 
 **Files:**
-- Modify: `scripts/build_tool_index.py` — add `analyze_set` to the category map (a new "Analysis" group).
-- Modify: `scripts/gen_docs_site.py` — add `analyze_set` to its category map (new "Analysis" category).
+- Modify: `scripts/build_tool_index.py` - add `analyze_set` to the category map (a new "Analysis" group).
+- Modify: `scripts/gen_docs_site.py` - add `analyze_set` to its category map (new "Analysis" category).
 - Regenerate: `commands/tool-index.md`, `docs/` tool pages.
-- Modify: `README.md` — add `/ableton:analyze` to the command list.
+- Modify: `README.md` - add `/ableton:analyze` to the command list.
 
 - [ ] **Step 1: Find the category maps**
 
@@ -1483,7 +1483,7 @@ Expected: locates the dict/list that maps tool names → category in each script
 - [ ] **Step 2: Add `analyze_set` to both category maps**
 
 In each script's category map, add an "Analysis" category containing `analyze_set`
-(follow the exact literal structure already used — a key with a list of tool names,
+(follow the exact literal structure already used - a key with a list of tool names,
 matching the style of the neighbouring entries you saw in Step 1).
 
 - [ ] **Step 3: Regenerate**
@@ -1493,13 +1493,13 @@ Run:
 PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run python scripts/build_tool_index.py
 PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run python scripts/gen_docs_site.py
 ```
-Expected: both succeed. These scripts ASSERT every tool is categorized — if `analyze_set` is uncategorized, the script raises and names it. Fix the map (Step 2) until both pass.
+Expected: both succeed. These scripts ASSERT every tool is categorized - if `analyze_set` is uncategorized, the script raises and names it. Fix the map (Step 2) until both pass.
 
 - [ ] **Step 4: Add the command to README**
 
 Add a line to the command list in `README.md` mirroring the existing entries:
 ```
-- `/ableton:analyze` — check the open set against best-practice rulesets and report findings by domain.
+- `/ableton:analyze` - check the open set against best-practice rulesets and report findings by domain.
 ```
 
 - [ ] **Step 5: Full suite + import sanity (final regression gate)**
@@ -1531,7 +1531,7 @@ git commit -m "docs(analysis): index analyze_set + /ableton:analyze, regen site"
 
 ```bash
 git add PROGRESS.md
-git commit -m "docs: PROGRESS.md — track-analysis feature shipped"
+git commit -m "docs: PROGRESS.md - track-analysis feature shipped"
 ```
 
 ---
