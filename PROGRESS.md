@@ -1,7 +1,12 @@
 # ableton-mcp-max — Progress
 
-**Track analysis feature (branch `feat/track-analysis`) - CODE COMPLETE + OFFLINE-VERIFIED + LIVE-VERIFIED
-(2026-06-12).** New `/ableton:analyze [focus]` skill + `analyze_set` MCP tool (tool count 107 ->
+**Track analysis feature - SHIPPED in v0.6.0 (2026-06-12).** PR #18 squash-merged to `main` (@ffa516d);
+released as **v0.6.0** (@4cfbf33 "track analysis"; tag + GitHub release created, marketplace `ableton` ref
+bumped v0.5.0 -> v0.6.0 + README rebuilt + pushed @e278603 in robworks-claude-code-plugins). Version bumped
+0.5.0 -> 0.6.0 across pyproject/plugin.json/uv.lock; docs landing-page counts refreshed (108 tools, 14
+categories). NOTE: v0.5.0 had already shipped (robustness/batch/envelope) BEFORE this feature, so analysis
+shipped as a follow-up minor, not folded into v0.5.0. CODE COMPLETE + OFFLINE-VERIFIED (399 passed) +
+LIVE-VERIFIED. New `/ableton:analyze [focus]` skill + `analyze_set` MCP tool (tool count 107 ->
 108) that checks the open set against curated best-practice rulesets across mixing/mastering/sound_design/
 health and emits a domain-sectioned report. Design = rules-as-data: declarative JSON rulesets
 (`ableton_mcp_max/rulesets/*.json` + cited `sources.md`) run by a fixed predicate evaluator. Architecture:
