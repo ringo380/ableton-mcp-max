@@ -1,5 +1,26 @@
 # ableton-mcp-max — Progress
 
+**Track analysis feature (branch `feat/track-analysis`) - CODE COMPLETE + OFFLINE-VERIFIED, LIVE-VERIFY
+PENDING (2026-06-12).** New `/ableton:analyze [focus]` skill + `analyze_set` MCP tool (tool count 107 ->
+108) that checks the open set against curated best-practice rulesets across mixing/mastering/sound_design/
+health and emits a domain-sectioned report. Design = rules-as-data: declarative JSON rulesets
+(`ableton_mcp_max/rulesets/*.json` + cited `sources.md`) run by a fixed predicate evaluator. Architecture:
+remote `get_analysis_snapshot` (one-shot whole-set read) -> server `normalize_snapshot` (linear vol -> dB,
+reserves `signal:null` for a future M4L audio-tap) -> `evaluate_rules` -> `{snapshot, findings,
+manual_rules, deferred_rules, summary}` in the `{ok,data}` envelope. Config-based checks only (the LOM
+exposes no audio signal); loudness/true-peak/masking rules are `deferred` and surfaced honestly under
+"Needs metering". Pure modules `analysis_utils.py` + `ruleset_utils.py` (server-side-only), fully
+unit-tested: offline **399 passed** (added test_analysis_utils / test_ruleset_utils / test_snapshot_normalize
+/ test_analyze_tool). Remote half py_compile-clean + installed (`install_remote_script.sh` ran;
+backup -> ~/.ableton-mcp-rs-backups). Spec `docs/superpowers/specs/2026-06-11-track-analysis-rulesets-design.md`,
+plan `docs/superpowers/plans/2026-06-11-track-analysis-rulesets.md`. Built via subagent-driven TDD
+(11 tasks, two-stage review each; review caught real remote-handler bugs: hasattr->try/except,
+instrument detection via `device.type`, group-before-midi classification). **NEXT = LIVE-VERIFY:** quit+reopen
+Live (loads the new remote handler) AND restart Claude Code (loads the new server tool), then call
+`analyze_set` against the open set - confirm snapshot matches reality, auto-findings correct, deferred
+section honest; record here. THEN finish branch (PR/merge). Release: additive (non-breaking), fold into the
+pending v0.5.0 or ship as a follow-up minor.
+
 **Current focus:** Robustness/Efficiency/Polish initiative (post-v0.4.0) - Phases A-E ALL MERGED to
 `main` AND LIVE-VERIFIED (2026-06-11; offline 353/353 + live-tested against Live 11.3.43). Branch
 `feat/connection-robustness` fast-forward-merged + deleted; repo settled, working tree clean. A public
