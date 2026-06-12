@@ -71,6 +71,9 @@ CATEGORIES = [
     ("batch", "Batch & Transactions", "Collapse several mutations into a single atomic Live task / socket round-trip.", [
         "batch",
     ]),
+    ("analysis", "Analysis", "Inspect the open set against best-practice rulesets and surface findings by domain.", [
+        "analyze_set",
+    ]),
 ]
 
 SKIP_PARAMS = {"self", "ctx", "context"}

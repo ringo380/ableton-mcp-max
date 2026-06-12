@@ -505,7 +505,7 @@ def analyze_set(ctx: Context, focus: str = "all") -> str:
     """Analyze the open Live set against curated best-practice rulesets.
 
     focus: one of "all" (default), "mixing", "mastering", "sound_design",
-    "health" — selects which rule domains run.
+    "health" - selects which rule domains run.
 
     Reads the whole set in one round-trip, runs the deterministic ("auto") rules,
     and returns JSON {ok, data} where data = {snapshot, findings, manual_rules,
