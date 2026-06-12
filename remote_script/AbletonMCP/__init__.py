@@ -588,6 +588,8 @@ class AbletonMCP(ControlSurface):
             elif command_type == "get_track_info":
                 track_index = params.get("track_index", 0)
                 response["result"] = self._get_track_info(track_index)
+            elif command_type == "get_analysis_snapshot":
+                response["result"] = self._get_analysis_snapshot()
             elif command_type == "batch":
                 members = params.get("commands", [])
                 stop_on_error = params.get("stop_on_error", True)
@@ -894,6 +896,141 @@ class AbletonMCP(ControlSurface):
             return result
         except Exception as e:
             self.log_message("Error getting track info: " + str(e))
+            raise
+
+    def _device_summary(self, device):
+        try:
+            idx = list(device.canonical_parent.devices).index(device)
+        except Exception:
+            idx = None
+        try:
+            is_instr = device.type == Live.Device.DeviceType.instrument
+        except Exception:
+            is_instr = False
+        info = {
+            "index": idx,
+            "name": device.name,
+            "class_name": device.class_name,
+            "on": True,
+            "is_instrument": is_instr,
+        }
+        try:
+            info["on"] = bool(device.parameters[0].value) if device.parameters else True
+        except Exception:
+            pass
+        return info
+
+    def _clip_summary(self, track):
+        count = named = warped = empty = 0
+        try:
+            for slot in track.clip_slots:
+                if slot.has_clip:
+                    count += 1
+                    clip = slot.clip
+                    if clip.name:
+                        named += 1
+                    try:
+                        if clip.warping:
+                            warped += 1
+                    except Exception:
+                        pass
+                else:
+                    empty += 1
+        except Exception:
+            pass
+        return {"count": count, "named": named, "warped": warped, "empty_slots": empty}
+
+    def _track_summary(self, track, track_type):
+        devices = []
+        try:
+            for d in track.devices:
+                devices.append(self._device_summary(d))
+        except Exception:
+            pass
+        has_instrument = any(d.get("is_instrument") for d in devices)
+        info = {
+            "name": track.name,
+            "type": track_type,
+            "volume": track.mixer_device.volume.value,
+            "panning": track.mixer_device.panning.value,
+            "mute": track.mute,
+            "solo": track.solo,
+            "has_instrument": has_instrument,
+            "devices": devices,
+            "clips": self._clip_summary(track),
+        }
+        try:
+            info["sends"] = [s.value for s in track.mixer_device.sends]
+        except Exception:
+            info["sends"] = []
+        # arm is regular-track-only; group/return/master raise.
+        try:
+            info["arm"] = track.arm
+        except Exception:
+            info["arm"] = False
+        for attr in ("is_grouped",):
+            try:
+                info[attr] = getattr(track, attr)
+            except Exception:
+                pass
+        try:
+            info["routing"] = {
+                "audio_to": track.output_routing_type.display_name,
+                "audio_from": track.input_routing_type.display_name,
+            }
+        except Exception:
+            info["routing"] = {}
+        return info
+
+    def _track_type(self, track):
+        try:
+            if track.is_foldable:
+                return "group"
+        except Exception:
+            pass
+        if track.has_midi_input:
+            return "midi"
+        return "audio"
+
+    def _get_analysis_snapshot(self):
+        """One-shot read of the whole set for analysis. Reads only -- no mutation."""
+        try:
+            song = self._song
+            tracks = []
+            for i, t in enumerate(song.tracks):
+                info = self._track_summary(t, self._track_type(t))
+                info["index"] = i
+                tracks.append(info)
+            returns = []
+            for i, t in enumerate(song.return_tracks):
+                info = self._track_summary(t, "return")
+                info["index"] = i
+                returns.append(info)
+            master = song.master_track
+            master_devices = []
+            try:
+                for d in master.devices:
+                    master_devices.append(self._device_summary(d))
+            except Exception:
+                pass
+            return {
+                "transport": {
+                    "tempo": song.tempo,
+                    "is_playing": song.is_playing,
+                    "signature_numerator": song.signature_numerator,
+                    "signature_denominator": song.signature_denominator,
+                },
+                "tracks": tracks,
+                "returns": returns,
+                "master": {
+                    "name": "Master",
+                    "volume": master.mixer_device.volume.value,
+                    "panning": master.mixer_device.panning.value,
+                    "devices": master_devices,
+                },
+            }
+        except Exception as e:
+            self.log_message("Error building analysis snapshot: " + str(e))
             raise
 
     def _resolve_track(self, track_index, track_type):

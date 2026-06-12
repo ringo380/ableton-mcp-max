@@ -1,0 +1,37 @@
+[
+  {
+    "id": "mixing.fader_headroom",
+    "domain": "mixing",
+    "title": "Channel faders at or below unity",
+    "severity": "warn",
+    "mode": "auto",
+    "scope": "track",
+    "check": { "field": "mixer.volume_db", "op": "lte", "value": 0.0 },
+    "evidence_template": "{name} fader at {mixer.volume_db} dB",
+    "rationale": "Faders pushed above unity erode master headroom.",
+    "remediation": "Gain-stage below 0 dB; raise the source gain instead if needed.",
+    "source": "sources.md#mixing-gain-staging"
+  },
+  {
+    "id": "mixing.returns_present",
+    "domain": "mixing",
+    "title": "Return tracks exist for shared effects",
+    "severity": "info",
+    "mode": "auto",
+    "scope": "set",
+    "check": { "field": "returns[*].name", "op": "count_gt", "value": 0 },
+    "evidence_template": "Return tracks: {returns[*].name}",
+    "rationale": "Shared reverb/delay on returns is cleaner and lighter than per-channel inserts.",
+    "remediation": "Add a return track and send channels to it for time-based effects.",
+    "source": "sources.md#mixing-return-effects"
+  },
+  {
+    "id": "mixing.reverb_balance",
+    "domain": "mixing",
+    "title": "Reverb/delay balance serves the mix",
+    "severity": "info",
+    "mode": "manual",
+    "rationale": "Wet/dry balance and depth are judgment calls best heard, not measured.",
+    "source": "sources.md#mixing-return-effects"
+  }
+]

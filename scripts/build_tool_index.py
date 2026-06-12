@@ -80,6 +80,9 @@ GROUPS = [
         "register_listener", "poll_changes", "unregister_listener",
         "list_listeners",
     ]),
+    ("Analysis", [
+        "analyze_set",
+    ]),
 ]
 
 PREAMBLE = """# Ableton MCP tool index

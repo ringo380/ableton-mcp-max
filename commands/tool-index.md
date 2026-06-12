@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_107 tools._
+_108 tools._
 
 ## Session & view
 
@@ -177,3 +177,7 @@ _107 tools._
 - **`poll_changes`** - Drain buffered change events. Omit listener_id to drain all listeners;
 - **`unregister_listener`** - Detach a listener and discard its buffer. Omit listener_id to remove ALL
 - **`list_listeners`** - List active change listeners with each one's target plus its buffer's
+
+## Analysis
+
+- **`analyze_set`** - Analyze the open Live set against curated best-practice rulesets.

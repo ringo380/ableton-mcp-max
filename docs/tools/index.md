@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **107 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **108 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -86,4 +86,10 @@ Subscribe to real-time Live Object Model changes and poll for events.
 Collapse several mutations into a single atomic Live task / socket round-trip.
 
 `batch`
+
+## [Analysis](./analysis.html)
+
+Inspect the open set against best-practice rulesets and surface findings by domain.
+
+`analyze_set`
 
