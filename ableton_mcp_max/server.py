@@ -542,6 +542,12 @@ def analyze_set(ctx: Context, focus: str = "all") -> str:
         ableton = get_ableton_connection()
         raw = ableton.send_command("get_analysis_snapshot")
         snapshot = normalize_snapshot(raw)
+        try:
+            tap = get_audio_tap_connection()
+            if tap.is_connected():
+                snapshot["master"]["signal"] = compute_metrics(tap.send("read"))
+        except Exception as e:
+            logger.info("audio tap unavailable for analysis: %s", e)
         result = evaluate_rules(rules, snapshot)
         result["snapshot"] = snapshot
         return _ok(result)
