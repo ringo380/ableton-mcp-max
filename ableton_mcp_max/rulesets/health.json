@@ -1,0 +1,41 @@
+[
+  {
+    "id": "health.track_named",
+    "domain": "health",
+    "title": "Tracks are renamed from defaults",
+    "severity": "warn",
+    "mode": "auto",
+    "scope": "track",
+    "check": { "not": { "field": "name", "op": "matches", "value": "^(\\d+-)?(MIDI|Audio)( \\d+)?$" } },
+    "evidence_template": "Track named \"{name}\"",
+    "rationale": "Default names make a session hard to navigate.",
+    "remediation": "Rename the track to its musical role (e.g. 'Bass', 'Lead').",
+    "source": "sources.md#health-naming"
+  },
+  {
+    "id": "health.device_count",
+    "domain": "health",
+    "title": "No track is overloaded with devices",
+    "severity": "warn",
+    "mode": "auto",
+    "scope": "track",
+    "check": { "field": "device_names", "op": "count_lt", "value": 12 },
+    "evidence_template": "{name} has {device_names} devices",
+    "rationale": "Very long chains raise CPU load and complicate the signal path.",
+    "remediation": "Freeze/flatten or trim the chain; move shared effects to returns.",
+    "source": "sources.md#health-cpu-devices"
+  },
+  {
+    "id": "health.no_leftover_solo",
+    "domain": "health",
+    "title": "No track left soloed",
+    "severity": "fail",
+    "mode": "auto",
+    "scope": "track",
+    "check": { "field": "mixer.solo", "op": "equals", "value": false },
+    "evidence_template": "{name} is soloed",
+    "rationale": "A stray solo silences the rest of the mix on playback/export.",
+    "remediation": "Clear the solo before mixing down.",
+    "source": "sources.md#health-leftover-states"
+  }
+]

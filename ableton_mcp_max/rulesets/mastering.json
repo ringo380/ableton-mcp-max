@@ -1,0 +1,38 @@
+[
+  {
+    "id": "mastering.limiter_present",
+    "domain": "mastering",
+    "title": "Master bus has a limiter",
+    "severity": "fail",
+    "mode": "auto",
+    "scope": "master",
+    "check": { "field": "device_names", "op": "includes", "value": "Limiter" },
+    "evidence_template": "Master chain: {device_names}",
+    "rationale": "A limiter catches peaks before export and sets the ceiling.",
+    "remediation": "Add a Limiter as the last master device; ceiling ~-1 dB.",
+    "source": "sources.md#mastering-headroom"
+  },
+  {
+    "id": "mastering.master_processing",
+    "domain": "mastering",
+    "title": "Master bus has some processing",
+    "severity": "warn",
+    "mode": "auto",
+    "scope": "master",
+    "check": { "field": "device_names", "op": "count_gt", "value": 0 },
+    "evidence_template": "Master devices: {device_names}",
+    "rationale": "A completely flat master is rarely export-ready.",
+    "remediation": "Consider gentle bus EQ/compression and a limiter on the master.",
+    "source": "sources.md#mastering-export-readiness"
+  },
+  {
+    "id": "mastering.loudness_target",
+    "domain": "mastering",
+    "title": "Integrated loudness in target range",
+    "severity": "warn",
+    "mode": "deferred",
+    "signal_required": true,
+    "rationale": "LUFS / true-peak require audio metering the LOM does not expose.",
+    "source": "sources.md#signal-loudness"
+  }
+]

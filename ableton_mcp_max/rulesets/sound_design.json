@@ -1,0 +1,37 @@
+[
+  {
+    "id": "sound_design.has_instrument",
+    "domain": "sound_design",
+    "title": "MIDI tracks have an instrument",
+    "severity": "warn",
+    "mode": "auto",
+    "scope": "track",
+    "check": { "any": [
+      { "field": "type", "op": "equals", "value": "audio" },
+      { "field": "type", "op": "equals", "value": "group" },
+      { "field": "has_instrument", "op": "equals", "value": true }
+    ] },
+    "evidence_template": "{name} ({type}) has_instrument={has_instrument}",
+    "rationale": "A MIDI track with no instrument produces no sound.",
+    "remediation": "Load an instrument onto the MIDI track.",
+    "source": "sources.md#sound-design-modulation"
+  },
+  {
+    "id": "sound_design.modulation_present",
+    "domain": "sound_design",
+    "title": "Patches use movement/modulation",
+    "severity": "info",
+    "mode": "manual",
+    "rationale": "Static patches feel lifeless; LFOs/automation/macros add motion.",
+    "source": "sources.md#sound-design-modulation"
+  },
+  {
+    "id": "sound_design.reverb_tail_taste",
+    "domain": "sound_design",
+    "title": "Reverb/delay tails fit the tempo",
+    "severity": "info",
+    "mode": "manual",
+    "rationale": "Long tails at fast tempos can wash the mix - verify by ear.",
+    "source": "sources.md#sound-design-reverb-taste"
+  }
+]
