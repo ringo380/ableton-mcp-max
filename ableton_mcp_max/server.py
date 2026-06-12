@@ -87,6 +87,8 @@ from ableton_mcp_max.arrangement_utils import (
     coerce_index,
 )
 from ableton_mcp_max.batch_utils import validate_batch, coerce_stop_on_error
+from ableton_mcp_max.analysis_utils import normalize_snapshot, evaluate_rules
+from ableton_mcp_max.ruleset_utils import load_rulesets
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -496,6 +498,45 @@ def get_session_info(ctx: Context) -> str:
     except Exception as e:
         logger.error(f"Error getting session info from Ableton: {str(e)}")
         return _err(f"Error getting session info: {str(e)}")
+
+
+@mcp.tool()
+def analyze_set(ctx: Context, focus: str = "all") -> str:
+    """Analyze the open Live set against curated best-practice rulesets.
+
+    focus: one of "all" (default), "mixing", "mastering", "sound_design",
+    "health" — selects which rule domains run.
+
+    Reads the whole set in one round-trip, runs the deterministic ("auto") rules,
+    and returns JSON {ok, data} where data = {snapshot, findings, manual_rules,
+    deferred_rules, summary}:
+    - snapshot: normalized per-track/return/master state (mixer, devices, clips,
+      routing); each carries signal:null (reserved for a future audio-tap).
+    - findings: auto-rule results {id, domain, status (pass|fail|warn|info),
+      severity, evidence, remediation, [entity]}.
+    - manual_rules: rules needing human/Claude judgment (id, domain, title, rationale).
+    - deferred_rules: rules needing audio metering the LOM can't provide.
+    - summary: counts by status + manual/deferred.
+
+    This is read-only; it never mutates the set. The /ableton:analyze skill layers
+    the report and per-track judgment on top of this output.
+    """
+    try:
+        rules = load_rulesets(focus)
+    except ValueError as e:
+        return _err(str(e))
+    try:
+        ableton = get_ableton_connection()
+        raw = ableton.send_command("get_analysis_snapshot")
+        snapshot = normalize_snapshot(raw)
+        result = evaluate_rules(rules, snapshot)
+        result["snapshot"] = snapshot
+        return _ok(result)
+    except Exception as e:
+        logger.error(f"Error analyzing set: {str(e)}")
+        return _err(f"Error analyzing set: {str(e)}")
+
+
 @mcp.tool()
 def batch(ctx: Context, commands: List[Dict[str, Any]],
           stop_on_error: bool = True) -> str:
