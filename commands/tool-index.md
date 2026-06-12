@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_108 tools._
+_112 tools._
 
 ## Session & view
 
@@ -181,3 +181,10 @@ _108 tools._
 ## Analysis
 
 - **`analyze_set`** - Analyze the open Live set against curated best-practice rulesets.
+
+## Metering (Audio Tap)
+
+- **`get_audio_tap_status`** - Check whether the 'MCP Audio Tap' Max-for-Live device is loaded + reachable.
+- **`reset_meter`** - Reset the audio tap's integrating meter (clears the block buffer).
+- **`read_meter`** - Read the audio tap's master-bus metering since the last reset.
+- **`measure_loudness`** - Reset the meter, play the set, wait, and read back master loudness.

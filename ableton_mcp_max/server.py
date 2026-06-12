@@ -524,11 +524,13 @@ def analyze_set(ctx: Context, focus: str = "all") -> str:
     and returns JSON {ok, data} where data = {snapshot, findings, manual_rules,
     deferred_rules, summary}:
     - snapshot: normalized per-track/return/master state (mixer, devices, clips,
-      routing); each carries signal:null (reserved for a future audio-tap).
+      routing); master.signal carries audio-tap metering (LUFS/dBTP) when the
+      MCP Audio Tap device is loaded, else null.
     - findings: auto-rule results {id, domain, status (pass|fail|warn|info),
       severity, evidence, remediation, [entity]}.
     - manual_rules: rules needing human/Claude judgment (id, domain, title, rationale).
-    - deferred_rules: rules needing audio metering the LOM can't provide.
+    - deferred_rules: signal-required rules still needing metering (no audio tap
+      connected); empty for the metered domains once the tap is loaded.
     - summary: counts by status + manual/deferred.
 
     This is read-only; it never mutates the set. The /ableton:analyze skill layers

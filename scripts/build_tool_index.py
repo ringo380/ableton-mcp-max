@@ -83,6 +83,12 @@ GROUPS = [
     ("Analysis", [
         "analyze_set",
     ]),
+    ("Metering (Audio Tap)", [
+        "get_audio_tap_status",
+        "reset_meter",
+        "read_meter",
+        "measure_loudness",
+    ]),
 ]
 
 PREAMBLE = """# Ableton MCP tool index

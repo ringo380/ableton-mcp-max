@@ -74,6 +74,12 @@ CATEGORIES = [
     ("analysis", "Analysis", "Inspect the open set against best-practice rulesets and surface findings by domain.", [
         "analyze_set",
     ]),
+    ("metering", "Metering (Audio Tap)", "Read master-bus loudness/true-peak from the MCP Audio Tap Max-for-Live device.", [
+        "get_audio_tap_status",
+        "reset_meter",
+        "read_meter",
+        "measure_loudness",
+    ]),
 ]
 
 SKIP_PARAMS = {"self", "ctx", "context"}
