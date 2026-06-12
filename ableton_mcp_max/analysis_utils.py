@@ -6,6 +6,7 @@ the rule -> findings engine. Rules are DATA (see ableton_mcp_max/rulesets/*.json
 this module is the fixed engine that runs them.
 """
 
+import math
 import re  # used by the predicate evaluator / evidence templating added in later slices
 
 
@@ -167,3 +168,76 @@ def _summarize(findings, manual, deferred):
     counts["manual"] = len(manual)
     counts["deferred"] = len(deferred)
     return counts
+
+
+# Live's mixer volume is a 0.0..1.0 linear control where ~0.85 == 0 dB (unity).
+# This mirrors Live's fader taper closely enough for gain-staging heuristics.
+_UNITY = 0.85
+_DB_FLOOR = -70.0
+
+
+def live_volume_to_db(value):
+    """Approximate Live's linear mixer volume (0..1, unity ~0.85) as dB."""
+    if value is None or value <= 0.0:
+        return _DB_FLOOR
+    db = 40.0 * math.log10(value / _UNITY)
+    return max(_DB_FLOOR, round(db, 1))
+
+
+def _norm_devices(raw_devices):
+    devices = [{"index": d.get("index"), "name": d.get("name"),
+                "class": d.get("class_name"), "on": d.get("on", True),
+                "is_instrument": d.get("is_instrument", False),
+                "key_params": d.get("key_params", {})}
+               for d in (raw_devices or [])]
+    return devices, [d["name"] for d in devices]
+
+
+def _norm_track(raw):
+    devices, names = _norm_devices(raw.get("devices"))
+    track = {
+        "index": raw.get("index"),
+        "name": raw.get("name"),
+        "type": raw.get("type"),
+        "mixer": {
+            "volume_db": live_volume_to_db(raw.get("volume")),
+            "pan": raw.get("panning", 0.0),
+            "sends": raw.get("sends", []),
+            "mute": raw.get("mute", False),
+            "solo": raw.get("solo", False),
+            "arm": raw.get("arm", False),
+        },
+        "is_grouped": raw.get("is_grouped", False),
+        "group_track": raw.get("group_track"),
+        "has_instrument": raw.get("has_instrument", False),
+        "devices": devices,
+        "device_names": names,
+        "clips": raw.get("clips", {"count": 0, "named": 0, "warped": 0, "empty_slots": 0}),
+        "routing": raw.get("routing", {}),
+        "signal": None,
+    }
+    return track
+
+
+def normalize_snapshot(raw):
+    """Convert the raw remote payload into the normalized snapshot the rules read."""
+    master_raw = raw.get("master") or {}
+    m_devices, m_names = _norm_devices(master_raw.get("devices"))
+    return {
+        "transport": {
+            "tempo": raw.get("transport", {}).get("tempo"),
+            "is_playing": raw.get("transport", {}).get("is_playing", False),
+            "time_signature": "%s/%s" % (
+                raw.get("transport", {}).get("signature_numerator", 4),
+                raw.get("transport", {}).get("signature_denominator", 4)),
+        },
+        "tracks": [_norm_track(t) for t in raw.get("tracks", [])],
+        "returns": [_norm_track(r) for r in raw.get("returns", [])],
+        "master": {
+            "name": "Master",
+            "volume_db": live_volume_to_db(master_raw.get("volume")),
+            "devices": m_devices,
+            "device_names": m_names,
+            "signal": None,
+        },
+    }
