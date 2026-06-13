@@ -1,6 +1,17 @@
 # ableton-mcp-max — Progress
 
-**M4L AUDIO TAP - Python side COMPLETE + offline-verified; device build + live-verify PENDING (branch
+**M4L AUDIO TAP - COMPLETE + LIVE-VERIFIED end-to-end (branch `feat/m4l-audio-tap`, 2026-06-13).**
+The `MCP Audio Tap.amxd` device (BS.1770 K-weighted loudness + sample-peak true-peak) is built and
+**cross-validated live against iZotope Ozone 12**: our integrated/momentary LUFS tracked Ozone's input
+loudness within <1 LU (e.g. momentary -10.6/-11.8 vs Ozone -11.0 LUFS), and our true-peak matched Ozone's
+peak within ~0.1-0.3 dB (-4.1 = -4.1; -2.3 vs -2.4). Audio -> real LUFS; silence -> null. **The .amxd was
+built by grafting the K-weighting/true-peak chain onto a known-good device wrapper via a Python script
+(`ampf`/`meta`/`ptch` chunk format; keep the template plugin~/plugout~ + M4L wrapper, swap boxes/lines) -
+NO hand-wiring; the device is dragged onto the Master from Finder.** Gotchas hit live: Max has NO `max`
+object (use `expr max($f1,$f2)`); two loaded tap devices collide on port 9878 (EADDRINUSE) - keep exactly
+one; pasting a .maxpat into the device editor is fragile, the script-built .amxd is the reliable path.
+
+**M4L AUDIO TAP - Python side COMPLETE + offline-verified (branch
 `feat/m4l-audio-tap`, 2026-06-12).** Closes the field-wide gap: the LOM exposes no audio signal, so
 `analyze_set` deferred all loudness/true-peak rules. A Max-for-Live device on the Master meters the bus and
 serves metering over a SECOND socket (`localhost:9878`, decoupled from the 9877 Remote Script). Tool count
