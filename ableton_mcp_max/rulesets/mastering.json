@@ -28,11 +28,32 @@
   {
     "id": "mastering.loudness_target",
     "domain": "mastering",
-    "title": "Integrated loudness in target range",
+    "title": "Integrated loudness in streaming target range",
     "severity": "warn",
-    "mode": "deferred",
+    "mode": "auto",
     "signal_required": true,
-    "rationale": "LUFS / true-peak require audio metering the LOM does not expose.",
+    "scope": "master",
+    "check": { "all": [
+      { "field": "signal.integrated_lufs", "op": "gte", "value": -16.0 },
+      { "field": "signal.integrated_lufs", "op": "lte", "value": -8.0 }
+    ] },
+    "evidence_template": "Integrated loudness: {signal.integrated_lufs} LUFS",
+    "rationale": "Streaming platforms normalize near -14 LUFS; -16..-8 is a sane master window.",
+    "remediation": "Adjust master gain / limiter ceiling toward your target (e.g. -14 LUFS).",
+    "source": "sources.md#signal-loudness"
+  },
+  {
+    "id": "mastering.true_peak",
+    "domain": "mastering",
+    "title": "True peak below -1 dBTP",
+    "severity": "fail",
+    "mode": "auto",
+    "signal_required": true,
+    "scope": "master",
+    "check": { "field": "signal.true_peak_dbtp", "op": "lte", "value": -1.0 },
+    "evidence_template": "True peak: {signal.true_peak_dbtp} dBTP",
+    "rationale": "Inter-sample peaks above -1 dBTP can clip on lossy codecs and DACs.",
+    "remediation": "Lower the limiter ceiling to -1 dBTP or below.",
     "source": "sources.md#signal-loudness"
   }
 ]

@@ -101,18 +101,32 @@ def _apply_op(op, actual, value):
 _SCOPE_COLLECTION = {"track": "tracks", "return": "returns"}
 
 
+def _has_signal(rule, snapshot):
+    """True when the audio-tap signal the rule needs is present in the snapshot.
+
+    v1 only meters the master, so any signal_required rule (scope master or set)
+    is gated on master.signal being populated.
+    """
+    return (snapshot.get("master") or {}).get("signal") is not None
+
+
 def evaluate_rules(rules, snapshot):
     """Run a list of rule dicts against a normalized snapshot.
 
     Returns ``{findings, manual_rules, deferred_rules, summary}``. ``auto`` rules
     produce findings (status pass/fail/warn/info); ``manual`` rules are surfaced
-    for human/Claude judgment; ``deferred`` (or ``signal_required``) rules are
-    parked as needing metering.
+    for human/Claude judgment; ``deferred`` rules (and ``signal_required`` rules
+    whose audio-tap signal is absent) are parked as needing metering.
     """
     findings, manual, deferred = [], [], []
     for rule in rules:
         mode = rule.get("mode", "auto")
-        if rule.get("signal_required") or mode == "deferred":
+        if rule.get("signal_required") and not _has_signal(rule, snapshot):
+            deferred.append({"id": rule["id"], "domain": rule["domain"],
+                             "title": rule.get("title", rule["id"]),
+                             "reason": "needs metering"})
+            continue
+        if mode == "deferred":
             deferred.append({"id": rule["id"], "domain": rule["domain"],
                              "title": rule.get("title", rule["id"]),
                              "reason": "needs metering"})

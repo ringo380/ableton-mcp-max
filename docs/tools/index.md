@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **108 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **112 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -92,4 +92,10 @@ Collapse several mutations into a single atomic Live task / socket round-trip.
 Inspect the open set against best-practice rulesets and surface findings by domain.
 
 `analyze_set`
+
+## [Metering (Audio Tap)](./metering.html)
+
+Read master-bus loudness/true-peak from the MCP Audio Tap Max-for-Live device.
+
+`get_audio_tap_status`, `reset_meter`, `read_meter`, `measure_loudness`
 

@@ -1,5 +1,45 @@
 # ableton-mcp-max — Progress
 
+**M4L AUDIO TAP - COMPLETE + LIVE-VERIFIED end-to-end (branch `feat/m4l-audio-tap`, 2026-06-13).**
+The `MCP Audio Tap.amxd` device (BS.1770 K-weighted loudness + sample-peak true-peak) is built and
+**cross-validated live against iZotope Ozone 12**: our integrated/momentary LUFS tracked Ozone's input
+loudness within <1 LU (e.g. momentary -10.6/-11.8 vs Ozone -11.0 LUFS), and our true-peak matched Ozone's
+peak within ~0.1-0.3 dB (-4.1 = -4.1; -2.3 vs -2.4). Audio -> real LUFS; silence -> null. **The .amxd was
+built by grafting the K-weighting/true-peak chain onto a known-good device wrapper via a Python script
+(`ampf`/`meta`/`ptch` chunk format; keep the template plugin~/plugout~ + M4L wrapper, swap boxes/lines) -
+NO hand-wiring; the device is dragged onto the Master from Finder.** Gotchas hit live: Max has NO `max`
+object (use `expr max($f1,$f2)`); two loaded tap devices collide on port 9878 (EADDRINUSE) - keep exactly
+one; pasting a .maxpat into the device editor is fragile, the script-built .amxd is the reliable path.
+
+**M4L AUDIO TAP - Python side COMPLETE + offline-verified (branch
+`feat/m4l-audio-tap`, 2026-06-12).** Closes the field-wide gap: the LOM exposes no audio signal, so
+`analyze_set` deferred all loudness/true-peak rules. A Max-for-Live device on the Master meters the bus and
+serves metering over a SECOND socket (`localhost:9878`, decoupled from the 9877 Remote Script). Tool count
+108 -> **112** (new category "Metering (Audio Tap)"). Spec
+`docs/superpowers/specs/2026-06-12-m4l-audio-tap-design.md`, plan
+`docs/superpowers/plans/2026-06-12-m4l-audio-tap.md`. Built via subagent-driven TDD (Tasks 1-4 each
+spec+quality reviewed; reviews caught bad gate-test vectors, missing retry-path tests).
+- **Tasks 1-4 (Python) DONE + offline 427 passed.** (1) `loudness_utils.py` - pure BS.1770 gating/integration
+  (absolute -70 LUFS + relative -10 LU gates, momentary/short-term windows, dBTP), stdlib-only, pytest-tested.
+  (2) `tap_connection.py` - `AudioTapConnection` (9878 TCP, `{ok,data}`, reconnect-retry, graceful tap-absent).
+  (3) 4 MCP tools: `get_audio_tap_status`/`reset_meter`/`read_meter`/`measure_loudness` (free-running meter +
+  measure-loudness playback-pass wrapper). (4) `evaluate_rules` now EVALUATES a `signal_required` rule when
+  `master.signal` is present (else defers); `analyze_set` fills `master.signal` from a live `read_meter` when
+  the tap is connected; mastering ruleset got a real `loudness_target` (-16..-8 LUFS warn) + new `true_peak`
+  (<= -1 dBTP fail).
+- **Task 5 (device) - JS half DONE, .amxd PENDING.** `m4l/tap-server.js` (Node-for-Max relay: K-weighted
+  block buffer -> ping/reset/read) + `m4l/README.md` committed. The `MCP Audio Tap.amxd` patch must be built
+  by hand in Max (recipe in the plan, Task 5 Step 2: `plugin~` -> 2-stage `biquad~` K-weighting -> per-100ms
+  mean-square + 4x-oversampled true-peak -> `[node.script tap-server.js]`). **NEXT ACTION = build the .amxd,
+  drop it on the Master, live-verify** (`measure_loudness` integrated LUFS vs Live/Youlean within +/-0.5 LU;
+  `analyze_set` mastering rules un-defer). Then RELEASE as an additive minor (in-tree 0.6.0; this is a new
+  feature -> next tag; confirm latest shipped tag first).
+- **Task 6 (docs) DONE:** tool-index + docs-site regenerated (112 tools / 15 categories), `docs/index.md`
+  hardcoded counts bumped (108->112, 14->15), stale `analyze_set` docstring fixed, README + install note,
+  this PROGRESS entry. K-weighting coefficients are 48k-only (non-48k drift = a live-verify item).
+
+---
+
 **Track analysis feature - SHIPPED in v0.6.0 (2026-06-12).** PR #18 squash-merged to `main` (@ffa516d);
 released as **v0.6.0** (@4cfbf33 "track analysis"; tag + GitHub release created, marketplace `ableton` ref
 bumped v0.5.0 -> v0.6.0 + README rebuilt + pushed @e278603 in robworks-claude-code-plugins). Version bumped

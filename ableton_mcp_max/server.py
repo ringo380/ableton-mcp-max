@@ -89,6 +89,8 @@ from ableton_mcp_max.arrangement_utils import (
 from ableton_mcp_max.batch_utils import validate_batch, coerce_stop_on_error
 from ableton_mcp_max.analysis_utils import normalize_snapshot, evaluate_rules
 from ableton_mcp_max.ruleset_utils import load_rulesets
+from ableton_mcp_max.loudness_utils import compute_metrics
+from ableton_mcp_max.tap_connection import AudioTapConnection
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -486,6 +488,17 @@ def get_ableton_connection():
     return _ableton_connection
 
 
+_audio_tap_connection = None
+
+
+def get_audio_tap_connection():
+    """Return the lazily-created AudioTapConnection (M4L relay on 9878)."""
+    global _audio_tap_connection
+    if _audio_tap_connection is None:
+        _audio_tap_connection = AudioTapConnection()
+    return _audio_tap_connection
+
+
 # Core Tool endpoints
 
 @mcp.tool()
@@ -511,11 +524,13 @@ def analyze_set(ctx: Context, focus: str = "all") -> str:
     and returns JSON {ok, data} where data = {snapshot, findings, manual_rules,
     deferred_rules, summary}:
     - snapshot: normalized per-track/return/master state (mixer, devices, clips,
-      routing); each carries signal:null (reserved for a future audio-tap).
+      routing); master.signal carries audio-tap metering (LUFS/dBTP) when the
+      MCP Audio Tap device is loaded, else null.
     - findings: auto-rule results {id, domain, status (pass|fail|warn|info),
       severity, evidence, remediation, [entity]}.
     - manual_rules: rules needing human/Claude judgment (id, domain, title, rationale).
-    - deferred_rules: rules needing audio metering the LOM can't provide.
+    - deferred_rules: signal-required rules still needing metering (no audio tap
+      connected); empty for the metered domains once the tap is loaded.
     - summary: counts by status + manual/deferred.
 
     This is read-only; it never mutates the set. The /ableton:analyze skill layers
@@ -529,12 +544,103 @@ def analyze_set(ctx: Context, focus: str = "all") -> str:
         ableton = get_ableton_connection()
         raw = ableton.send_command("get_analysis_snapshot")
         snapshot = normalize_snapshot(raw)
+        try:
+            tap = get_audio_tap_connection()
+            if tap.is_connected():
+                snapshot["master"]["signal"] = compute_metrics(tap.send("read"))
+        except Exception as e:
+            logger.info("audio tap unavailable for analysis: %s", e)
         result = evaluate_rules(rules, snapshot)
         result["snapshot"] = snapshot
         return _ok(result)
     except Exception as e:
         logger.error(f"Error analyzing set: {str(e)}")
         return _err(f"Error analyzing set: {str(e)}")
+
+
+@mcp.tool()
+def get_audio_tap_status(ctx: Context) -> str:
+    """Check whether the 'MCP Audio Tap' Max-for-Live device is loaded + reachable.
+
+    Returns JSON {ok, data}. data.connected is True with device info
+    (sample_rate, channels) when the tap is running on 9878, else False with a
+    setup hint. Use this before read_meter/measure_loudness to guide the
+    one-time setup (drag the device onto the Master track).
+    """
+    tap = get_audio_tap_connection()
+    try:
+        info = tap.send("ping")
+    except Exception:
+        return _ok({"connected": False,
+                    "hint": "Drop 'MCP Audio Tap' onto the Master track in Live "
+                            "(one-time setup), then retry."})
+    data = {"connected": True}
+    data.update(info)
+    return _ok(data)
+
+
+@mcp.tool()
+def reset_meter(ctx: Context) -> str:
+    """Reset the audio tap's integrating meter (clears the block buffer).
+
+    Returns JSON {ok, data:{reset:true}} or {ok:false,error} if the tap is not
+    connected. Call before playing material you want measured.
+    """
+    tap = get_audio_tap_connection()
+    try:
+        return _ok(tap.send("reset"))
+    except Exception as e:
+        return _err("audio tap not connected - %s" % e)
+
+
+@mcp.tool()
+def read_meter(ctx: Context) -> str:
+    """Read the audio tap's master-bus metering since the last reset.
+
+    Returns JSON {ok, data} where data = {integrated_lufs, short_term_lufs,
+    momentary_lufs, true_peak_dbtp, peak_dbfs, rms_dbfs, block_count,
+    duration_s}. LUFS fields are null until enough audio has played (momentary
+    needs >=400 ms, short-term >=3 s; integrated null if all blocks were
+    silent). Returns {ok:false,error} if the tap is not connected.
+    """
+    tap = get_audio_tap_connection()
+    try:
+        payload = tap.send("read")
+    except Exception as e:
+        return _err("audio tap not connected - %s" % e)
+    return _ok(compute_metrics(payload))
+
+
+@mcp.tool()
+def measure_loudness(ctx: Context, seconds: float = None) -> str:
+    """Reset the meter, play the set, wait, and read back master loudness.
+
+    seconds: how long to capture (default 10.0). For an integrated-loudness pass
+    over a whole song, pass its length. Returns the same payload as read_meter
+    plus data.played (False if the transport did not advance - e.g. nothing to
+    play - so a bogus reading is not mistaken for real). {ok:false,error} if the
+    tap is not connected.
+    """
+    tap = get_audio_tap_connection()
+    try:
+        tap.send("reset")
+    except Exception as e:
+        return _err("audio tap not connected - %s" % e)
+    ableton = get_ableton_connection()
+    try:
+        start_t = ableton.send_command("get_transport").get("current_song_time", 0.0)
+    except Exception:
+        start_t = 0.0
+    ableton.send_command("start_playback")
+    time.sleep(seconds if seconds else 10.0)
+    ableton.send_command("stop_playback")
+    try:
+        end_t = ableton.send_command("get_transport").get("current_song_time", start_t)
+    except Exception:
+        end_t = start_t
+    metrics = compute_metrics(tap.send("read"))
+    metrics["played"] = end_t > start_t
+    return _ok(metrics)
 
 
 @mcp.tool()

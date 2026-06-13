@@ -42,5 +42,7 @@ Reverb/delay tails must fit the tempo and arrangement - a judgment call, not a
 measurable threshold.
 
 ## signal-loudness
-Integrated loudness / true-peak targets require audio metering not exposed by the
-Live Object Model. Deferred to a future audio-analysis device.
+Integrated loudness and true-peak targets (EBU R128 / ITU-R BS.1770-4). Streaming
+platforms (Spotify, Apple Music, YouTube) normalize around -14 LUFS; a -1 dBTP
+ceiling avoids inter-sample clipping on lossy codecs. Measured via the MCP Audio
+Tap Max-for-Live device.
