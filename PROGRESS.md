@@ -1,6 +1,9 @@
 # ableton-mcp-max — Progress
 
-**M4L AUDIO TAP - COMPLETE + LIVE-VERIFIED end-to-end (branch `feat/m4l-audio-tap`, 2026-06-13).**
+**M4L AUDIO TAP - SHIPPED in v0.7.0 (2026-06-13).** PR #19 squash-merged to `main` (@67b1d1d) -> version
+bump @7b04b67; `gh release create v0.7.0`; marketplace `ableton` ref bumped v0.6.0 -> v0.7.0 + README
+rebuilt + pushed @87d4cac in robworks-claude-code-plugins. Tool count 108 -> 112 (new "Metering" category).
+COMPLETE + LIVE-VERIFIED end-to-end.
 The `MCP Audio Tap.amxd` device (BS.1770 K-weighted loudness + sample-peak true-peak) is built and
 **cross-validated live against iZotope Ozone 12**: our integrated/momentary LUFS tracked Ozone's input
 loudness within <1 LU (e.g. momentary -10.6/-11.8 vs Ozone -11.0 LUFS), and our true-peak matched Ozone's
