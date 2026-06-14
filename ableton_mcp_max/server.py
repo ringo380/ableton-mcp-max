@@ -778,10 +778,13 @@ def measure_mix(ctx: Context, window_s: float = 15.0, region: str = None) -> str
     With no taps connected this still returns ok with empty tracks + empty
     findings (not an error).
     """
-    # Best-effort device-side reset per connection (real socket only; a no-op
-    # in tests / when no socket is attached) so each tap flushes before the
-    # capture window. The buffered blocks streamed over the playback window are
-    # then the source of truth read back below.
+    # Reset the Python-side ring buffers FIRST so the integration sees ONLY the
+    # capture window's audio, not the entire accumulated history. The playback
+    # pass below refills the buffers fresh; the buffered blocks streamed over the
+    # window are then the source of truth read back below.
+    _tap_registry.state.reset()
+    # Best-effort device-side reset per connection (real socket only; a no-op in
+    # tests / when no socket is attached) so each tap also flushes its own state.
     by_conn = dict(getattr(_tap_registry.state, "_by_conn", {}))
     for cid in by_conn:
         try:

@@ -118,24 +118,49 @@ def test_measure_loudness_reads_master_after_playback(monkeypatch):
 def test_measure_mix_returns_per_track_signal_and_findings(monkeypatch):
     reg = server._tap_registry
     reg.state.reset()
-    # NOTE: reset() clears buffers but keeps identities; use fresh uuids/conns to avoid stale identities from other tests
+    # identities registered up front (hello); blocks arrive DURING the simulated playback window
     reg.feed("ck", '{"type":"hello","track":{"uuid":"ck","name":"Kick","index":0,"kind":"regular"},"sample_rate":48000}\n')
     reg.feed("bs", '{"type":"hello","track":{"uuid":"bs","name":"Bass","index":1,"kind":"regular"},"sample_rate":48000}\n')
     blk = lambda: '{"type":"block","data":{"ms_k_l":0.02,"ms_k_r":0.02,"peak":0.5,"rms":0.2,"bands":[1,0,0,0,0,0,0,0],"mid":1,"side":0}}\n'
-    for _ in range(40):
-        reg.feed("ck", blk()); reg.feed("bs", blk())
-    monkeypatch.setattr(server, "_run_measure_playback", lambda *a, **k: None)
+
+    def fake_play(*a, **k):
+        # measure_mix has already reset buffers; the "playback window" streams fresh blocks
+        for _ in range(40):
+            reg.feed("ck", blk()); reg.feed("bs", blk())
+    monkeypatch.setattr(server, "_run_measure_playback", fake_play)
+
     out = json.loads(server.measure_mix(None, window_s=0))
     assert out["ok"] is True
     names = {t["name"] for t in out["data"]["tracks"]}
     assert {"Kick", "Bass"} <= names
-    # Kick+Bass share band 0 -> masking finding present
+    # both share band 0 -> masking finding present
     assert out["data"]["findings"]["masking"]
+    # buffers were captured fresh during the window
+    ck = next(t for t in out["data"]["tracks"] if t["name"] == "Kick")
+    assert ck["signal"]["block_count"] == 40
+
+
+def test_measure_mix_resets_stale_buffer_before_capture(monkeypatch):
+    # Pre-existing stale blocks must NOT leak into the measured window.
+    reg = server._tap_registry
+    reg.state.reset()
+    reg.feed("ck", '{"type":"hello","track":{"uuid":"ck","name":"Kick","index":0,"kind":"regular"},"sample_rate":48000}\n')
+    stale = '{"type":"block","data":{"ms_k_l":0.9,"ms_k_r":0.9,"peak":0.99,"rms":0.9,"bands":[0,0,0,0,0,0,0,1],"mid":1,"side":0}}\n'
+    for _ in range(100):
+        reg.feed("ck", stale)   # stale history before the pass
+
+    def fake_play(*a, **k):
+        reg.feed("ck", '{"type":"block","data":{"ms_k_l":0.01,"ms_k_r":0.01,"peak":0.1,"rms":0.05,"bands":[1,0,0,0,0,0,0,0],"mid":1,"side":0}}\n')
+    monkeypatch.setattr(server, "_run_measure_playback", fake_play)
+
+    out = json.loads(server.measure_mix(None, window_s=0))
+    ck = next(t for t in out["data"]["tracks"] if t["name"] == "Kick")
+    # only the 1 fresh block from the window, not the 100 stale ones
+    assert ck["signal"]["block_count"] == 1
 
 
 def test_measure_mix_no_taps_is_ok_empty(monkeypatch):
     server._tap_registry.state.reset()
-    # ensure no identities: forget by dropping conns is registry-internal; just assert shape tolerates empties
     monkeypatch.setattr(server, "_run_measure_playback", lambda *a, **k: None)
     out = json.loads(server.measure_mix(None, window_s=0))
     assert out["ok"] is True
