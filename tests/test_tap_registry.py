@@ -83,3 +83,52 @@ def test_drop_conn_keeps_buffer_but_unlinks_connection():
     assert s.buffer("u1") == [{"rms":1}]
     s.handle_frame("c", {"type":"block","data":{"rms":2}})
     assert s.buffer("u1") == [{"rms":1}]
+
+
+from ableton_mcp_max.tap_registry import TapRegistry
+
+def test_registry_ingests_frames_from_a_fed_connection():
+    reg = TapRegistry(port=0)         # port 0 = do not actually bind
+    reg.feed("c1", '{"type":"hello","track":{"uuid":"u1","name":"Kick"}}\n')
+    reg.feed("c1", '{"type":"block","data":{"rms":0.5}}\n{"type":"block","data":{"rms":0.6}}\n')
+    assert reg.state.tracks()[0]["name"] == "Kick"
+    assert [b["rms"] for b in reg.state.buffer("u1")] == [0.5, 0.6]
+
+def test_registry_feed_buffers_partial_then_completes():
+    reg = TapRegistry(port=0)
+    reg.feed("c1", '{"type":"hello","track":{"uuid":"u1"}}\n{"type":"bl')
+    reg.feed("c1", 'ock","data":{"rms":1}}\n')
+    assert [b["rms"] for b in reg.state.buffer("u1")] == [1]
+
+def test_registry_per_connection_buffers_are_isolated():
+    reg = TapRegistry(port=0)
+    reg.feed("a", '{"type":"hello","track":{"uuid":"ua"}}\n')
+    reg.feed("b", '{"type":"hello","track":{"uuid":"ub"}}\n')
+    # interleaved partial frames on two conns must not corrupt each other
+    reg.feed("a", '{"type":"block","data":{"rms":1}}\n{"type":"bl')
+    reg.feed("b", '{"type":"block","data":{"rms":2}}\n')
+    reg.feed("a", 'ock","data":{"rms":3}}\n')
+    assert [x["rms"] for x in reg.state.buffer("ua")] == [1, 3]
+    assert [x["rms"] for x in reg.state.buffer("ub")] == [2]
+
+def test_registry_start_stop_binds_and_releases(tmp_path):
+    # real bind on an ephemeral OS-chosen port, then stop cleanly
+    import socket
+    reg = TapRegistry(port=0, host="127.0.0.1")
+    # port=0 in our class means "do not bind", so test explicit bind path differently:
+    # pick a free port, construct with it, start, connect, send a frame, stop.
+    s = socket.socket(); s.bind(("127.0.0.1", 0)); free = s.getsockname()[1]; s.close()
+    reg2 = TapRegistry(port=free)
+    reg2.start()
+    try:
+        c = socket.create_connection(("127.0.0.1", free), timeout=2)
+        c.sendall(b'{"type":"hello","track":{"uuid":"z"}}\n{"type":"block","data":{"rms":7}}\n')
+        import time
+        for _ in range(40):
+            if reg2.state.buffer("z") == [{"rms":7}]:
+                break
+            time.sleep(0.05)
+        assert reg2.state.buffer("z") == [{"rms":7}]
+        c.close()
+    finally:
+        reg2.stop()

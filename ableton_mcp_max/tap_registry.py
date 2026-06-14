@@ -1,4 +1,6 @@
 import json
+import socket
+import threading
 from collections import deque
 
 
@@ -64,3 +66,93 @@ class TapState:
 
     def drop_conn(self, conn_id):
         self._by_conn.pop(conn_id, None)
+
+
+class TapRegistry:
+    """Background TCP server: accepts tap-device client connections, parses
+    newline-delimited JSON frames, feeds TapState. feed() is the testable seam.
+    port=0 means do NOT bind (used by unit tests that drive feed() directly)."""
+    def __init__(self, port=9878, host="127.0.0.1", buffer_max=36000):
+        self.port = port
+        self.host = host
+        self.state = TapState(buffer_max=buffer_max)
+        self._recv_buf = {}       # conn_id -> str
+        self._sockets = {}        # conn_id -> socket (only when a real server runs)
+        self._srv = None
+        self._thread = None
+        self._stop = threading.Event()
+        self._lock = threading.Lock()
+
+    def feed(self, conn_id, chunk):
+        """Ingest a raw text chunk for a connection (the testable core)."""
+        with self._lock:
+            buf = self._recv_buf.get(conn_id, "") + chunk
+            frames, rest = parse_frames(buf)
+            self._recv_buf[conn_id] = rest
+            for f in frames:
+                self.state.handle_frame(conn_id, f)
+
+    def send_command(self, conn_id, command):
+        """Best-effort registry->device command (reset/ping). No-op if no socket."""
+        sock = self._sockets.get(conn_id)
+        if sock:
+            try:
+                sock.sendall((json.dumps({"command": command}) + "\n").encode())
+            except OSError:
+                pass
+
+    def start(self):
+        if self.port == 0:
+            return
+        self._srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._srv.bind((self.host, self.port))
+        self._srv.listen(16)
+        self._srv.settimeout(0.5)
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+        self._thread.start()
+
+    def _serve(self):
+        cid = 0
+        while not self._stop.is_set():
+            try:
+                conn, _ = self._srv.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            cid += 1
+            conn_id = str(cid)
+            self._sockets[conn_id] = conn
+            threading.Thread(target=self._handle, args=(conn_id, conn), daemon=True).start()
+
+    def _handle(self, conn_id, conn):
+        conn.settimeout(1.0)
+        try:
+            while not self._stop.is_set():
+                try:
+                    chunk = conn.recv(65536)
+                except socket.timeout:
+                    continue
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                self.feed(conn_id, chunk.decode("utf-8", "replace"))
+        finally:
+            self.state.drop_conn(conn_id)
+            self._sockets.pop(conn_id, None)
+            with self._lock:
+                self._recv_buf.pop(conn_id, None)
+            try:
+                conn.close()
+            except OSError:
+                pass
+
+    def stop(self):
+        self._stop.set()
+        if self._srv:
+            try:
+                self._srv.close()
+            except OSError:
+                pass
