@@ -91,6 +91,13 @@ from ableton_mcp_max.batch_utils import validate_batch, coerce_stop_on_error
 from ableton_mcp_max.analysis_utils import normalize_snapshot, evaluate_rules
 from ableton_mcp_max.ruleset_utils import load_rulesets
 from ableton_mcp_max.loudness_utils import compute_metrics
+from ableton_mcp_max.spectrum_utils import integrate_bands, stereo_metrics
+from ableton_mcp_max.masking_utils import (
+    masking_score,
+    loudness_balance,
+    headroom_flags,
+    stereo_flags,
+)
 from ableton_mcp_max.tap_connection import AudioTapConnection
 from ableton_mcp_max.tap_registry import TapRegistry
 
@@ -649,6 +656,7 @@ def _integrate_buffer(buf, sample_rate):
     crest = None
     if peak and rms and rms > 0:
         crest = round(20.0 * math.log10(peak / rms), 1)
+    stereo = stereo_metrics(buf)
     return {
         "integrated_lufs": metrics["integrated_lufs"],
         "momentary_lufs": metrics["momentary_lufs"],
@@ -657,6 +665,9 @@ def _integrate_buffer(buf, sample_rate):
         "peak": peak,
         "rms": rms,
         "crest": crest,
+        "bands": integrate_bands(buf),
+        "width": stereo["width"],
+        "correlation": stereo["correlation"],
         "block_count": len(buf),
         "sample_rate": sample_rate,
     }
@@ -745,6 +756,69 @@ def measure_loudness(ctx: Context, seconds: float = None) -> str:
     metrics = _integrate_buffer(buf, sample_rate)
     metrics["played"] = played
     return _ok(metrics)
+
+
+@mcp.tool()
+def measure_mix(ctx: Context, window_s: float = 15.0, region: str = None) -> str:
+    """Timed multi-track measure pass -> per-track signals + cross-track findings.
+
+    Resets every connected tap, plays the set for window_s seconds (via the same
+    transport seam as measure_loudness), then integrates each tap's buffered
+    blocks into a per-track signal (LUFS/dBTP/peak/rms/crest plus the 8-band
+    spectrum and stereo width/correlation). region is reserved for a future
+    arrangement-window capture.
+
+    Returns JSON {ok, data:{window_s, tracks, findings}}:
+    - tracks: [{name, index, kind, signal:{...}}] one per connected tap.
+    - findings: cross-track analysis from masking_utils -
+      masking (pairwise spectral overlap), balance (tracks sitting too far below
+      the loudest), headroom (near-clip / over-compressed), stereo (mono-compat
+      risk). Each is a (possibly empty) list.
+
+    With no taps connected this still returns ok with empty tracks + empty
+    findings (not an error).
+    """
+    # Best-effort device-side reset per connection (real socket only; a no-op
+    # in tests / when no socket is attached) so each tap flushes before the
+    # capture window. The buffered blocks streamed over the playback window are
+    # then the source of truth read back below.
+    by_conn = dict(getattr(_tap_registry.state, "_by_conn", {}))
+    for cid in by_conn:
+        try:
+            _tap_registry.send_command(cid, "reset")
+        except Exception:
+            pass
+    try:
+        _run_measure_playback(window_s, region)
+    except Exception as e:
+        logger.info("measure_mix playback seam failed: %s", e)
+    tracks_out = []
+    sigs = []
+    for t in _tap_registry.state.tracks():
+        uuid = t.get("uuid")
+        if uuid is None:
+            continue
+        sample_rate = t.get("sample_rate", 48000)
+        buf = _tap_registry.state.buffer(uuid)
+        signal = _integrate_buffer(buf, sample_rate)
+        name = t.get("name") or ""
+        index = t.get("index")
+        signal["name"] = name
+        signal["index"] = index
+        sigs.append(signal)
+        tracks_out.append({
+            "name": name,
+            "index": index,
+            "kind": t.get("kind"),
+            "signal": signal,
+        })
+    findings = {
+        "masking": masking_score(sigs),
+        "balance": loudness_balance(sigs),
+        "headroom": headroom_flags(sigs),
+        "stereo": stereo_flags(sigs),
+    }
+    return _ok({"window_s": window_s, "tracks": tracks_out, "findings": findings})
 
 
 @mcp.tool()
