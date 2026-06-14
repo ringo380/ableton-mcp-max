@@ -14,11 +14,15 @@ Check the open Live set against the curated rulesets and report findings by doma
 ## Honest scope
 
 The Live Object Model exposes **structure and parameter values, not audio signal**.
-So this analysis checks configuration (limiter present, gain-stage sanity, device
-counts, routing, clip hygiene, leftover solo/mute, instrument presence). It does
-**not** measure loudness, true-peak headroom, or frequency masking - those are
-listed under "Needs metering" and must be checked by ear/meters in Live. Never
-invent dB/LUFS numbers.
+By default this analysis checks configuration only (limiter present, gain-stage
+sanity, device counts, routing, clip hygiene, leftover solo/mute, instrument
+presence); loudness, true-peak headroom, frequency masking, and stereo correlation
+are listed under "Needs metering".
+
+Those signal-backed checks become real **only** when MCP Tap devices are loaded and
+you run `analyze_set(measure=True)` - that plays the set briefly to capture audio.
+Without taps (or with `measure=False`, the default), never invent dB/LUFS numbers;
+leave them deferred. The default call is read-only and never plays the set.
 
 ## Steps
 
@@ -28,6 +32,13 @@ invent dB/LUFS numbers.
 2. **Call the tool, once.** Call `analyze_set(focus=<arg or "all">)`. Do NOT hand-loop
    the read tools - the tool gathers the whole set in one round-trip. Check `ok`
    first; on `ok:false`, surface the `error` and stop.
+   - **Optional measure pass:** if metering matters, first check `list_taps` /
+     `get_audio_tap_status`. If taps are connected, OFFER to call
+     `analyze_set(measure=True)` (warn that it plays the set for ~15 s). With taps,
+     `data.mix_signal` carries real per-track signals + cross-track findings
+     (masking / loudness balance / per-track headroom / stereo correlation), and the
+     four `mixing.*` signal rules promote out of "Needs metering". Report those under
+     a **Mix signal** section using the real numbers - still never invent values.
 3. **Load rationale.** `Read` the relevant `ableton_mcp_max/rulesets/<domain>.json`
    for the full `rationale`/`remediation`/`source` of any rule you report, and the
    text of every `manual_rules` entry. The tool returns ids/titles; the JSON has the
@@ -49,7 +60,9 @@ invent dB/LUFS numbers.
 - [<domain>] <evidence> - <remediation>
 ## Manual checks - judgment (<n>)
 - [<domain>] <title>: <your assessment from the snapshot> - <rationale>
+## Mix signal (only with measure=True + taps)
+- [mixing] <finding from data.mix_signal, e.g. "Kick vs Bass overlap 0.99"> - <remediation>
 ## Needs metering - not yet measurable (<n>)
-- [<domain>] <title> - requires audio metering (future audio-tap device).
+- [<domain>] <title> - requires MCP Tap devices + analyze_set(measure=True).
 ## Passed (<n>)   (expand on request)
 ```

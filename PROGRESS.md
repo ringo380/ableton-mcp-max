@@ -61,8 +61,25 @@ plan `docs/superpowers/plans/2026-06-13-per-track-signal-taps-bridge.md`. Subage
     rms/crest now populate (master crest ~20, per-track ~28). Stage built in 2 grafts (RMS+stereo, then fffb~).
     KNOWN: device reports empty track `name` -> measure_mix findings show `a:""/b:""`; Phase 4.3 must ENRICH
     names from the track index via the LOM for readable reports.
-  - **Phase 5:** spike 0.1 (browser-load instantiates `.amxd`) -> `deploy_taps`/`remove_taps`/`list_taps`
-    helpers -> docs/tool-index/landing counts -> v0.8.0 release.
+  - **PHASE 5 - CODE COMPLETE (offline 494 passed, @f3ad087 + @1190adb, 2026-06-14); LIVE-VERIFY +
+    RELEASE PENDING.** `deploy_taps`/`remove_taps` shipped (server.py): deploy browser-loads the
+    User-Library `MCP Tap` onto every audio/instrument track (or explicit indices) with a manual-drag
+    fallback if not indexed; remove deletes every `MCP Tap` by name (highest device index first).
+    Seams `_audio_instrument_track_indices`/`_load_tap_on_track`/`_find_taps`/`_delete_device_raw` are
+    stubbable. **`TAP_BROWSER_PATH="max_for_live/Max Audio Effect"` is a GUESS - spike 0.1 must confirm
+    the real browser path the User-Library `.amxd` indexes under, and the load URI resolves.** Docs done:
+    tool count **112 -> 117** (15 categories unchanged), `commands/tool-index.md` + `docs/tools/**`
+    regenerated, 5 hardcoded `docs/index.md` counts bumped, README + `m4l/README.md` updated (registry
+    model, deploy_taps, completed DSP, v0.7.0 migration note), `/ableton:analyze` skill now offers the
+    opt-in measure pass + Mix signal report section. **PENDING (needs a Claude Code restart so the
+    working-tree server.py owns 9878 + Live running with `MCP Tap.amxd` in the User Library):**
+    (1) SPIKE 0.1 - copy `MCP Tap.amxd` into the User Library, confirm it indexes + `deploy_taps`
+    auto-loads it (fix `TAP_BROWSER_PATH` if the guess is wrong; else the manual fallback stands);
+    (2) live `deploy_taps` -> `list_taps` shows the taps; (3) `analyze_set(measure=True)` on 2+ tapped
+    tracks -> `mix_signal` real findings + readable enriched names + the 4 mixing rules promoted out of
+    deferred; (4) `remove_taps` clears them. THEN Task 5.4: PR + v0.8.0 release (BREAKING device change;
+    bump pyproject/plugin.json + `uv lock`, `gh release create v0.8.0`, marketplace `ableton` ref bump +
+    `node scripts/build-readme.js` - confirm latest shipped tag first via `gh release list`).
   - Deferred test nits: masking_utils `or True` tautology + boundary/precedence tests; `_uuid_for_index` could
     return the track dict; measure_mix `crest` uses last-block rms; findings carry `name` not `index`.
 
