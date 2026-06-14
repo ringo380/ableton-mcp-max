@@ -34,12 +34,24 @@ plan `docs/superpowers/plans/2026-06-13-per-track-signal-taps-bridge.md`. Subage
   bands/width/correlation] -> cross-track findings). `read_track_meter` additively gained bands/width/correlation.
   Reset-first ordering bug caught + fixed in review (measure_mix must reset before the capture window, else it
   integrates stale history; regression test `test_measure_mix_resets_stale_buffer_before_capture`).
-- **REMAINING (all NON-pure-Python or design-gated):**
-  - **Phase 4.3 (analyze_set wiring + 4 mixing.json rules)** - DESIGN QUESTION: the 4 cross-track checks are
-    AGGREGATE findings from `measure_mix`, NOT per-field predicates, so they don't fit the existing
-    `evaluate_rules` predicate gate the spec assumed. Decision pending: surface measure_mix `findings` as a
-    new analyze_set "mix_signal" section (rules-as-data entries carry rationale/severity, deferred honestly
-    w/o taps) vs forcing them through the evaluator. Plus registry-client.js inbound `reset` (mostly done).
+- **PHASE 4.3 - DONE (Python core, offline 489 passed, @43266eb 2026-06-14; LIVE-VERIFY of measure=True
+    PENDING with Phase 5).** Decision RESOLVED (user picked "opt-in flag"): the 4 cross-track checks surface
+    as a separate analyze_set `mix_signal` section, NOT forced through the `evaluate_rules` predicate engine.
+    Added 4 rules to `mixing.json` (`mixing.spectral_masking`/`loudness_balance`/`headroom_per_track`/
+    `stereo_correlation`) - all `mode:deferred` + `signal_required:true` + `signal_kind:mix`, thresholds in
+    a `params` dict, rationale/remediation/source (4 new anchors in sources.md). Pure helpers in
+    `masking_utils.py`: `build_mix_findings(sigs, rules)` (maps rule id -> cross-track fn, reads params,
+    status pass/severity) + `enrich_names(sigs, name_by_index)` (backfills blank device names from the LOM
+    index). `analyze_set` gained `measure: bool = False` + `measure_window_s`: when True AND taps connected it
+    runs a shared `_measure_pass` (plays the set via the `_run_measure_playback` seam), emits `mix_signal`
+    {window_s, tracks, findings}, and PROMOTES the 4 ids out of `deferred_rules` (summary tally kept in step).
+    **Default measure=False stays READ-ONLY** (no playback) - that was the user's chosen contract. `measure_mix`
+    refactored onto `_measure_pass`; both enrich names via `_track_name_map()` (best-effort get_analysis_snapshot
+    index->name, master=-1). `registry-client.js` inbound `{"command":"reset"}` handler already present.
+    Code review (feature-dev:code-reviewer) found + FIXED a stale `summary.deferred` count after promotion; all
+    other paths verified clean (no double-defer, params/kwargs aligned, read-only default holds, mutation mirror
+    correct). NEXT live check: drop taps on 2+ tracks, `analyze_set(measure=True)` -> mix_signal with real
+    findings + readable names + the 4 rules promoted out of deferred.
   - **Phase 2/3 DEVICE DSP - DONE + LIVE-VERIFIED 2026-06-14 (@0aa8797).** Added to `MCP Tap.amxd`: wideband
     RMS + mid/side (square->average~4800->snapshot~), and an 8-band spectrum via **`fffb~ 8 40 2.4 3.`** (fast
     fixed filter bank fed from the mono mid signal) -> square/average/snapshot per band -> pak slots 5-12.
