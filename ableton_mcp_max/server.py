@@ -97,6 +97,8 @@ from ableton_mcp_max.masking_utils import (
     loudness_balance,
     headroom_flags,
     stereo_flags,
+    build_mix_findings,
+    enrich_names,
 )
 from ableton_mcp_max.tap_connection import AudioTapConnection
 from ableton_mcp_max.tap_registry import TapRegistry
@@ -535,6 +537,67 @@ def _uuid_for_index(track_index):
     return None
 
 
+def _track_name_map():
+    """Best-effort {track_index: name} (+ -1 -> 'Master') from the live set.
+
+    The tap device reports a blank name, so cross-track findings backfill
+    readable names from the LOM track index. Read-only; tolerates failure
+    (returns just the master entry if the snapshot read fails).
+    """
+    out = {-1: "Master"}
+    try:
+        raw = get_ableton_connection().send_command("get_analysis_snapshot")
+        for t in raw.get("tracks", []):
+            idx = t.get("index")
+            if idx is not None:
+                out[idx] = t.get("name")
+    except Exception as e:
+        logger.info("track name map unavailable: %s", e)
+    return out
+
+
+def _measure_pass(window_s, region=None, name_by_index=None):
+    """Reset every tap, play the set for window_s, integrate each tap's buffered
+    blocks into a per-track signal. Returns (tracks_out, sigs).
+
+    Shared by measure_mix and analyze_set(measure=True). Resets the Python-side
+    ring buffers FIRST so integration sees ONLY this window (not accumulated
+    history), best-effort flushes each device, then plays via the
+    _run_measure_playback seam (stubbable in tests). name_by_index backfills the
+    device's blank name from the LOM track index.
+    """
+    name_by_index = name_by_index or {}
+    _tap_registry.state.reset()
+    by_conn = dict(getattr(_tap_registry.state, "_by_conn", {}))
+    for cid in by_conn:
+        try:
+            _tap_registry.send_command(cid, "reset")
+        except Exception:
+            pass
+    try:
+        _run_measure_playback(window_s, region)
+    except Exception as e:
+        logger.info("measure pass playback seam failed: %s", e)
+    tracks_out, sigs = [], []
+    for t in _tap_registry.state.tracks():
+        uuid = t.get("uuid")
+        if uuid is None:
+            continue
+        sample_rate = t.get("sample_rate", 48000)
+        buf = _tap_registry.state.buffer(uuid)
+        signal = _integrate_buffer(buf, sample_rate)
+        index = t.get("index")
+        signal["name"] = t.get("name") or ""
+        signal["index"] = index
+        sigs.append(signal)
+        tracks_out.append({"name": signal["name"], "index": index,
+                           "kind": t.get("kind"), "signal": signal})
+    enrich_names(sigs, name_by_index)
+    for tr in tracks_out:           # mirror enriched name onto the top-level entry
+        tr["name"] = tr["signal"]["name"]
+    return tracks_out, sigs
+
+
 # Core Tool endpoints
 
 @mcp.tool()
@@ -550,15 +613,22 @@ def get_session_info(ctx: Context) -> str:
 
 
 @mcp.tool()
-def analyze_set(ctx: Context, focus: str = "all") -> str:
+def analyze_set(ctx: Context, focus: str = "all", measure: bool = False,
+                measure_window_s: float = 15.0) -> str:
     """Analyze the open Live set against curated best-practice rulesets.
 
     focus: one of "all" (default), "mixing", "mastering", "sound_design",
     "health" - selects which rule domains run.
 
+    measure: when True AND per-track MCP Tap devices are connected, run a brief
+    measure pass (plays the set for measure_window_s seconds, then stops/restores)
+    to capture audio and add a signal-backed "mix_signal" section (see below).
+    Default False keeps analyze_set read-only - the signal-backed mixing rules
+    stay deferred. measure_window_s: capture length when measure=True (default 15).
+
     Reads the whole set in one round-trip, runs the deterministic ("auto") rules,
     and returns JSON {ok, data} where data = {snapshot, findings, manual_rules,
-    deferred_rules, summary}:
+    deferred_rules, summary, [mix_signal]}:
     - snapshot: normalized per-track/return/master state (mixer, devices, clips,
       routing); master.signal carries audio-tap metering (LUFS/dBTP) when the
       MCP Audio Tap device is loaded, else null.
@@ -566,11 +636,16 @@ def analyze_set(ctx: Context, focus: str = "all") -> str:
       severity, evidence, remediation, [entity]}.
     - manual_rules: rules needing human/Claude judgment (id, domain, title, rationale).
     - deferred_rules: signal-required rules still needing metering (no audio tap
-      connected); empty for the metered domains once the tap is loaded.
+      connected / measure not run); the four mixing.* signal rules promote out of
+      here into mix_signal when a measure pass runs.
     - summary: counts by status + manual/deferred.
+    - mix_signal (only when measure=True with taps): {window_s, tracks:[{name,
+      index,kind,signal}], findings:[{id,domain,status,severity,items,evidence,
+      remediation}]} - cross-track spectral masking / loudness balance / per-track
+      headroom / stereo correlation computed from the simultaneous per-track taps.
 
-    This is read-only; it never mutates the set. The /ableton:analyze skill layers
-    the report and per-track judgment on top of this output.
+    With measure=False this is read-only; it never mutates the set. The
+    /ableton:analyze skill layers the report and per-track judgment on top.
     """
     try:
         rules = load_rulesets(focus)
@@ -588,6 +663,24 @@ def analyze_set(ctx: Context, focus: str = "all") -> str:
             logger.info("audio tap unavailable for analysis: %s", e)
         result = evaluate_rules(rules, snapshot)
         result["snapshot"] = snapshot
+        if measure and _tap_registry.state.tracks():
+            try:
+                name_by_index = {t["index"]: t["name"] for t in snapshot["tracks"]
+                                 if t.get("index") is not None}
+                name_by_index[-1] = "Master"
+                tracks_out, sigs = _measure_pass(
+                    measure_window_s, name_by_index=name_by_index)
+                mix_findings = build_mix_findings(sigs, rules)
+                result["mix_signal"] = {"window_s": measure_window_s,
+                                        "tracks": tracks_out,
+                                        "findings": mix_findings}
+                built = {f["id"] for f in mix_findings}
+                result["deferred_rules"] = [d for d in result["deferred_rules"]
+                                            if d["id"] not in built]
+                # keep the summary tally in step with the promoted-out rules
+                result["summary"]["deferred"] = len(result["deferred_rules"])
+            except Exception as e:
+                logger.info("measure pass for analyze_set failed: %s", e)
         return _ok(result)
     except Exception as e:
         logger.error(f"Error analyzing set: {str(e)}")
@@ -776,45 +869,11 @@ def measure_mix(ctx: Context, window_s: float = 15.0, region: str = None) -> str
       risk). Each is a (possibly empty) list.
 
     With no taps connected this still returns ok with empty tracks + empty
-    findings (not an error).
+    findings (not an error). Track names blank-reported by the device are
+    backfilled from the LOM track index.
     """
-    # Reset the Python-side ring buffers FIRST so the integration sees ONLY the
-    # capture window's audio, not the entire accumulated history. The playback
-    # pass below refills the buffers fresh; the buffered blocks streamed over the
-    # window are then the source of truth read back below.
-    _tap_registry.state.reset()
-    # Best-effort device-side reset per connection (real socket only; a no-op in
-    # tests / when no socket is attached) so each tap also flushes its own state.
-    by_conn = dict(getattr(_tap_registry.state, "_by_conn", {}))
-    for cid in by_conn:
-        try:
-            _tap_registry.send_command(cid, "reset")
-        except Exception:
-            pass
-    try:
-        _run_measure_playback(window_s, region)
-    except Exception as e:
-        logger.info("measure_mix playback seam failed: %s", e)
-    tracks_out = []
-    sigs = []
-    for t in _tap_registry.state.tracks():
-        uuid = t.get("uuid")
-        if uuid is None:
-            continue
-        sample_rate = t.get("sample_rate", 48000)
-        buf = _tap_registry.state.buffer(uuid)
-        signal = _integrate_buffer(buf, sample_rate)
-        name = t.get("name") or ""
-        index = t.get("index")
-        signal["name"] = name
-        signal["index"] = index
-        sigs.append(signal)
-        tracks_out.append({
-            "name": name,
-            "index": index,
-            "kind": t.get("kind"),
-            "signal": signal,
-        })
+    name_by_index = _track_name_map()
+    tracks_out, sigs = _measure_pass(window_s, region, name_by_index)
     findings = {
         "masking": masking_score(sigs),
         "balance": loudness_balance(sigs),

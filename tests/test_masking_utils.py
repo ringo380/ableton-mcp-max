@@ -63,3 +63,77 @@ def test_stereo_flags_negative_correlation():
     out = stereo_flags(tracks, corr_floor=-0.2)
     assert any(f["name"] == "Wide" for f in out)
     assert all(f["name"] != "Mono" for f in out)
+
+
+from ableton_mcp_max.masking_utils import build_mix_findings, enrich_names, MIX_RULE_FNS
+
+_MIX_RULES = [
+    {"id": "mixing.spectral_masking", "domain": "mixing", "severity": "warn",
+     "signal_kind": "mix", "params": {"threshold": 0.6},
+     "remediation": "carve EQ"},
+    {"id": "mixing.loudness_balance", "domain": "mixing", "severity": "warn",
+     "signal_kind": "mix", "params": {"spread_db": 12.0}, "remediation": "rebalance"},
+    {"id": "mixing.headroom_per_track", "domain": "mixing", "severity": "warn",
+     "signal_kind": "mix", "params": {"peak_ceiling": -1.0, "crest_floor": 4.0},
+     "remediation": "trim gain"},
+    {"id": "mixing.stereo_correlation", "domain": "mixing", "severity": "warn",
+     "signal_kind": "mix", "params": {"corr_floor": -0.2}, "remediation": "narrow"},
+    {"id": "mixing.fader_headroom", "domain": "mixing", "severity": "warn"},
+]
+
+
+def test_mix_rule_fns_cover_the_four_signal_rules():
+    assert set(MIX_RULE_FNS) == {
+        "mixing.spectral_masking", "mixing.loudness_balance",
+        "mixing.headroom_per_track", "mixing.stereo_correlation"}
+
+
+def test_build_mix_findings_pass_when_clean():
+    sigs = [{"name": "Kick", "bands": [1, 0, 0, 0, 0, 0, 0, 0],
+             "integrated_lufs": -14.0, "true_peak_dbtp": -6.0, "crest": 10.0,
+             "correlation": 0.9},
+            {"name": "Hat", "bands": [0, 0, 0, 0, 0, 0, 0, 1],
+             "integrated_lufs": -15.0, "true_peak_dbtp": -6.0, "crest": 10.0,
+             "correlation": 0.9}]
+    out = build_mix_findings(sigs, _MIX_RULES)
+    by_id = {f["id"]: f for f in out}
+    # only the 4 signal rules are built (fader_headroom is not a mix rule)
+    assert set(by_id) == set(MIX_RULE_FNS)
+    assert all(f["status"] == "pass" for f in out)
+    assert all(f["items"] == [] for f in out)
+
+
+def test_build_mix_findings_flags_masking_and_uses_severity():
+    sigs = [{"name": "Kick", "bands": [1, 0, 0, 0, 0, 0, 0, 0],
+             "integrated_lufs": -14.0, "correlation": 0.9},
+            {"name": "Bass", "bands": [1, 0, 0, 0, 0, 0, 0, 0],
+             "integrated_lufs": -14.0, "correlation": 0.9}]
+    out = build_mix_findings(sigs, _MIX_RULES)
+    masking = next(f for f in out if f["id"] == "mixing.spectral_masking")
+    assert masking["status"] == "warn"
+    assert masking["items"]
+    assert {masking["items"][0]["a"], masking["items"][0]["b"]} == {"Kick", "Bass"}
+    assert "carve EQ" in masking["remediation"]
+    assert masking["evidence"]
+
+
+def test_build_mix_findings_only_builds_present_rules():
+    # ruleset missing the mix rules (e.g. focus=mastering) -> nothing built
+    out = build_mix_findings([{"name": "x", "bands": [1, 0, 0, 0, 0, 0, 0, 0]}],
+                             [{"id": "mixing.fader_headroom", "domain": "mixing"}])
+    assert out == []
+
+
+def test_enrich_names_fills_empty_from_index_map():
+    sigs = [{"name": "", "index": 0}, {"name": "Bass", "index": 1},
+            {"name": "", "index": -1}]
+    enrich_names(sigs, {0: "Kick", 1: "Ignored", -1: "Master"})
+    assert sigs[0]["name"] == "Kick"
+    assert sigs[1]["name"] == "Bass"      # existing name preserved
+    assert sigs[2]["name"] == "Master"
+
+
+def test_enrich_names_leaves_unknown_index_empty():
+    sigs = [{"name": "", "index": 9}]
+    enrich_names(sigs, {0: "Kick"})
+    assert sigs[0]["name"] == ""
