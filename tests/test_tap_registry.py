@@ -85,6 +85,42 @@ def test_drop_conn_keeps_buffer_but_unlinks_connection():
     assert s.buffer("u1") == [{"rms":1}]
 
 
+import threading as _threading
+
+def test_tapstate_concurrent_read_write_no_error():
+    from ableton_mcp_max.tap_registry import TapState
+    s = TapState(buffer_max=1000)
+    for i in range(50):
+        s.handle_frame("c%d" % i, {"type":"hello","track":{"uuid":"u%d" % i}})
+    stop = _threading.Event()
+    errors = []
+    def writer():
+        n = 0
+        while not stop.is_set():
+            try:
+                s.handle_frame("c%d" % (n % 50), {"type":"block","data":{"rms":n}})
+                # also add fresh tracks to force _identity resizes during reads
+                s.handle_frame("new%d" % n, {"type":"hello","track":{"uuid":"new%d" % n}})
+                n += 1
+            except Exception as e:  # noqa
+                errors.append(e); return
+    def reader():
+        while not stop.is_set():
+            try:
+                s.tracks()
+                for t in list(s.tracks()):
+                    s.buffer(t["uuid"])
+            except Exception as e:  # noqa
+                errors.append(e); return
+    ws = [_threading.Thread(target=writer) for _ in range(3)]
+    rs = [_threading.Thread(target=reader) for _ in range(3)]
+    for t in ws + rs: t.start()
+    import time; time.sleep(0.5)
+    stop.set()
+    for t in ws + rs: t.join(timeout=2)
+    assert errors == [], "concurrent access raised: %r" % errors[:3]
+
+
 from ableton_mcp_max.tap_registry import TapRegistry
 
 def test_registry_ingests_frames_from_a_fed_connection():
@@ -111,12 +147,9 @@ def test_registry_per_connection_buffers_are_isolated():
     assert [x["rms"] for x in reg.state.buffer("ua")] == [1, 3]
     assert [x["rms"] for x in reg.state.buffer("ub")] == [2]
 
-def test_registry_start_stop_binds_and_releases(tmp_path):
+def test_registry_start_stop_binds_and_releases():
     # real bind on an ephemeral OS-chosen port, then stop cleanly
     import socket
-    reg = TapRegistry(port=0, host="127.0.0.1")
-    # port=0 in our class means "do not bind", so test explicit bind path differently:
-    # pick a free port, construct with it, start, connect, send a frame, stop.
     s = socket.socket(); s.bind(("127.0.0.1", 0)); free = s.getsockname()[1]; s.close()
     reg2 = TapRegistry(port=free)
     reg2.start()
