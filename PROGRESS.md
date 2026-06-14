@@ -40,9 +40,15 @@ plan `docs/superpowers/plans/2026-06-13-per-track-signal-taps-bridge.md`. Subage
     `evaluate_rules` predicate gate the spec assumed. Decision pending: surface measure_mix `findings` as a
     new analyze_set "mix_signal" section (rules-as-data entries carry rationale/severity, deferred honestly
     w/o taps) vs forcing them through the evaluator. Plus registry-client.js inbound `reset` (mostly done).
-  - **Phase 2/3 DEVICE DSP (hands-on Max):** add the 8-band biquad filterbank + RMS + mid/side taps to
-    `MCP Tap.amxd` (the device currently sends only loudness+peak; bands/mid/side/rms are zeroed). Several
-    drag-iterations like the self-id spike.
+  - **Phase 2/3 DEVICE DSP - DONE + LIVE-VERIFIED 2026-06-14 (@0aa8797).** Added to `MCP Tap.amxd`: wideband
+    RMS + mid/side (square->average~4800->snapshot~), and an 8-band spectrum via **`fffb~ 8 40 2.4 3.`** (fast
+    fixed filter bank fed from the mono mid signal) -> square/average/snapshot per band -> pak slots 5-12.
+    Pak expanded to 14 floats (block ms_l ms_r peak rms b0..b7 mid side); registry-client already mapped all 14.
+    **LIVE measure_mix verified:** master chord -> bands peak in low_mid (band 2), width 0/correlation 1 (centered);
+    two overlapping low-register chords on tracks 0+1 -> per-track signals + **masking score 0.986** (correctly high).
+    rms/crest now populate (master crest ~20, per-track ~28). Stage built in 2 grafts (RMS+stereo, then fffb~).
+    KNOWN: device reports empty track `name` -> measure_mix findings show `a:""/b:""`; Phase 4.3 must ENRICH
+    names from the track index via the LOM for readable reports.
   - **Phase 5:** spike 0.1 (browser-load instantiates `.amxd`) -> `deploy_taps`/`remove_taps`/`list_taps`
     helpers -> docs/tool-index/landing counts -> v0.8.0 release.
   - Deferred test nits: masking_utils `or True` tautology + boundary/precedence tests; `_uuid_for_index` could
