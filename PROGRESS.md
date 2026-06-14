@@ -26,9 +26,27 @@ plan `docs/superpowers/plans/2026-06-13-per-track-signal-taps-bridge.md`. Subage
 - **KNOWN PHASE-1 GAP:** the device sends no RMS (grafted v0.7.0 chain has no RMS tap) -> read_track_meter
   `rms`/`crest` are null; `bands`/`mid`/`side` are zeroed. RMS + 8-band spectrum + stereo land in the Phase 2/3
   DSP rework (the `block` frame already reserves the slots).
-- **SPIKE 0.1 (browser-load instantiates an `.amxd`) STILL PENDING** - gates Phase 5 `deploy_taps` only; not
-  blocking. **NEXT = Phase 2 (8-band filterbank DSP) -> Phase 3 (stereo) -> Phase 4 (masking_utils + measure_mix
-  + signal-backed mixing rules, mostly subagent-able) -> Phase 5 (deploy_taps + docs + v0.8.0 release).**
+- **PHASE 2/3/4 PURE-PYTHON CORE COMPLETE + offline-tested (2026-06-14, offline 480 passed).** Built
+  subagent-driven (spec+quality review each): `spectrum_utils.py` (`integrate_bands` + `band_profile_db`
+  power-dB profile + `stereo_metrics` width/correlation); `masking_utils.py` (`masking_score` cosine overlap,
+  `loudness_balance`, `headroom_flags`, `stereo_flags`); `measure_mix` MCP tool (reset-all-buffers ->
+  `_run_measure_playback` seam -> read -> per-track signal via extended `_integrate_buffer` [now also emits
+  bands/width/correlation] -> cross-track findings). `read_track_meter` additively gained bands/width/correlation.
+  Reset-first ordering bug caught + fixed in review (measure_mix must reset before the capture window, else it
+  integrates stale history; regression test `test_measure_mix_resets_stale_buffer_before_capture`).
+- **REMAINING (all NON-pure-Python or design-gated):**
+  - **Phase 4.3 (analyze_set wiring + 4 mixing.json rules)** - DESIGN QUESTION: the 4 cross-track checks are
+    AGGREGATE findings from `measure_mix`, NOT per-field predicates, so they don't fit the existing
+    `evaluate_rules` predicate gate the spec assumed. Decision pending: surface measure_mix `findings` as a
+    new analyze_set "mix_signal" section (rules-as-data entries carry rationale/severity, deferred honestly
+    w/o taps) vs forcing them through the evaluator. Plus registry-client.js inbound `reset` (mostly done).
+  - **Phase 2/3 DEVICE DSP (hands-on Max):** add the 8-band biquad filterbank + RMS + mid/side taps to
+    `MCP Tap.amxd` (the device currently sends only loudness+peak; bands/mid/side/rms are zeroed). Several
+    drag-iterations like the self-id spike.
+  - **Phase 5:** spike 0.1 (browser-load instantiates `.amxd`) -> `deploy_taps`/`remove_taps`/`list_taps`
+    helpers -> docs/tool-index/landing counts -> v0.8.0 release.
+  - Deferred test nits: masking_utils `or True` tautology + boundary/precedence tests; `_uuid_for_index` could
+    return the track dict; measure_mix `crest` uses last-block rms; findings carry `name` not `index`.
 
 ---
 
