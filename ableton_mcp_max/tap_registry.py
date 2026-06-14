@@ -68,14 +68,38 @@ class TapState:
 
     def reset(self, uuid=None):
         with self._lock:
-            targets = [uuid] if uuid else list(self._buffers)
+            # `uuid is not None` (not truthiness): a falsy-but-not-None uuid
+            # (e.g. "") must mean "reset that single (unknown) track" -> no-op,
+            # NOT "reset every buffer".
+            targets = [uuid] if uuid is not None else list(self._buffers)
             for u in targets:
                 if u in self._buffers:
                     self._buffers[u].clear()
 
-    def drop_conn(self, conn_id):
+    def forget(self, uuid):
+        """Remove a uuid's identity, sample_rate, and buffer entirely.
+        Also unlinks any conn ids still pointing at it. Idempotent."""
         with self._lock:
-            self._by_conn.pop(conn_id, None)
+            self._identity.pop(uuid, None)
+            self._sr.pop(uuid, None)
+            self._buffers.pop(uuid, None)
+            for cid in [c for c, u in self._by_conn.items() if u == uuid]:
+                self._by_conn.pop(cid, None)
+
+    def drop_conn(self, conn_id):
+        """A connection dropped -> the device is gone, so evict its track
+        (identity + sample_rate + buffer) and the conn mapping. Work is inlined
+        (not a call to forget()) to avoid re-acquiring the non-reentrant lock."""
+        with self._lock:
+            uuid = self._by_conn.pop(conn_id, None)
+            if uuid is None:
+                return
+            self._identity.pop(uuid, None)
+            self._sr.pop(uuid, None)
+            self._buffers.pop(uuid, None)
+            # drop any other conn ids that mapped to the same uuid
+            for cid in [c for c, u in self._by_conn.items() if u == uuid]:
+                self._by_conn.pop(cid, None)
 
 
 class TapRegistry:

@@ -74,14 +74,33 @@ def test_tracks_reports_sample_rate_and_block_count():
     t = s.tracks()[0]
     assert t["sample_rate"] == 44100 and t["block_count"] == 1
 
-def test_drop_conn_keeps_buffer_but_unlinks_connection():
+def test_drop_conn_evicts_track():
     s = TapState(buffer_max=4)
     s.handle_frame("c", {"type":"hello","track":{"uuid":"u1"}})
     s.handle_frame("c", {"type":"block","data":{"rms":1}})
     s.drop_conn("c")
-    # buffer retained (last-known data), but new blocks on that conn id are dropped
-    assert s.buffer("u1") == [{"rms":1}]
+    assert s.buffer("u1") == []
+    assert all(t["uuid"] != "u1" for t in s.tracks())
+    # later block on the same conn id is dropped (no identity)
     s.handle_frame("c", {"type":"block","data":{"rms":2}})
+    assert s.buffer("u1") == []
+
+
+def test_forget_removes_identity_and_buffer():
+    s = TapState(buffer_max=4)
+    s.handle_frame("c", {"type":"hello","track":{"uuid":"u1","name":"X"}})
+    s.handle_frame("c", {"type":"block","data":{"rms":1}})
+    s.forget("u1")
+    assert s.tracks() == []
+    assert s.buffer("u1") == []
+    s.forget("u1")  # idempotent
+
+
+def test_reset_empty_string_uuid_is_noop_not_reset_all():
+    s = TapState(buffer_max=4)
+    s.handle_frame("a", {"type":"hello","track":{"uuid":"u1"}})
+    s.handle_frame("a", {"type":"block","data":{"rms":1}})
+    s.reset("")          # falsy but not None -> single (unknown) -> no-op
     assert s.buffer("u1") == [{"rms":1}]
 
 

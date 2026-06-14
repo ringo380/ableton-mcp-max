@@ -507,8 +507,8 @@ def get_audio_tap_connection():
 _tap_registry = TapRegistry(port=9878)
 try:
     _tap_registry.start()
-except OSError:
-    pass
+except OSError as e:
+    logger.warning("tap registry could not bind 9878: %s", e)
 
 
 def _uuid_for_index(track_index):
