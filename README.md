@@ -4,7 +4,7 @@ A self-owned, extensible MCP server for Ableton Live, forked from
 [ahujasid/ableton-mcp](https://github.com/ahujasid/ableton-mcp) and extended
 toward broad Live Object Model coverage.
 
-**Documentation:** [ringo380.github.io/ableton-mcp-max](https://ringo380.github.io/ableton-mcp-max/) - landing page, install guide, and reference for all 112 tools.
+**Documentation:** [ringo380.github.io/ableton-mcp-max](https://ringo380.github.io/ableton-mcp-max/) - landing page, install guide, and reference for all 117 tools.
 
 ## Install
 1. `bash scripts/install_remote_script.sh` - installs the Live Remote Script.
@@ -12,9 +12,13 @@ toward broad Live Object Model coverage.
 3. `bash scripts/register_mcp.sh` - registers the MCP server with Claude Code.
 4. Restart Claude Code.
 
-**Optional - master metering:** drag `m4l/MCP Audio Tap.amxd` onto the Master track
-(Live Suite / Max for Live) to unlock loudness/true-peak metering. See `m4l/README.md`.
-It feeds the `read_meter`/`measure_loudness` tools and the `analyze_set` mastering rules.
+**Optional - per-track + master metering:** copy `m4l/MCP Tap.amxd` into your User
+Library, then `deploy_taps` (or drag it) onto tracks - and the Master - to unlock
+loudness/true-peak/spectrum/stereo metering (Live Suite / Max for Live). See
+`m4l/README.md`. The taps stream into a registry that feeds `read_track_meter`/
+`measure_loudness`/`measure_mix`, the `analyze_set` mastering rules, and the
+signal-backed cross-track mixing rules via `analyze_set(measure=True)`. (Replaces
+the v0.7.0 master-only `MCP Audio Tap`.)
 
 ## Commands
 

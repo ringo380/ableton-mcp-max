@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_112 tools._
+_117 tools._
 
 ## Session & view
 
@@ -184,7 +184,12 @@ _112 tools._
 
 ## Metering (Audio Tap)
 
-- **`get_audio_tap_status`** - Check whether the 'MCP Audio Tap' Max-for-Live device is loaded + reachable.
-- **`reset_meter`** - Reset the audio tap's integrating meter (clears the block buffer).
-- **`read_meter`** - Read the audio tap's master-bus metering since the last reset.
-- **`measure_loudness`** - Reset the meter, play the set, wait, and read back master loudness.
+- **`get_audio_tap_status`** - Report per-track tap registry connectivity.
+- **`list_taps`** - List the connected per-track taps.
+- **`reset_meter`** - Reset tap accumulators (clears buffered blocks).
+- **`read_meter`** - Master tap signal summary (compat shim for read_track_meter(-1)).
+- **`read_track_meter`** - Integrate a track's buffered tap blocks into a signal summary.
+- **`measure_loudness`** - Reset the master meter, play the set, wait, and read back loudness.
+- **`measure_mix`** - Timed multi-track measure pass -> per-track signals + cross-track findings.
+- **`deploy_taps`** - Load the MCP Tap metering device onto tracks for per-track analysis.
+- **`remove_taps`** - Remove every loaded MCP Tap device from the set (delete by name match).

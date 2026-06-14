@@ -74,11 +74,16 @@ CATEGORIES = [
     ("analysis", "Analysis", "Inspect the open set against best-practice rulesets and surface findings by domain.", [
         "analyze_set",
     ]),
-    ("metering", "Metering (Audio Tap)", "Read master-bus loudness/true-peak from the MCP Audio Tap Max-for-Live device.", [
+    ("metering", "Metering (Audio Tap)", "Per-track and master loudness/true-peak/spectrum/stereo from the MCP Tap Max-for-Live devices, plus cross-track mix analysis.", [
         "get_audio_tap_status",
+        "list_taps",
         "reset_meter",
         "read_meter",
+        "read_track_meter",
         "measure_loudness",
+        "measure_mix",
+        "deploy_taps",
+        "remove_taps",
     ]),
 ]
 
