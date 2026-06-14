@@ -7,6 +7,7 @@ import os
 import re
 import gzip
 import glob
+import math
 import time
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
@@ -624,37 +625,87 @@ def reset_meter(ctx: Context, track_index: int = None) -> str:
     return _ok({"reset": True})
 
 
+def _integrate_buffer(buf, sample_rate):
+    """Turn a tap's buffered 100 ms blocks into a per-track signal summary.
+
+    Each block is {ms_k_l, ms_k_r, peak, rms, ...}. The K-weighted mean-squares
+    feed loudness_utils EXACTLY as compute_metrics does (we build the same
+    read_payload shape and reuse it), with the per-block linear `peak` mapped to
+    `tp` so true_peak_dbtp is computed from it. peak/rms here are the linear
+    domain values: peak = max block peak, rms = the most recent block's rms
+    (representative of the current signal); crest = peak/rms in dB.
+    """
+    payload = {
+        "sample_rate": sample_rate,
+        "block_count": len(buf),
+        "blocks": [{"ms_k_l": b.get("ms_k_l"), "ms_k_r": b.get("ms_k_r"),
+                    "tp": b.get("peak")} for b in buf],
+        "peak": max((b.get("peak") or 0.0 for b in buf), default=0.0) if buf else None,
+        "rms": buf[-1].get("rms") if buf else None,
+    }
+    metrics = compute_metrics(payload)
+    peak = payload["peak"]
+    rms = payload["rms"]
+    crest = None
+    if peak and rms and rms > 0:
+        crest = round(20.0 * math.log10(peak / rms), 1)
+    return {
+        "integrated_lufs": metrics["integrated_lufs"],
+        "momentary_lufs": metrics["momentary_lufs"],
+        "short_term_lufs": metrics["short_term_lufs"],
+        "true_peak_dbtp": metrics["true_peak_dbtp"],
+        "peak": peak,
+        "rms": rms,
+        "crest": crest,
+        "block_count": len(buf),
+        "sample_rate": sample_rate,
+    }
+
+
+@mcp.tool()
+def read_track_meter(ctx: Context, track_index: int = -1) -> str:
+    """Integrate a track's buffered tap blocks into a signal summary.
+
+    track_index: -1 for the master tap (default), or a track index whose 'MCP
+    Audio Tap' device is streaming. Returns JSON {ok, data:{integrated_lufs,
+    momentary_lufs, short_term_lufs, true_peak_dbtp, peak, rms, crest,
+    block_count, sample_rate}}. LUFS/dBTP are computed via BS.1770 gating over
+    the buffered 100 ms K-weighted blocks (loudness fields are null until enough
+    blocks exist - momentary needs 0.4 s, short-term 3 s). peak/rms are linear;
+    crest is peak-to-rms in dB. An empty buffer returns ok with block_count 0 and
+    null metrics. {ok:false,error} if no tap is connected for that track.
+    """
+    uuid = _uuid_for_index(track_index)
+    if uuid is None:
+        return _err("No tap connected for track %s" % track_index)
+    sample_rate = 48000
+    for t in _tap_registry.state.tracks():
+        if t.get("uuid") == uuid:
+            sample_rate = t.get("sample_rate", 48000)
+            break
+    buf = _tap_registry.state.buffer(uuid)
+    return _ok(_integrate_buffer(buf, sample_rate))
+
+
 @mcp.tool()
 def read_meter(ctx: Context) -> str:
-    """Master tap raw snapshot (compat shim; superseded by read_track_meter).
+    """Master tap signal summary (compat shim for read_track_meter(-1)).
 
-    Returns JSON {ok, data:{block_count, last}} for the master tap's buffer,
-    where last is the most recent block-data dict (or null if none buffered).
-    {ok:false,error} if no master tap is connected.
+    Delegates to read_track_meter for the master tap. Returns JSON {ok, data}
+    with the integrated/momentary/short-term LUFS, true-peak dBTP, linear
+    peak/rms, crest, block_count and sample_rate. {ok:false,error} if no master
+    tap is connected.
     """
-    uuid = _uuid_for_index(-1)
-    if uuid is None:
-        return _err("No master tap connected")
-    buf = _tap_registry.state.buffer(uuid)
-    last = buf[-1] if buf else None
-    return _ok({"block_count": len(buf), "last": last})
+    return read_track_meter(ctx, track_index=-1)
 
 
-@mcp.tool()
-def measure_loudness(ctx: Context, seconds: float = None) -> str:
-    """Reset the meter, play the set, wait, and read back master loudness.
+def _run_measure_playback(seconds, region=None):
+    """Playback seam for measure_loudness: start the transport, wait, stop.
 
-    seconds: how long to capture (default 10.0). For an integrated-loudness pass
-    over a whole song, pass its length. Returns the same payload as read_meter
-    plus data.played (False if the transport did not advance - e.g. nothing to
-    play - so a bogus reading is not mistaken for real). {ok:false,error} if the
-    tap is not connected.
+    Isolated so tests can monkeypatch it (no Live needed). Returns True if the
+    transport advanced (so a bogus reading isn't mistaken for real), else False.
+    region is reserved for a future arrangement-window capture.
     """
-    tap = get_audio_tap_connection()
-    try:
-        tap.send("reset")
-    except Exception as e:
-        return _err("audio tap not connected - %s" % e)
     ableton = get_ableton_connection()
     try:
         start_t = ableton.send_command("get_transport").get("current_song_time", 0.0)
@@ -667,8 +718,32 @@ def measure_loudness(ctx: Context, seconds: float = None) -> str:
         end_t = ableton.send_command("get_transport").get("current_song_time", start_t)
     except Exception:
         end_t = start_t
-    metrics = compute_metrics(tap.send("read"))
-    metrics["played"] = end_t > start_t
+    return end_t > start_t
+
+
+@mcp.tool()
+def measure_loudness(ctx: Context, seconds: float = None) -> str:
+    """Reset the master meter, play the set, wait, and read back loudness.
+
+    seconds: how long to capture (default 10.0). For an integrated-loudness pass
+    over a whole song, pass its length. Returns the same signal-summary payload
+    as read_meter plus data.played (False if the transport did not advance - e.g.
+    nothing to play - so a bogus reading is not mistaken for real).
+    {ok:false,error} if no master tap is connected.
+    """
+    uuid = _uuid_for_index(-1)
+    if uuid is None:
+        return _err("No master tap connected")
+    sample_rate = 48000
+    for t in _tap_registry.state.tracks():
+        if t.get("uuid") == uuid:
+            sample_rate = t.get("sample_rate", 48000)
+            break
+    _tap_registry.state.reset(uuid)
+    played = _run_measure_playback(seconds)
+    buf = _tap_registry.state.buffer(uuid)
+    metrics = _integrate_buffer(buf, sample_rate)
+    metrics["played"] = played
     return _ok(metrics)
 
 

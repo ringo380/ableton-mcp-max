@@ -48,7 +48,9 @@ def test_read_meter_master_snapshot():
     out = json.loads(server.read_meter(None))
     assert out["ok"] is True
     assert out["data"]["block_count"] == 1
-    assert out["data"]["last"]["peak"] == 0.5
+    # read_meter now delegates to read_track_meter(-1): a signal summary.
+    assert out["data"]["peak"] == 0.5
+    assert "integrated_lufs" in out["data"]
 
 
 def test_read_meter_no_master(monkeypatch):
@@ -60,4 +62,54 @@ def test_read_meter_no_master(monkeypatch):
     monkeypatch.setattr(server, "_tap_registry", reg)
     out = json.loads(server.read_meter(None))
     assert out["ok"] is False
-    assert "master" in out["error"].lower()
+    assert "tap" in out["error"].lower()
+
+
+def _seed_master(blocks):
+    reg = server._tap_registry
+    reg.state.reset()
+    reg.feed("m", '{"type":"hello","track":{"uuid":"master","name":"Master","index":-1,"kind":"master"},"sample_rate":48000}\n')
+    for b in blocks:
+        reg.feed("m", json.dumps({"type": "block", "data": b}) + "\n")
+
+
+def test_read_track_meter_integrates_master_blocks():
+    _seed_master([{"ms_k_l": 0.01, "ms_k_r": 0.01, "peak": 0.5, "rms": 0.1}] * 30)
+    out = json.loads(server.read_track_meter(None, track_index=-1))
+    assert out["ok"] is True
+    d = out["data"]
+    for k in ("integrated_lufs", "momentary_lufs", "short_term_lufs",
+              "true_peak_dbtp", "peak", "rms", "crest", "block_count",
+              "sample_rate"):
+        assert k in d
+    assert d["block_count"] == 30
+
+
+def test_read_track_meter_empty_buffer_is_ok_with_zero_count():
+    reg = server._tap_registry
+    reg.state.reset()
+    reg.feed("m", '{"type":"hello","track":{"uuid":"master","index":-1,"kind":"master"}}\n')
+    out = json.loads(server.read_track_meter(None, track_index=-1))
+    assert out["ok"] is True
+    assert out["data"]["block_count"] == 0
+
+
+def test_read_track_meter_unknown_track_errors():
+    server._tap_registry.state.reset()
+    out = json.loads(server.read_track_meter(None, track_index=99))
+    assert out["ok"] is False
+
+
+def test_read_meter_delegates_to_track_meter():
+    _seed_master([{"ms_k_l": 0.01, "ms_k_r": 0.01, "peak": 0.5, "rms": 0.1}] * 30)
+    out = json.loads(server.read_meter(None))
+    assert out["ok"] is True
+    assert "integrated_lufs" in out["data"]
+
+
+def test_measure_loudness_reads_master_after_playback(monkeypatch):
+    _seed_master([{"ms_k_l": 0.02, "ms_k_r": 0.02, "peak": 0.7, "rms": 0.2}] * 40)
+    monkeypatch.setattr(server, "_run_measure_playback", lambda *a, **k: None)
+    out = json.loads(server.measure_loudness(None))
+    assert out["ok"] is True
+    assert "integrated_lufs" in out["data"]
