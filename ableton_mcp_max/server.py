@@ -883,6 +883,138 @@ def measure_mix(ctx: Context, window_s: float = 15.0, region: str = None) -> str
     return _ok({"window_s": window_s, "tracks": tracks_out, "findings": findings})
 
 
+# Name the tap device carries when loaded in Live (the .amxd is "MCP Tap.amxd").
+TAP_DEVICE_NAME = "MCP Tap"
+# Browser folder under which the MCP Tap device is indexed once copied into the
+# User Library. Confirmed/refined by spike 0.1; deploy_taps degrades to a
+# manual-drag hint if the load path can't resolve it.
+TAP_BROWSER_PATH = "max_for_live/Max Audio Effect"
+
+
+def _audio_instrument_track_indices():
+    """Regular tracks worth tapping: audio tracks + instrument-bearing MIDI
+    tracks. Reads the analysis snapshot and returns their indices."""
+    raw = get_ableton_connection().send_command("get_analysis_snapshot")
+    out = []
+    for t in raw.get("tracks", []):
+        idx = t.get("index")
+        if idx is None:
+            continue
+        if t.get("type") == "audio" or t.get("has_instrument"):
+            out.append(idx)
+    return out
+
+
+def _load_tap_on_track(track_index):
+    """Browser-load the User-Library MCP Tap device onto a track.
+
+    Resolves the device in the browser via get_browser_presets +
+    match_recursive_preset, then load_browser_item. Raises on any failure so
+    deploy_taps can record it (and fall back to a manual-drag hint).
+    """
+    ableton = get_ableton_connection()
+    presets_result = ableton.send_command("get_browser_presets",
+                                           {"path": TAP_BROWSER_PATH})
+    if "error" in presets_result:
+        raise RuntimeError(presets_result.get("error"))
+    chosen = match_recursive_preset(presets_result.get("presets", []), TAP_DEVICE_NAME)
+    uri = chosen.get("uri")
+    if not uri:
+        raise RuntimeError("MCP Tap device has no loadable URI")
+    res = ableton.send_command("load_browser_item",
+                               {"track_index": track_index, "item_uri": uri})
+    if not res.get("loaded", False):
+        raise RuntimeError("load_browser_item did not confirm")
+    return chosen.get("relative_path") or chosen.get("name") or TAP_DEVICE_NAME
+
+
+def _find_taps():
+    """Return [(track_index, device_index)] for every loaded MCP Tap device."""
+    raw = get_ableton_connection().send_command("get_analysis_snapshot")
+    out = []
+    for t in raw.get("tracks", []):
+        ti = t.get("index")
+        if ti is None:
+            continue
+        for d in t.get("devices", []):
+            if d.get("name") == TAP_DEVICE_NAME and d.get("index") is not None:
+                out.append((ti, d.get("index")))
+    return out
+
+
+def _delete_device_raw(track_index, device_index):
+    """Delete one device (regular track) over the wire. Raises on failure."""
+    get_ableton_connection().send_command(
+        "delete_device",
+        {"track_index": track_index, "device_index": device_index,
+         "track_type": "regular"})
+
+
+@mcp.tool()
+def deploy_taps(ctx: Context, track_indices: List[int] = None) -> str:
+    """Load the MCP Tap metering device onto tracks for per-track analysis.
+
+    track_indices: omit to auto-target every regular audio track + every MIDI
+    track holding an instrument; or pass explicit track indices. The device must
+    be present in the User Library (copy m4l/'MCP Tap.amxd' there once); see
+    m4l/README.md.
+
+    Returns JSON {ok, data:{targets, deployed:[{track_index,device}],
+    failed:[{track_index,error}]}}. If EVERY load fails (e.g. the device isn't in
+    the browser), data.manual is true with a drag-it-yourself message listing the
+    target tracks - the registry still works once the device is dragged on by
+    hand. After deploying, run measure_mix or analyze_set(measure=True).
+    """
+    try:
+        targets = (_audio_instrument_track_indices() if track_indices is None
+                   else list(track_indices))
+        deployed, failed = [], []
+        for i in targets:
+            try:
+                label = _load_tap_on_track(i)
+                deployed.append({"track_index": i, "device": label})
+            except Exception as e:
+                failed.append({"track_index": i, "error": str(e)})
+        data = {"targets": targets, "deployed": deployed, "failed": failed}
+        if targets and not deployed:
+            data["manual"] = True
+            data["message"] = (
+                "Could not auto-load the tap (is 'MCP Tap.amxd' in your User "
+                "Library?). Drag 'MCP Tap' from the browser onto these tracks: %s"
+                % targets)
+        return _ok(data)
+    except Exception as e:
+        logger.error("Error deploying taps: %s", e)
+        return _err("Error deploying taps: %s" % e)
+
+
+@mcp.tool()
+def remove_taps(ctx: Context) -> str:
+    """Remove every loaded MCP Tap device from the set (delete by name match).
+
+    Scans all regular tracks for devices named 'MCP Tap' and deletes them
+    (per-track, highest device index first so re-indexing is safe). Returns JSON
+    {ok, data:{removed_count, removed:[{track_index,device_index}], errors:[...]}}.
+    No-op (removed_count 0) when none are loaded.
+    """
+    try:
+        found = _find_taps()
+        # delete highest device_index first within each track so re-indexing
+        # never shifts a still-pending target on the same track.
+        ordered = sorted(found, key=lambda p: (p[0], -p[1]))
+        removed, errors = [], []
+        for ti, di in ordered:
+            try:
+                _delete_device_raw(ti, di)
+                removed.append({"track_index": ti, "device_index": di})
+            except Exception as e:
+                errors.append({"track_index": ti, "device_index": di, "error": str(e)})
+        return _ok({"removed_count": len(removed), "removed": removed, "errors": errors})
+    except Exception as e:
+        logger.error("Error removing taps: %s", e)
+        return _err("Error removing taps: %s" % e)
+
+
 @mcp.tool()
 def batch(ctx: Context, commands: List[Dict[str, Any]],
           stop_on_error: bool = True) -> str:

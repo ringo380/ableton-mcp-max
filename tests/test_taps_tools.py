@@ -165,3 +165,54 @@ def test_measure_mix_no_taps_is_ok_empty(monkeypatch):
     out = json.loads(server.measure_mix(None, window_s=0))
     assert out["ok"] is True
     assert isinstance(out["data"]["tracks"], list)
+
+
+# --- deploy_taps / remove_taps (Live calls stubbed via the named seams) ---
+
+def test_deploy_taps_targets_audio_and_instrument_tracks(monkeypatch):
+    calls = []
+    monkeypatch.setattr(server, "_load_tap_on_track", lambda i: calls.append(i) or "MCP Tap")
+    monkeypatch.setattr(server, "_audio_instrument_track_indices", lambda: [0, 2, 3])
+    out = json.loads(server.deploy_taps(None))
+    assert out["ok"] is True
+    assert calls == [0, 2, 3]
+    assert [d["track_index"] for d in out["data"]["deployed"]] == [0, 2, 3]
+    assert out["data"]["failed"] == []
+
+
+def test_deploy_taps_explicit_indices(monkeypatch):
+    calls = []
+    monkeypatch.setattr(server, "_load_tap_on_track", lambda i: calls.append(i) or "MCP Tap")
+    out = json.loads(server.deploy_taps(None, track_indices=[1]))
+    assert out["ok"] is True
+    assert calls == [1]
+
+
+def test_deploy_taps_falls_back_to_manual_when_all_fail(monkeypatch):
+    def boom(i):
+        raise RuntimeError("not in browser")
+    monkeypatch.setattr(server, "_load_tap_on_track", boom)
+    out = json.loads(server.deploy_taps(None, track_indices=[0, 1]))
+    assert out["ok"] is True
+    assert out["data"]["manual"] is True
+    assert [f["track_index"] for f in out["data"]["failed"]] == [0, 1]
+    assert out["data"]["deployed"] == []
+
+
+def test_remove_taps_deletes_matched_devices(monkeypatch):
+    found = [(0, 1), (2, 0)]
+    monkeypatch.setattr(server, "_find_taps", lambda: list(found))
+    deleted = []
+    monkeypatch.setattr(server, "_delete_device_raw",
+                        lambda ti, di: deleted.append((ti, di)))
+    out = json.loads(server.remove_taps(None))
+    assert out["ok"] is True
+    assert set(deleted) == set(found)
+    assert out["data"]["removed_count"] == 2
+
+
+def test_remove_taps_none_found_is_ok(monkeypatch):
+    monkeypatch.setattr(server, "_find_taps", lambda: [])
+    out = json.loads(server.remove_taps(None))
+    assert out["ok"] is True
+    assert out["data"]["removed_count"] == 0
