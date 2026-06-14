@@ -18,7 +18,7 @@ def integrate_bands(blocks):
         for i in range(8):
             acc[i] += bands[i] if i < len(bands) else 0.0
         n += 1
-    return [a / n for a in acc] if n else [0.0] * 8
+    return [a / n for a in acc]
 
 
 def band_profile_db(energy, floor_db=-60.0):
@@ -34,3 +34,18 @@ def band_profile_db(energy, floor_db=-60.0):
         else:
             out.append(max(floor_db, 10.0 * math.log10(e / peak)))
     return out
+
+
+def stereo_metrics(blocks):
+    """Aggregate mid/side energy into width + a correlation proxy.
+    width = side/(mid+side); correlation proxy = (mid-side)/(mid+side) in [-1,1]."""
+    if not blocks:
+        return {"width": 0.0, "correlation": 0.0}
+    mid = sum(b.get("mid", 0.0) for b in blocks)
+    side = sum(b.get("side", 0.0) for b in blocks)
+    total = mid + side
+    if total <= 0.0:
+        return {"width": 0.0, "correlation": 0.0}
+    width = side / total
+    corr = max(-1.0, min(1.0, (mid - side) / total))
+    return {"width": width, "correlation": corr}

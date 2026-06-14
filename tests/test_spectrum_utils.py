@@ -1,4 +1,11 @@
-from ableton_mcp_max.spectrum_utils import BAND_LABELS, integrate_bands, band_profile_db
+import pytest
+
+from ableton_mcp_max.spectrum_utils import (
+    BAND_LABELS,
+    band_profile_db,
+    integrate_bands,
+    stereo_metrics,
+)
 
 
 def test_eight_bands_labeled():
@@ -33,3 +40,39 @@ def test_integrate_bands_tolerates_missing_or_short_bands():
     out = integrate_bands(blocks)
     assert len(out) == 8
     assert out[0] == 1.0  # (2+0)/2
+
+
+def test_band_profile_db_power_db_with_unequal_bands():
+    prof = band_profile_db([1.0, 0.1])
+    assert prof[0] == 0.0
+    assert prof[1] == pytest.approx(-10.0)  # 10*log10(0.1) = -10 dB (power dB)
+
+
+def test_band_profile_db_empty_returns_empty():
+    assert band_profile_db([]) == []
+
+
+def test_mono_signal_is_fully_correlated():
+    m = stereo_metrics([{"mid": 1.0, "side": 0.0}] * 3)
+    assert m["correlation"] > 0.95
+    assert m["width"] < 0.05
+
+
+def test_wide_signal_has_high_width():
+    m = stereo_metrics([{"mid": 0.5, "side": 0.5}] * 3)
+    assert m["width"] > 0.4
+
+
+def test_stereo_empty_blocks_safe():
+    m = stereo_metrics([])
+    assert m["correlation"] == 0.0 and m["width"] == 0.0
+
+
+def test_stereo_zero_energy_safe():
+    m = stereo_metrics([{"mid": 0.0, "side": 0.0}])
+    assert m["correlation"] == 0.0 and m["width"] == 0.0
+
+
+def test_stereo_tolerates_missing_keys():
+    m = stereo_metrics([{"mid": 1.0}])  # side missing -> 0
+    assert m["width"] == 0.0
