@@ -1,5 +1,37 @@
 # ableton-mcp-max — Progress
 
+**PER-TRACK SIGNAL TAPS via a general bridge - IN PROGRESS (branch `feat/per-track-taps-bridge`, 2026-06-14).**
+Replaces the v0.7.0 master tap with a self-identifying M4L device family reporting to a Python-hosted TCP
+**registry** (one socket, port 9878; devices are CLIENTS that announce identity + stream stats). Targets
+**v0.8.0 (BREAKING device change)**. Spec `docs/superpowers/specs/2026-06-13-per-track-signal-taps-bridge-design.md`,
+plan `docs/superpowers/plans/2026-06-13-per-track-signal-taps-bridge.md`. Subagent-driven (spec+quality review each task).
+- **PHASE 1 (bridge + levels device) COMPLETE + LIVE-VERIFIED 2026-06-14.** Offline **454 passed**. Commits:
+  `tap_registry.py` (`parse_frames` + thread-safe `TapState` ring buffers + `TapRegistry` TCP server w/
+  testable `feed()` seam + disconnect eviction); server.py hosts `_tap_registry` on 9878, `_uuid_for_index`,
+  reimplemented `get_audio_tap_status`/`reset_meter`/`read_meter` + new `list_taps`/`read_track_meter` +
+  registry-backed `measure_loudness` (playback behind `_run_measure_playback` seam); device
+  `m4l/MCP Tap.amxd` + `registry-client.js` + `MCP Tap.maxpat` (@7a69dd2).
+- **SPIKE 0.2 (device self-id) PASSED.** Live-verified: device on track "3-Audio" reported `index:2 kind:regular`;
+  moved to Master reported `index:-1 kind:master`. read_track_meter(-1) with a live Analog chord returned
+  integrated **-17.0 LUFS**, momentary -13.3, short-term -15.8, true-peak -5.4 dBTP (peak 0.538, self-consistent).
+  Silence -> nulls + peak 0, blocks still streaming. **The client-inversion (device->registry) + block streaming
+  + server tools all proven end to end.**
+- **M4L SELF-ID RECIPE (hard-won, 6 device iterations):** `live.path this_device` ONLY emits the device `id`
+  (no path output on ANY outlet - confirmed by latch+resend diagnostic). Resolve the track instead via
+  `live.object` `get canonical_parent` -> track LOM id, then `live.object`(`live_set`) `get tracks`/
+  `get return_tracks`/`get master_track` -> find the track id's POSITION in those lists = (index, kind).
+  Use `live.thisdevice` (NOT `loadbang`) to trigger, and a `metro` (NOT one-shot) so the identity re-sends
+  past the ~1-2s Node-for-Max boot (a one-shot message is dropped: "Node script not ready"). Diagnostic
+  channel = stuff raw tokens into an identity `debug` field surfaced by `list_taps`.
+- **KNOWN PHASE-1 GAP:** the device sends no RMS (grafted v0.7.0 chain has no RMS tap) -> read_track_meter
+  `rms`/`crest` are null; `bands`/`mid`/`side` are zeroed. RMS + 8-band spectrum + stereo land in the Phase 2/3
+  DSP rework (the `block` frame already reserves the slots).
+- **SPIKE 0.1 (browser-load instantiates an `.amxd`) STILL PENDING** - gates Phase 5 `deploy_taps` only; not
+  blocking. **NEXT = Phase 2 (8-band filterbank DSP) -> Phase 3 (stereo) -> Phase 4 (masking_utils + measure_mix
+  + signal-backed mixing rules, mostly subagent-able) -> Phase 5 (deploy_taps + docs + v0.8.0 release).**
+
+---
+
 **M4L AUDIO TAP - SHIPPED in v0.7.0 (2026-06-13).** PR #19 squash-merged to `main` (@67b1d1d) -> version
 bump @7b04b67; `gh release create v0.7.0`; marketplace `ableton` ref bumped v0.6.0 -> v0.7.0 + README
 rebuilt + pushed @87d4cac in robworks-claude-code-plugins. Tool count 108 -> 112 (new "Metering" category).
