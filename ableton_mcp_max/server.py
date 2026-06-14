@@ -91,6 +91,7 @@ from ableton_mcp_max.analysis_utils import normalize_snapshot, evaluate_rules
 from ableton_mcp_max.ruleset_utils import load_rulesets
 from ableton_mcp_max.loudness_utils import compute_metrics
 from ableton_mcp_max.tap_connection import AudioTapConnection
+from ableton_mcp_max.tap_registry import TapRegistry
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -499,6 +500,33 @@ def get_audio_tap_connection():
     return _audio_tap_connection
 
 
+# Per-track tap registry: a background TCP server on 9878 that M4L tap devices
+# connect into and stream JSON stat blocks. Started once at import; if the port
+# is busy (stale server / double-load) the tools degrade to "disconnected".
+_tap_registry = TapRegistry(port=9878)
+try:
+    _tap_registry.start()
+except OSError:
+    pass
+
+
+def _uuid_for_index(track_index):
+    """Return the uuid of the connected tap matching track_index, or None.
+
+    Master is track_index == -1 -> identity kind=="master" (or index==-1);
+    other indices match the identity's index. Identities come from the
+    registry's connected taps. (A track's live index can drift on reorder; a
+    later task may re-resolve via the LOM - for now match the reported index.)
+    """
+    for t in _tap_registry.state.tracks():
+        if track_index == -1:
+            if t.get("kind") == "master" or t.get("index") == -1:
+                return t.get("uuid")
+        elif t.get("index") == track_index:
+            return t.get("uuid")
+    return None
+
+
 # Core Tool endpoints
 
 @mcp.tool()
@@ -560,55 +588,56 @@ def analyze_set(ctx: Context, focus: str = "all") -> str:
 
 @mcp.tool()
 def get_audio_tap_status(ctx: Context) -> str:
-    """Check whether the 'MCP Audio Tap' Max-for-Live device is loaded + reachable.
+    """Report per-track tap registry connectivity.
 
-    Returns JSON {ok, data}. data.connected is True with device info
-    (sample_rate, channels) when the tap is running on 9878, else False with a
-    setup hint. Use this before read_meter/measure_loudness to guide the
-    one-time setup (drag the device onto the Master track).
+    Returns JSON {ok, data:{connected, tracks}}. connected is True when at least
+    one 'MCP Audio Tap' device is streaming into the registry on 9878; tracks is
+    the list of connected tap identities (uuid/name/index/kind + sample_rate +
+    block_count). Empty/False until a tap device is loaded onto a track.
     """
-    tap = get_audio_tap_connection()
-    try:
-        info = tap.send("ping")
-    except Exception:
-        return _ok({"connected": False,
-                    "hint": "Drop 'MCP Audio Tap' onto the Master track in Live "
-                            "(one-time setup), then retry."})
-    data = {"connected": True}
-    data.update(info)
-    return _ok(data)
+    tracks = _tap_registry.state.tracks()
+    return _ok({"connected": len(tracks) > 0, "tracks": tracks})
 
 
 @mcp.tool()
-def reset_meter(ctx: Context) -> str:
-    """Reset the audio tap's integrating meter (clears the block buffer).
+def list_taps(ctx: Context) -> str:
+    """List the connected per-track taps.
 
-    Returns JSON {ok, data:{reset:true}} or {ok:false,error} if the tap is not
-    connected. Call before playing material you want measured.
+    Returns JSON {ok, data:{count, tracks}} where tracks is the list of tap
+    identities (uuid/name/index/kind + sample_rate + block_count) currently
+    streaming into the registry.
     """
-    tap = get_audio_tap_connection()
-    try:
-        return _ok(tap.send("reset"))
-    except Exception as e:
-        return _err("audio tap not connected - %s" % e)
+    tracks = _tap_registry.state.tracks()
+    return _ok({"count": len(tracks), "tracks": tracks})
+
+
+@mcp.tool()
+def reset_meter(ctx: Context, track_index: int = None) -> str:
+    """Reset tap accumulators (clears buffered blocks).
+
+    track_index: omit to reset every connected tap; pass -1 for the master tap
+    or a track index to reset just that one. Returns JSON {ok, data:{reset:true}}.
+    Call before playing material you want measured.
+    """
+    uuid = _uuid_for_index(track_index) if track_index is not None else None
+    _tap_registry.state.reset(uuid)
+    return _ok({"reset": True})
 
 
 @mcp.tool()
 def read_meter(ctx: Context) -> str:
-    """Read the audio tap's master-bus metering since the last reset.
+    """Master tap raw snapshot (compat shim; superseded by read_track_meter).
 
-    Returns JSON {ok, data} where data = {integrated_lufs, short_term_lufs,
-    momentary_lufs, true_peak_dbtp, peak_dbfs, rms_dbfs, block_count,
-    duration_s}. LUFS fields are null until enough audio has played (momentary
-    needs >=400 ms, short-term >=3 s; integrated null if all blocks were
-    silent). Returns {ok:false,error} if the tap is not connected.
+    Returns JSON {ok, data:{block_count, last}} for the master tap's buffer,
+    where last is the most recent block-data dict (or null if none buffered).
+    {ok:false,error} if no master tap is connected.
     """
-    tap = get_audio_tap_connection()
-    try:
-        payload = tap.send("read")
-    except Exception as e:
-        return _err("audio tap not connected - %s" % e)
-    return _ok(compute_metrics(payload))
+    uuid = _uuid_for_index(-1)
+    if uuid is None:
+        return _err("No master tap connected")
+    buf = _tap_registry.state.buffer(uuid)
+    last = buf[-1] if buf else None
+    return _ok({"block_count": len(buf), "last": last})
 
 
 @mcp.tool()
