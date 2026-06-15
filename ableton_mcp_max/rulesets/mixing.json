@@ -33,5 +33,57 @@
     "mode": "manual",
     "rationale": "Wet/dry balance and depth are judgment calls best heard, not measured.",
     "source": "sources.md#mixing-return-effects"
+  },
+  {
+    "id": "mixing.spectral_masking",
+    "domain": "mixing",
+    "title": "Tracks don't fight in the same frequency band",
+    "severity": "warn",
+    "mode": "deferred",
+    "signal_required": true,
+    "signal_kind": "mix",
+    "params": { "threshold": 0.6 },
+    "rationale": "Two sources with near-identical spectral profiles mask each other, muddying the mix; high pairwise band overlap flags candidates for EQ carving or arrangement separation.",
+    "remediation": "EQ-carve complementary space, pan apart, or thin the arrangement so the overlapping tracks don't compete.",
+    "source": "sources.md#mixing-spectral-masking"
+  },
+  {
+    "id": "mixing.loudness_balance",
+    "domain": "mixing",
+    "title": "No track buried far below the loudest",
+    "severity": "warn",
+    "mode": "deferred",
+    "signal_required": true,
+    "signal_kind": "mix",
+    "params": { "spread_db": 12.0 },
+    "rationale": "A track sitting more than ~12 LU below the loudest active track is likely lost in the mix; large integrated-loudness spread suggests a balance problem.",
+    "remediation": "Raise the buried track's level (or duck competitors) until it reads in the mix; re-check after.",
+    "source": "sources.md#mixing-loudness-balance"
+  },
+  {
+    "id": "mixing.headroom_per_track",
+    "domain": "mixing",
+    "title": "Per-track peaks leave headroom and aren't over-squashed",
+    "severity": "warn",
+    "mode": "deferred",
+    "signal_required": true,
+    "signal_kind": "mix",
+    "params": { "peak_ceiling": -1.0, "crest_floor": 4.0 },
+    "rationale": "A track peaking above -1 dBTP eats master headroom and risks inter-sample clipping; a crest factor below ~4 dB signals over-compression that flattens dynamics.",
+    "remediation": "Trim track gain to leave headroom; back off compression/limiting where crest is too low.",
+    "source": "sources.md#mixing-per-track-headroom"
+  },
+  {
+    "id": "mixing.stereo_correlation",
+    "domain": "mixing",
+    "title": "Stereo content stays mono-compatible",
+    "severity": "warn",
+    "mode": "deferred",
+    "signal_required": true,
+    "signal_kind": "mix",
+    "params": { "corr_floor": -0.2 },
+    "rationale": "Strongly negative inter-channel correlation cancels on mono fold-down, so a widened track can vanish on mono playback (clubs, phones, Bluetooth).",
+    "remediation": "Narrow the offending track's stereo image or check it in mono; keep low-frequency content centered.",
+    "source": "sources.md#mixing-stereo-correlation"
   }
 ]

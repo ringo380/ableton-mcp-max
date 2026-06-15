@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **112 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **117 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -95,7 +95,7 @@ Inspect the open set against best-practice rulesets and surface findings by doma
 
 ## [Metering (Audio Tap)](./metering.html)
 
-Read master-bus loudness/true-peak from the MCP Audio Tap Max-for-Live device.
+Per-track and master loudness/true-peak/spectrum/stereo from the MCP Tap Max-for-Live devices, plus cross-track mix analysis.
 
-`get_audio_tap_status`, `reset_meter`, `read_meter`, `measure_loudness`
+`get_audio_tap_status`, `list_taps`, `reset_meter`, `read_meter`, `read_track_meter`, `measure_loudness`, `measure_mix`, `deploy_taps`, `remove_taps`
 

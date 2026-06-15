@@ -46,3 +46,26 @@ Integrated loudness and true-peak targets (EBU R128 / ITU-R BS.1770-4). Streamin
 platforms (Spotify, Apple Music, YouTube) normalize around -14 LUFS; a -1 dBTP
 ceiling avoids inter-sample clipping on lossy codecs. Measured via the MCP Audio
 Tap Max-for-Live device.
+
+## mixing-spectral-masking
+Sources sharing the same frequency range mask one another, muddying the mix.
+Ableton's mixing guidance and standard practice recommend EQ carving, panning, or
+arrangement separation so competing tracks occupy complementary spectral space.
+Measured here as pairwise overlap of per-track 8-band energy profiles from the
+MCP Tap device.
+
+## mixing-loudness-balance
+Relative level balance keeps every part audible. A track sitting far below the
+loudest (large integrated-loudness spread) is likely buried. EBU R128 loudness
+(BS.1770-4) per track via the MCP Tap device backs this heuristic.
+
+## mixing-per-track-headroom
+Per-track gain staging leaves headroom into the master and avoids over-squashing.
+A true peak above -1 dBTP risks inter-sample clipping; a low crest factor signals
+heavy compression that flattens transients. Mirrors Ableton's gain-staging and
+dynamics guidance, measured per track via the MCP Tap device.
+
+## mixing-stereo-correlation
+Mono compatibility matters for club, phone, and Bluetooth playback. Strongly
+negative inter-channel correlation cancels on mono fold-down. Derived from
+mid/side energy (correlation proxy) reported by the MCP Tap device.

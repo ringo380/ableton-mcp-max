@@ -85,9 +85,14 @@ GROUPS = [
     ]),
     ("Metering (Audio Tap)", [
         "get_audio_tap_status",
+        "list_taps",
         "reset_meter",
         "read_meter",
+        "read_track_meter",
         "measure_loudness",
+        "measure_mix",
+        "deploy_taps",
+        "remove_taps",
     ]),
 ]
 

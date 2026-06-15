@@ -7,6 +7,7 @@ import os
 import re
 import gzip
 import glob
+import math
 import time
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
@@ -90,7 +91,17 @@ from ableton_mcp_max.batch_utils import validate_batch, coerce_stop_on_error
 from ableton_mcp_max.analysis_utils import normalize_snapshot, evaluate_rules
 from ableton_mcp_max.ruleset_utils import load_rulesets
 from ableton_mcp_max.loudness_utils import compute_metrics
+from ableton_mcp_max.spectrum_utils import integrate_bands, stereo_metrics
+from ableton_mcp_max.masking_utils import (
+    masking_score,
+    loudness_balance,
+    headroom_flags,
+    stereo_flags,
+    build_mix_findings,
+    enrich_names,
+)
 from ableton_mcp_max.tap_connection import AudioTapConnection
+from ableton_mcp_max.tap_registry import TapRegistry
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -499,6 +510,94 @@ def get_audio_tap_connection():
     return _audio_tap_connection
 
 
+# Per-track tap registry: a background TCP server on 9878 that M4L tap devices
+# connect into and stream JSON stat blocks. Started once at import; if the port
+# is busy (stale server / double-load) the tools degrade to "disconnected".
+_tap_registry = TapRegistry(port=9878)
+try:
+    _tap_registry.start()
+except OSError as e:
+    logger.warning("tap registry could not bind 9878: %s", e)
+
+
+def _uuid_for_index(track_index):
+    """Return the uuid of the connected tap matching track_index, or None.
+
+    Master is track_index == -1 -> identity kind=="master" (or index==-1);
+    other indices match the identity's index. Identities come from the
+    registry's connected taps. (A track's live index can drift on reorder; a
+    later task may re-resolve via the LOM - for now match the reported index.)
+    """
+    for t in _tap_registry.state.tracks():
+        if track_index == -1:
+            if t.get("kind") == "master" or t.get("index") == -1:
+                return t.get("uuid")
+        elif t.get("index") == track_index:
+            return t.get("uuid")
+    return None
+
+
+def _track_name_map():
+    """Best-effort {track_index: name} (+ -1 -> 'Master') from the live set.
+
+    The tap device reports a blank name, so cross-track findings backfill
+    readable names from the LOM track index. Read-only; tolerates failure
+    (returns just the master entry if the snapshot read fails).
+    """
+    out = {-1: "Master"}
+    try:
+        raw = get_ableton_connection().send_command("get_analysis_snapshot")
+        for t in raw.get("tracks", []):
+            idx = t.get("index")
+            if idx is not None:
+                out[idx] = t.get("name")
+    except Exception as e:
+        logger.info("track name map unavailable: %s", e)
+    return out
+
+
+def _measure_pass(window_s, region=None, name_by_index=None):
+    """Reset every tap, play the set for window_s, integrate each tap's buffered
+    blocks into a per-track signal. Returns (tracks_out, sigs).
+
+    Shared by measure_mix and analyze_set(measure=True). Resets the Python-side
+    ring buffers FIRST so integration sees ONLY this window (not accumulated
+    history), then plays via the _run_measure_playback seam (stubbable in tests).
+    name_by_index backfills the device's blank name from the LOM track index.
+
+    Note: we do NOT send the device a reset command. The tap is a dumb relay
+    that streams continuously and holds no integration state (all math is
+    server-side), and the patch's inbound-reset path halts block emission - so a
+    device reset both gains nothing and silently kills the stream. Clearing the
+    server-side ring buffer is sufficient; the background registry thread refills
+    it with this window's blocks while _run_measure_playback runs.
+    """
+    name_by_index = name_by_index or {}
+    _tap_registry.state.reset()
+    try:
+        _run_measure_playback(window_s, region)
+    except Exception as e:
+        logger.info("measure pass playback seam failed: %s", e)
+    tracks_out, sigs = [], []
+    for t in _tap_registry.state.tracks():
+        uuid = t.get("uuid")
+        if uuid is None:
+            continue
+        sample_rate = t.get("sample_rate", 48000)
+        buf = _tap_registry.state.buffer(uuid)
+        signal = _integrate_buffer(buf, sample_rate)
+        index = t.get("index")
+        signal["name"] = t.get("name") or ""
+        signal["index"] = index
+        sigs.append(signal)
+        tracks_out.append({"name": signal["name"], "index": index,
+                           "kind": t.get("kind"), "signal": signal})
+    enrich_names(sigs, name_by_index)
+    for tr in tracks_out:           # mirror enriched name onto the top-level entry
+        tr["name"] = tr["signal"]["name"]
+    return tracks_out, sigs
+
+
 # Core Tool endpoints
 
 @mcp.tool()
@@ -514,15 +613,22 @@ def get_session_info(ctx: Context) -> str:
 
 
 @mcp.tool()
-def analyze_set(ctx: Context, focus: str = "all") -> str:
+def analyze_set(ctx: Context, focus: str = "all", measure: bool = False,
+                measure_window_s: float = 15.0) -> str:
     """Analyze the open Live set against curated best-practice rulesets.
 
     focus: one of "all" (default), "mixing", "mastering", "sound_design",
     "health" - selects which rule domains run.
 
+    measure: when True AND per-track MCP Tap devices are connected, run a brief
+    measure pass (plays the set for measure_window_s seconds, then stops/restores)
+    to capture audio and add a signal-backed "mix_signal" section (see below).
+    Default False keeps analyze_set read-only - the signal-backed mixing rules
+    stay deferred. measure_window_s: capture length when measure=True (default 15).
+
     Reads the whole set in one round-trip, runs the deterministic ("auto") rules,
     and returns JSON {ok, data} where data = {snapshot, findings, manual_rules,
-    deferred_rules, summary}:
+    deferred_rules, summary, [mix_signal]}:
     - snapshot: normalized per-track/return/master state (mixer, devices, clips,
       routing); master.signal carries audio-tap metering (LUFS/dBTP) when the
       MCP Audio Tap device is loaded, else null.
@@ -530,11 +636,16 @@ def analyze_set(ctx: Context, focus: str = "all") -> str:
       severity, evidence, remediation, [entity]}.
     - manual_rules: rules needing human/Claude judgment (id, domain, title, rationale).
     - deferred_rules: signal-required rules still needing metering (no audio tap
-      connected); empty for the metered domains once the tap is loaded.
+      connected / measure not run); the four mixing.* signal rules promote out of
+      here into mix_signal when a measure pass runs.
     - summary: counts by status + manual/deferred.
+    - mix_signal (only when measure=True with taps): {window_s, tracks:[{name,
+      index,kind,signal}], findings:[{id,domain,status,severity,items,evidence,
+      remediation}]} - cross-track spectral masking / loudness balance / per-track
+      headroom / stereo correlation computed from the simultaneous per-track taps.
 
-    This is read-only; it never mutates the set. The /ableton:analyze skill layers
-    the report and per-track judgment on top of this output.
+    With measure=False this is read-only; it never mutates the set. The
+    /ableton:analyze skill layers the report and per-track judgment on top.
     """
     try:
         rules = load_rulesets(focus)
@@ -552,6 +663,24 @@ def analyze_set(ctx: Context, focus: str = "all") -> str:
             logger.info("audio tap unavailable for analysis: %s", e)
         result = evaluate_rules(rules, snapshot)
         result["snapshot"] = snapshot
+        if measure and _tap_registry.state.tracks():
+            try:
+                name_by_index = {t["index"]: t["name"] for t in snapshot["tracks"]
+                                 if t.get("index") is not None}
+                name_by_index[-1] = "Master"
+                tracks_out, sigs = _measure_pass(
+                    measure_window_s, name_by_index=name_by_index)
+                mix_findings = build_mix_findings(sigs, rules)
+                result["mix_signal"] = {"window_s": measure_window_s,
+                                        "tracks": tracks_out,
+                                        "findings": mix_findings}
+                built = {f["id"] for f in mix_findings}
+                result["deferred_rules"] = [d for d in result["deferred_rules"]
+                                            if d["id"] not in built]
+                # keep the summary tally in step with the promoted-out rules
+                result["summary"]["deferred"] = len(result["deferred_rules"])
+            except Exception as e:
+                logger.info("measure pass for analyze_set failed: %s", e)
         return _ok(result)
     except Exception as e:
         logger.error(f"Error analyzing set: {str(e)}")
@@ -560,72 +689,127 @@ def analyze_set(ctx: Context, focus: str = "all") -> str:
 
 @mcp.tool()
 def get_audio_tap_status(ctx: Context) -> str:
-    """Check whether the 'MCP Audio Tap' Max-for-Live device is loaded + reachable.
+    """Report per-track tap registry connectivity.
 
-    Returns JSON {ok, data}. data.connected is True with device info
-    (sample_rate, channels) when the tap is running on 9878, else False with a
-    setup hint. Use this before read_meter/measure_loudness to guide the
-    one-time setup (drag the device onto the Master track).
+    Returns JSON {ok, data:{connected, tracks}}. connected is True when at least
+    one 'MCP Audio Tap' device is streaming into the registry on 9878; tracks is
+    the list of connected tap identities (uuid/name/index/kind + sample_rate +
+    block_count). Empty/False until a tap device is loaded onto a track.
     """
-    tap = get_audio_tap_connection()
-    try:
-        info = tap.send("ping")
-    except Exception:
-        return _ok({"connected": False,
-                    "hint": "Drop 'MCP Audio Tap' onto the Master track in Live "
-                            "(one-time setup), then retry."})
-    data = {"connected": True}
-    data.update(info)
-    return _ok(data)
+    tracks = _tap_registry.state.tracks()
+    return _ok({"connected": len(tracks) > 0, "tracks": tracks})
 
 
 @mcp.tool()
-def reset_meter(ctx: Context) -> str:
-    """Reset the audio tap's integrating meter (clears the block buffer).
+def list_taps(ctx: Context) -> str:
+    """List the connected per-track taps.
 
-    Returns JSON {ok, data:{reset:true}} or {ok:false,error} if the tap is not
-    connected. Call before playing material you want measured.
+    Returns JSON {ok, data:{count, tracks}} where tracks is the list of tap
+    identities (uuid/name/index/kind + sample_rate + block_count) currently
+    streaming into the registry.
     """
-    tap = get_audio_tap_connection()
-    try:
-        return _ok(tap.send("reset"))
-    except Exception as e:
-        return _err("audio tap not connected - %s" % e)
+    tracks = _tap_registry.state.tracks()
+    return _ok({"count": len(tracks), "tracks": tracks})
+
+
+@mcp.tool()
+def reset_meter(ctx: Context, track_index: int = None) -> str:
+    """Reset tap accumulators (clears buffered blocks).
+
+    track_index: omit to reset every connected tap; pass -1 for the master tap
+    or a track index to reset just that one. Returns JSON {ok, data:{reset:true}}.
+    Call before playing material you want measured.
+    """
+    uuid = _uuid_for_index(track_index) if track_index is not None else None
+    _tap_registry.state.reset(uuid)
+    return _ok({"reset": True})
+
+
+def _integrate_buffer(buf, sample_rate):
+    """Turn a tap's buffered 100 ms blocks into a per-track signal summary.
+
+    Each block is {ms_k_l, ms_k_r, peak, rms, ...}. The K-weighted mean-squares
+    feed loudness_utils EXACTLY as compute_metrics does (we build the same
+    read_payload shape and reuse it), with the per-block linear `peak` mapped to
+    `tp` so true_peak_dbtp is computed from it. peak/rms here are the linear
+    domain values: peak = max block peak, rms = the most recent block's rms
+    (representative of the current signal); crest = peak/rms in dB.
+    """
+    payload = {
+        "sample_rate": sample_rate,
+        "block_count": len(buf),
+        "blocks": [{"ms_k_l": b.get("ms_k_l"), "ms_k_r": b.get("ms_k_r"),
+                    "tp": b.get("peak")} for b in buf],
+        "peak": max((b.get("peak") or 0.0 for b in buf), default=0.0) if buf else None,
+        "rms": buf[-1].get("rms") if buf else None,
+    }
+    metrics = compute_metrics(payload)
+    peak = payload["peak"]
+    rms = payload["rms"]
+    crest = None
+    if peak and rms and rms > 0:
+        crest = round(20.0 * math.log10(peak / rms), 1)
+    stereo = stereo_metrics(buf)
+    return {
+        "integrated_lufs": metrics["integrated_lufs"],
+        "momentary_lufs": metrics["momentary_lufs"],
+        "short_term_lufs": metrics["short_term_lufs"],
+        "true_peak_dbtp": metrics["true_peak_dbtp"],
+        "peak": peak,
+        "rms": rms,
+        "crest": crest,
+        "bands": integrate_bands(buf),
+        "width": stereo["width"],
+        "correlation": stereo["correlation"],
+        "block_count": len(buf),
+        "sample_rate": sample_rate,
+    }
+
+
+@mcp.tool()
+def read_track_meter(ctx: Context, track_index: int = -1) -> str:
+    """Integrate a track's buffered tap blocks into a signal summary.
+
+    track_index: -1 for the master tap (default), or a track index whose 'MCP
+    Audio Tap' device is streaming. Returns JSON {ok, data:{integrated_lufs,
+    momentary_lufs, short_term_lufs, true_peak_dbtp, peak, rms, crest,
+    block_count, sample_rate}}. LUFS/dBTP are computed via BS.1770 gating over
+    the buffered 100 ms K-weighted blocks (loudness fields are null until enough
+    blocks exist - momentary needs 0.4 s, short-term 3 s). peak/rms are linear;
+    crest is peak-to-rms in dB. An empty buffer returns ok with block_count 0 and
+    null metrics. {ok:false,error} if no tap is connected for that track.
+    """
+    uuid = _uuid_for_index(track_index)
+    if uuid is None:
+        return _err("No tap connected for track %s" % track_index)
+    sample_rate = 48000
+    for t in _tap_registry.state.tracks():
+        if t.get("uuid") == uuid:
+            sample_rate = t.get("sample_rate", 48000)
+            break
+    buf = _tap_registry.state.buffer(uuid)
+    return _ok(_integrate_buffer(buf, sample_rate))
 
 
 @mcp.tool()
 def read_meter(ctx: Context) -> str:
-    """Read the audio tap's master-bus metering since the last reset.
+    """Master tap signal summary (compat shim for read_track_meter(-1)).
 
-    Returns JSON {ok, data} where data = {integrated_lufs, short_term_lufs,
-    momentary_lufs, true_peak_dbtp, peak_dbfs, rms_dbfs, block_count,
-    duration_s}. LUFS fields are null until enough audio has played (momentary
-    needs >=400 ms, short-term >=3 s; integrated null if all blocks were
-    silent). Returns {ok:false,error} if the tap is not connected.
+    Delegates to read_track_meter for the master tap. Returns JSON {ok, data}
+    with the integrated/momentary/short-term LUFS, true-peak dBTP, linear
+    peak/rms, crest, block_count and sample_rate. {ok:false,error} if no master
+    tap is connected.
     """
-    tap = get_audio_tap_connection()
-    try:
-        payload = tap.send("read")
-    except Exception as e:
-        return _err("audio tap not connected - %s" % e)
-    return _ok(compute_metrics(payload))
+    return read_track_meter(ctx, track_index=-1)
 
 
-@mcp.tool()
-def measure_loudness(ctx: Context, seconds: float = None) -> str:
-    """Reset the meter, play the set, wait, and read back master loudness.
+def _run_measure_playback(seconds, region=None):
+    """Playback seam for measure_loudness: start the transport, wait, stop.
 
-    seconds: how long to capture (default 10.0). For an integrated-loudness pass
-    over a whole song, pass its length. Returns the same payload as read_meter
-    plus data.played (False if the transport did not advance - e.g. nothing to
-    play - so a bogus reading is not mistaken for real). {ok:false,error} if the
-    tap is not connected.
+    Isolated so tests can monkeypatch it (no Live needed). Returns True if the
+    transport advanced (so a bogus reading isn't mistaken for real), else False.
+    region is reserved for a future arrangement-window capture.
     """
-    tap = get_audio_tap_connection()
-    try:
-        tap.send("reset")
-    except Exception as e:
-        return _err("audio tap not connected - %s" % e)
     ableton = get_ableton_connection()
     try:
         start_t = ableton.send_command("get_transport").get("current_song_time", 0.0)
@@ -638,9 +822,201 @@ def measure_loudness(ctx: Context, seconds: float = None) -> str:
         end_t = ableton.send_command("get_transport").get("current_song_time", start_t)
     except Exception:
         end_t = start_t
-    metrics = compute_metrics(tap.send("read"))
-    metrics["played"] = end_t > start_t
+    return end_t > start_t
+
+
+@mcp.tool()
+def measure_loudness(ctx: Context, seconds: float = None) -> str:
+    """Reset the master meter, play the set, wait, and read back loudness.
+
+    seconds: how long to capture (default 10.0). For an integrated-loudness pass
+    over a whole song, pass its length. Returns the same signal-summary payload
+    as read_meter plus data.played (False if the transport did not advance - e.g.
+    nothing to play - so a bogus reading is not mistaken for real).
+    {ok:false,error} if no master tap is connected.
+    """
+    uuid = _uuid_for_index(-1)
+    if uuid is None:
+        return _err("No master tap connected")
+    sample_rate = 48000
+    for t in _tap_registry.state.tracks():
+        if t.get("uuid") == uuid:
+            sample_rate = t.get("sample_rate", 48000)
+            break
+    _tap_registry.state.reset(uuid)
+    played = _run_measure_playback(seconds)
+    buf = _tap_registry.state.buffer(uuid)
+    metrics = _integrate_buffer(buf, sample_rate)
+    metrics["played"] = played
     return _ok(metrics)
+
+
+@mcp.tool()
+def measure_mix(ctx: Context, window_s: float = 15.0, region: str = None) -> str:
+    """Timed multi-track measure pass -> per-track signals + cross-track findings.
+
+    Resets every connected tap, plays the set for window_s seconds (via the same
+    transport seam as measure_loudness), then integrates each tap's buffered
+    blocks into a per-track signal (LUFS/dBTP/peak/rms/crest plus the 8-band
+    spectrum and stereo width/correlation). region is reserved for a future
+    arrangement-window capture.
+
+    Returns JSON {ok, data:{window_s, tracks, findings}}:
+    - tracks: [{name, index, kind, signal:{...}}] one per connected tap.
+    - findings: cross-track analysis from masking_utils -
+      masking (pairwise spectral overlap), balance (tracks sitting too far below
+      the loudest), headroom (near-clip / over-compressed), stereo (mono-compat
+      risk). Each is a (possibly empty) list.
+
+    With no taps connected this still returns ok with empty tracks + empty
+    findings (not an error). Track names blank-reported by the device are
+    backfilled from the LOM track index.
+    """
+    name_by_index = _track_name_map()
+    tracks_out, sigs = _measure_pass(window_s, region, name_by_index)
+    findings = {
+        "masking": masking_score(sigs),
+        "balance": loudness_balance(sigs),
+        "headroom": headroom_flags(sigs),
+        "stereo": stereo_flags(sigs),
+    }
+    return _ok({"window_s": window_s, "tracks": tracks_out, "findings": findings})
+
+
+# Name the tap device carries when loaded in Live (the .amxd is "MCP Tap.amxd").
+TAP_DEVICE_NAME = "MCP Tap"
+# Browser folder under which the MCP Tap device is indexed once added to the
+# User Library. A user .amxd must be dragged into Live's browser (which copies
+# it AND registers it in Live's content DB); a manual file-copy alone is not
+# indexed. Confirmed by spike 0.1: the device resolves under the User Library
+# "Max Audio Effect" presets folder, not the max_for_live category (that lists
+# only the stock blank template). deploy_taps degrades to a manual-drag hint if
+# the load path can't resolve it.
+TAP_BROWSER_PATH = "user_library/Presets/Audio Effects/Max Audio Effect"
+
+
+def _audio_instrument_track_indices():
+    """Regular tracks worth tapping: audio tracks + instrument-bearing MIDI
+    tracks. Reads the analysis snapshot and returns their indices."""
+    raw = get_ableton_connection().send_command("get_analysis_snapshot")
+    out = []
+    for t in raw.get("tracks", []):
+        idx = t.get("index")
+        if idx is None:
+            continue
+        if t.get("type") == "audio" or t.get("has_instrument"):
+            out.append(idx)
+    return out
+
+
+def _load_tap_on_track(track_index):
+    """Browser-load the User-Library MCP Tap device onto a track.
+
+    Resolves the device in the browser via get_browser_presets +
+    match_recursive_preset, then load_browser_item. Raises on any failure so
+    deploy_taps can record it (and fall back to a manual-drag hint).
+    """
+    ableton = get_ableton_connection()
+    presets_result = ableton.send_command("get_browser_presets",
+                                           {"path": TAP_BROWSER_PATH})
+    if "error" in presets_result:
+        raise RuntimeError(presets_result.get("error"))
+    chosen = match_recursive_preset(presets_result.get("presets", []), TAP_DEVICE_NAME)
+    uri = chosen.get("uri")
+    if not uri:
+        raise RuntimeError("MCP Tap device has no loadable URI")
+    res = ableton.send_command("load_browser_item",
+                               {"track_index": track_index, "item_uri": uri})
+    if not res.get("loaded", False):
+        raise RuntimeError("load_browser_item did not confirm")
+    return chosen.get("relative_path") or chosen.get("name") or TAP_DEVICE_NAME
+
+
+def _find_taps():
+    """Return [(track_index, device_index)] for every loaded MCP Tap device."""
+    raw = get_ableton_connection().send_command("get_analysis_snapshot")
+    out = []
+    for t in raw.get("tracks", []):
+        ti = t.get("index")
+        if ti is None:
+            continue
+        for d in t.get("devices", []):
+            if d.get("name") == TAP_DEVICE_NAME and d.get("index") is not None:
+                out.append((ti, d.get("index")))
+    return out
+
+
+def _delete_device_raw(track_index, device_index):
+    """Delete one device (regular track) over the wire. Raises on failure."""
+    get_ableton_connection().send_command(
+        "delete_device",
+        {"track_index": track_index, "device_index": device_index,
+         "track_type": "regular"})
+
+
+@mcp.tool()
+def deploy_taps(ctx: Context, track_indices: List[int] = None) -> str:
+    """Load the MCP Tap metering device onto tracks for per-track analysis.
+
+    track_indices: omit to auto-target every regular audio track + every MIDI
+    track holding an instrument; or pass explicit track indices. The device must
+    be present in the User Library (copy m4l/'MCP Tap.amxd' there once); see
+    m4l/README.md.
+
+    Returns JSON {ok, data:{targets, deployed:[{track_index,device}],
+    failed:[{track_index,error}]}}. If EVERY load fails (e.g. the device isn't in
+    the browser), data.manual is true with a drag-it-yourself message listing the
+    target tracks - the registry still works once the device is dragged on by
+    hand. After deploying, run measure_mix or analyze_set(measure=True).
+    """
+    try:
+        targets = (_audio_instrument_track_indices() if track_indices is None
+                   else list(track_indices))
+        deployed, failed = [], []
+        for i in targets:
+            try:
+                label = _load_tap_on_track(i)
+                deployed.append({"track_index": i, "device": label})
+            except Exception as e:
+                failed.append({"track_index": i, "error": str(e)})
+        data = {"targets": targets, "deployed": deployed, "failed": failed}
+        if targets and not deployed:
+            data["manual"] = True
+            data["message"] = (
+                "Could not auto-load the tap (is 'MCP Tap.amxd' in your User "
+                "Library?). Drag 'MCP Tap' from the browser onto these tracks: %s"
+                % targets)
+        return _ok(data)
+    except Exception as e:
+        logger.error("Error deploying taps: %s", e)
+        return _err("Error deploying taps: %s" % e)
+
+
+@mcp.tool()
+def remove_taps(ctx: Context) -> str:
+    """Remove every loaded MCP Tap device from the set (delete by name match).
+
+    Scans all regular tracks for devices named 'MCP Tap' and deletes them
+    (per-track, highest device index first so re-indexing is safe). Returns JSON
+    {ok, data:{removed_count, removed:[{track_index,device_index}], errors:[...]}}.
+    No-op (removed_count 0) when none are loaded.
+    """
+    try:
+        found = _find_taps()
+        # delete highest device_index first within each track so re-indexing
+        # never shifts a still-pending target on the same track.
+        ordered = sorted(found, key=lambda p: (p[0], -p[1]))
+        removed, errors = [], []
+        for ti, di in ordered:
+            try:
+                _delete_device_raw(ti, di)
+                removed.append({"track_index": ti, "device_index": di})
+            except Exception as e:
+                errors.append({"track_index": ti, "device_index": di, "error": str(e)})
+        return _ok({"removed_count": len(removed), "removed": removed, "errors": errors})
+    except Exception as e:
+        logger.error("Error removing taps: %s", e)
+        return _err("Error removing taps: %s" % e)
 
 
 @mcp.tool()

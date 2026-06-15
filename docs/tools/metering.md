@@ -8,7 +8,7 @@ nav_order: 15
 # Metering (Audio Tap)
 {: .no_toc }
 
-Read master-bus loudness/true-peak from the MCP Audio Tap Max-for-Live device.
+Per-track and master loudness/true-peak/spectrum/stereo from the MCP Tap Max-for-Live devices, plus cross-track mix analysis.
 
 <details open markdown="block">
   <summary>Tools on this page</summary>
@@ -25,23 +25,36 @@ Read master-bus loudness/true-peak from the MCP Audio Tap Max-for-Live device.
 get_audio_tap_status()
 ```
 
-Check whether the 'MCP Audio Tap' Max-for-Live device is loaded + reachable.
+Report per-track tap registry connectivity.
 
-Returns JSON {ok, data}. data.connected is True with device info
-(sample_rate, channels) when the tap is running on 9878, else False with a
-setup hint. Use this before read_meter/measure_loudness to guide the
-one-time setup (drag the device onto the Master track).
+Returns JSON {ok, data:{connected, tracks}}. connected is True when at least
+one 'MCP Audio Tap' device is streaming into the registry on 9878; tracks is
+the list of connected tap identities (uuid/name/index/kind + sample_rate +
+block_count). Empty/False until a tap device is loaded onto a track.
+
+## list_taps
+
+```python
+list_taps()
+```
+
+List the connected per-track taps.
+
+Returns JSON {ok, data:{count, tracks}} where tracks is the list of tap
+identities (uuid/name/index/kind + sample_rate + block_count) currently
+streaming into the registry.
 
 ## reset_meter
 
 ```python
-reset_meter()
+reset_meter(track_index: int = None)
 ```
 
-Reset the audio tap's integrating meter (clears the block buffer).
+Reset tap accumulators (clears buffered blocks).
 
-Returns JSON {ok, data:{reset:true}} or {ok:false,error} if the tap is not
-connected. Call before playing material you want measured.
+track_index: omit to reset every connected tap; pass -1 for the master tap
+or a track index to reset just that one. Returns JSON {ok, data:{reset:true}}.
+Call before playing material you want measured.
 
 ## read_meter
 
@@ -49,13 +62,29 @@ connected. Call before playing material you want measured.
 read_meter()
 ```
 
-Read the audio tap's master-bus metering since the last reset.
+Master tap signal summary (compat shim for read_track_meter(-1)).
 
-Returns JSON {ok, data} where data = {integrated_lufs, short_term_lufs,
-momentary_lufs, true_peak_dbtp, peak_dbfs, rms_dbfs, block_count,
-duration_s}. LUFS fields are null until enough audio has played (momentary
-needs >=400 ms, short-term >=3 s; integrated null if all blocks were
-silent). Returns {ok:false,error} if the tap is not connected.
+Delegates to read_track_meter for the master tap. Returns JSON {ok, data}
+with the integrated/momentary/short-term LUFS, true-peak dBTP, linear
+peak/rms, crest, block_count and sample_rate. {ok:false,error} if no master
+tap is connected.
+
+## read_track_meter
+
+```python
+read_track_meter(track_index: int = -1)
+```
+
+Integrate a track's buffered tap blocks into a signal summary.
+
+track_index: -1 for the master tap (default), or a track index whose 'MCP
+Audio Tap' device is streaming. Returns JSON {ok, data:{integrated_lufs,
+momentary_lufs, short_term_lufs, true_peak_dbtp, peak, rms, crest,
+block_count, sample_rate}}. LUFS/dBTP are computed via BS.1770 gating over
+the buffered 100 ms K-weighted blocks (loudness fields are null until enough
+blocks exist - momentary needs 0.4 s, short-term 3 s). peak/rms are linear;
+crest is peak-to-rms in dB. An empty buffer returns ok with block_count 0 and
+null metrics. {ok:false,error} if no tap is connected for that track.
 
 ## measure_loudness
 
@@ -63,11 +92,68 @@ silent). Returns {ok:false,error} if the tap is not connected.
 measure_loudness(seconds: float = None)
 ```
 
-Reset the meter, play the set, wait, and read back master loudness.
+Reset the master meter, play the set, wait, and read back loudness.
 
 seconds: how long to capture (default 10.0). For an integrated-loudness pass
-over a whole song, pass its length. Returns the same payload as read_meter
-plus data.played (False if the transport did not advance - e.g. nothing to
-play - so a bogus reading is not mistaken for real). {ok:false,error} if the
-tap is not connected.
+over a whole song, pass its length. Returns the same signal-summary payload
+as read_meter plus data.played (False if the transport did not advance - e.g.
+nothing to play - so a bogus reading is not mistaken for real).
+{ok:false,error} if no master tap is connected.
+
+## measure_mix
+
+```python
+measure_mix(window_s: float = 15.0, region: str = None)
+```
+
+Timed multi-track measure pass -> per-track signals + cross-track findings.
+
+Resets every connected tap, plays the set for window_s seconds (via the same
+transport seam as measure_loudness), then integrates each tap's buffered
+blocks into a per-track signal (LUFS/dBTP/peak/rms/crest plus the 8-band
+spectrum and stereo width/correlation). region is reserved for a future
+arrangement-window capture.
+
+Returns JSON {ok, data:{window_s, tracks, findings}}:
+- tracks: [{name, index, kind, signal:{...}}] one per connected tap.
+- findings: cross-track analysis from masking_utils -
+  masking (pairwise spectral overlap), balance (tracks sitting too far below
+  the loudest), headroom (near-clip / over-compressed), stereo (mono-compat
+  risk). Each is a (possibly empty) list.
+
+With no taps connected this still returns ok with empty tracks + empty
+findings (not an error). Track names blank-reported by the device are
+backfilled from the LOM track index.
+
+## deploy_taps
+
+```python
+deploy_taps(track_indices: List[int] = None)
+```
+
+Load the MCP Tap metering device onto tracks for per-track analysis.
+
+track_indices: omit to auto-target every regular audio track + every MIDI
+track holding an instrument; or pass explicit track indices. The device must
+be present in the User Library (copy m4l/'MCP Tap.amxd' there once); see
+m4l/README.md.
+
+Returns JSON {ok, data:{targets, deployed:[{track_index,device}],
+failed:[{track_index,error}]}}. If EVERY load fails (e.g. the device isn't in
+the browser), data.manual is true with a drag-it-yourself message listing the
+target tracks - the registry still works once the device is dragged on by
+hand. After deploying, run measure_mix or analyze_set(measure=True).
+
+## remove_taps
+
+```python
+remove_taps()
+```
+
+Remove every loaded MCP Tap device from the set (delete by name match).
+
+Scans all regular tracks for devices named 'MCP Tap' and deletes them
+(per-track, highest device index first so re-indexing is safe). Returns JSON
+{ok, data:{removed_count, removed:[{track_index,device_index}], errors:[...]}}.
+No-op (removed_count 0) when none are loaded.
 

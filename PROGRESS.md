@@ -1,5 +1,98 @@
 # ableton-mcp-max — Progress
 
+**PER-TRACK SIGNAL TAPS via a general bridge - IN PROGRESS (branch `feat/per-track-taps-bridge`, 2026-06-14).**
+Replaces the v0.7.0 master tap with a self-identifying M4L device family reporting to a Python-hosted TCP
+**registry** (one socket, port 9878; devices are CLIENTS that announce identity + stream stats). Targets
+**v0.8.0 (BREAKING device change)**. Spec `docs/superpowers/specs/2026-06-13-per-track-signal-taps-bridge-design.md`,
+plan `docs/superpowers/plans/2026-06-13-per-track-signal-taps-bridge.md`. Subagent-driven (spec+quality review each task).
+- **PHASE 1 (bridge + levels device) COMPLETE + LIVE-VERIFIED 2026-06-14.** Offline **454 passed**. Commits:
+  `tap_registry.py` (`parse_frames` + thread-safe `TapState` ring buffers + `TapRegistry` TCP server w/
+  testable `feed()` seam + disconnect eviction); server.py hosts `_tap_registry` on 9878, `_uuid_for_index`,
+  reimplemented `get_audio_tap_status`/`reset_meter`/`read_meter` + new `list_taps`/`read_track_meter` +
+  registry-backed `measure_loudness` (playback behind `_run_measure_playback` seam); device
+  `m4l/MCP Tap.amxd` + `registry-client.js` + `MCP Tap.maxpat` (@7a69dd2).
+- **SPIKE 0.2 (device self-id) PASSED.** Live-verified: device on track "3-Audio" reported `index:2 kind:regular`;
+  moved to Master reported `index:-1 kind:master`. read_track_meter(-1) with a live Analog chord returned
+  integrated **-17.0 LUFS**, momentary -13.3, short-term -15.8, true-peak -5.4 dBTP (peak 0.538, self-consistent).
+  Silence -> nulls + peak 0, blocks still streaming. **The client-inversion (device->registry) + block streaming
+  + server tools all proven end to end.**
+- **M4L SELF-ID RECIPE (hard-won, 6 device iterations):** `live.path this_device` ONLY emits the device `id`
+  (no path output on ANY outlet - confirmed by latch+resend diagnostic). Resolve the track instead via
+  `live.object` `get canonical_parent` -> track LOM id, then `live.object`(`live_set`) `get tracks`/
+  `get return_tracks`/`get master_track` -> find the track id's POSITION in those lists = (index, kind).
+  Use `live.thisdevice` (NOT `loadbang`) to trigger, and a `metro` (NOT one-shot) so the identity re-sends
+  past the ~1-2s Node-for-Max boot (a one-shot message is dropped: "Node script not ready"). Diagnostic
+  channel = stuff raw tokens into an identity `debug` field surfaced by `list_taps`.
+- **KNOWN PHASE-1 GAP:** the device sends no RMS (grafted v0.7.0 chain has no RMS tap) -> read_track_meter
+  `rms`/`crest` are null; `bands`/`mid`/`side` are zeroed. RMS + 8-band spectrum + stereo land in the Phase 2/3
+  DSP rework (the `block` frame already reserves the slots).
+- **PHASE 2/3/4 PURE-PYTHON CORE COMPLETE + offline-tested (2026-06-14, offline 480 passed).** Built
+  subagent-driven (spec+quality review each): `spectrum_utils.py` (`integrate_bands` + `band_profile_db`
+  power-dB profile + `stereo_metrics` width/correlation); `masking_utils.py` (`masking_score` cosine overlap,
+  `loudness_balance`, `headroom_flags`, `stereo_flags`); `measure_mix` MCP tool (reset-all-buffers ->
+  `_run_measure_playback` seam -> read -> per-track signal via extended `_integrate_buffer` [now also emits
+  bands/width/correlation] -> cross-track findings). `read_track_meter` additively gained bands/width/correlation.
+  Reset-first ordering bug caught + fixed in review (measure_mix must reset before the capture window, else it
+  integrates stale history; regression test `test_measure_mix_resets_stale_buffer_before_capture`).
+- **PHASE 4.3 - DONE (Python core, offline 489 passed, @43266eb 2026-06-14; LIVE-VERIFY of measure=True
+    PENDING with Phase 5).** Decision RESOLVED (user picked "opt-in flag"): the 4 cross-track checks surface
+    as a separate analyze_set `mix_signal` section, NOT forced through the `evaluate_rules` predicate engine.
+    Added 4 rules to `mixing.json` (`mixing.spectral_masking`/`loudness_balance`/`headroom_per_track`/
+    `stereo_correlation`) - all `mode:deferred` + `signal_required:true` + `signal_kind:mix`, thresholds in
+    a `params` dict, rationale/remediation/source (4 new anchors in sources.md). Pure helpers in
+    `masking_utils.py`: `build_mix_findings(sigs, rules)` (maps rule id -> cross-track fn, reads params,
+    status pass/severity) + `enrich_names(sigs, name_by_index)` (backfills blank device names from the LOM
+    index). `analyze_set` gained `measure: bool = False` + `measure_window_s`: when True AND taps connected it
+    runs a shared `_measure_pass` (plays the set via the `_run_measure_playback` seam), emits `mix_signal`
+    {window_s, tracks, findings}, and PROMOTES the 4 ids out of `deferred_rules` (summary tally kept in step).
+    **Default measure=False stays READ-ONLY** (no playback) - that was the user's chosen contract. `measure_mix`
+    refactored onto `_measure_pass`; both enrich names via `_track_name_map()` (best-effort get_analysis_snapshot
+    index->name, master=-1). `registry-client.js` inbound `{"command":"reset"}` handler already present.
+    Code review (feature-dev:code-reviewer) found + FIXED a stale `summary.deferred` count after promotion; all
+    other paths verified clean (no double-defer, params/kwargs aligned, read-only default holds, mutation mirror
+    correct). NEXT live check: drop taps on 2+ tracks, `analyze_set(measure=True)` -> mix_signal with real
+    findings + readable names + the 4 rules promoted out of deferred.
+  - **Phase 2/3 DEVICE DSP - DONE + LIVE-VERIFIED 2026-06-14 (@0aa8797).** Added to `MCP Tap.amxd`: wideband
+    RMS + mid/side (square->average~4800->snapshot~), and an 8-band spectrum via **`fffb~ 8 40 2.4 3.`** (fast
+    fixed filter bank fed from the mono mid signal) -> square/average/snapshot per band -> pak slots 5-12.
+    Pak expanded to 14 floats (block ms_l ms_r peak rms b0..b7 mid side); registry-client already mapped all 14.
+    **LIVE measure_mix verified:** master chord -> bands peak in low_mid (band 2), width 0/correlation 1 (centered);
+    two overlapping low-register chords on tracks 0+1 -> per-track signals + **masking score 0.986** (correctly high).
+    rms/crest now populate (master crest ~20, per-track ~28). Stage built in 2 grafts (RMS+stereo, then fffb~).
+    KNOWN: device reports empty track `name` -> measure_mix findings show `a:""/b:""`; Phase 4.3 must ENRICH
+    names from the track index via the LOM for readable reports.
+  - **PHASE 5 + LIVE-VERIFY - COMPLETE 2026-06-15 (offline 494 passed). RELEASE PENDING.**
+    `deploy_taps`/`remove_taps` shipped (server.py): deploy browser-loads the User-Library `MCP Tap` onto
+    every audio/instrument track (or explicit indices) with a manual-drag fallback if not indexed; remove
+    deletes every `MCP Tap` by name (highest device index first). Seams
+    `_audio_instrument_track_indices`/`_load_tap_on_track`/`_find_taps`/`_delete_device_raw` are stubbable.
+    **LIVE-VERIFIED end-to-end vs Live 11.3.43:** deploy_taps auto-loaded all 4 tracks (no fallback),
+    devices resolved index 0/1/2/3 + streamed, `analyze_set(measure=True)` returned real `mix_signal`
+    (1-Analog -16.9 LUFS / 2-Analog -16.7, **spectral_masking 0.991** between them), all 4 mixing rules
+    promoted out of deferred, summary.deferred=0, names enriched; remove_taps cleared all 4.
+    **THREE bugs found + fixed during live-verify:** (1) `TAP_BROWSER_PATH` was a wrong guess
+    `max_for_live/Max Audio Effect` (lists only the stock template) -> corrected to
+    `user_library/Presets/Audio Effects/Max Audio Effect`. (2) `_measure_pass` sent the device a `reset`
+    command that halted the patch's block stream (tap is a dumb relay, no device-side state) -> removed the
+    device-reset loop; resets only the server-side buffer now (matches `measure_loudness`). (3) the `.amxd`
+    was UNFROZEN -> when browser-loaded from the User Library it connected Node but couldn't resolve
+    `registry-client.js`+deps, so the patcher loaded only partially (identity -99, no blocks). **Froze the
+    device in Max -> self-contained 37108-byte `.amxd`.** Install docs corrected: DRAG the `.amxd` into
+    Live's browser to register it in the content DB (a plain file-copy is NOT indexed); freeze before ship.
+    See memory `m4l-tap-packaging-gotchas`. Docs done:
+    tool count **112 -> 117** (15 categories unchanged), `commands/tool-index.md` + `docs/tools/**`
+    regenerated, 5 hardcoded `docs/index.md` counts bumped, README + `m4l/README.md` updated (registry
+    model, deploy_taps, completed DSP, v0.7.0 migration note), `/ableton:analyze` skill now offers the
+    opt-in measure pass + Mix signal report section. **RELEASE (Task 5.4) REMAINING:** commit the
+    live-verify fixes (server.py, m4l/MCP Tap.amxd, m4l/README.md, README.md, PROGRESS.md), then PR +
+    v0.8.0 (BREAKING device change; bump pyproject/plugin.json + `uv lock`, `gh release create v0.8.0`,
+    marketplace `ableton` ref bump + `node scripts/build-readme.js` - confirm latest shipped tag first via
+    `gh release list`).
+  - Deferred test nits: masking_utils `or True` tautology + boundary/precedence tests; `_uuid_for_index` could
+    return the track dict; measure_mix `crest` uses last-block rms; findings carry `name` not `index`.
+
+---
+
 **M4L AUDIO TAP - SHIPPED in v0.7.0 (2026-06-13).** PR #19 squash-merged to `main` (@67b1d1d) -> version
 bump @7b04b67; `gh release create v0.7.0`; marketplace `ableton` ref bumped v0.6.0 -> v0.7.0 + README
 rebuilt + pushed @87d4cac in robworks-claude-code-plugins. Tool count 108 -> 112 (new "Metering" category).
