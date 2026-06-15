@@ -1,8 +1,10 @@
 # ableton-mcp-max — Progress
 
-**PER-TRACK SIGNAL TAPS via a general bridge - IN PROGRESS (branch `feat/per-track-taps-bridge`, 2026-06-14).**
+**PER-TRACK SIGNAL TAPS via a general bridge - SHIPPED as v0.8.0 (2026-06-15).** PR #20 squash-merged to
+`main` (@9b85c0c); `gh release create v0.8.0`; marketplace `ableton` ref bumped v0.7.0 -> v0.8.0 + README
+rebuilt + pushed (@15c0981 in robworks-claude-code-plugins). Live-verified end-to-end (see the Phase 5 entry).
 Replaces the v0.7.0 master tap with a self-identifying M4L device family reporting to a Python-hosted TCP
-**registry** (one socket, port 9878; devices are CLIENTS that announce identity + stream stats). Targets
+**registry** (one socket, port 9878; devices are CLIENTS that announce identity + stream stats). Shipped as
 **v0.8.0 (BREAKING device change)**. Spec `docs/superpowers/specs/2026-06-13-per-track-signal-taps-bridge-design.md`,
 plan `docs/superpowers/plans/2026-06-13-per-track-signal-taps-bridge.md`. Subagent-driven (spec+quality review each task).
 - **PHASE 1 (bridge + levels device) COMPLETE + LIVE-VERIFIED 2026-06-14.** Offline **454 passed**. Commits:
