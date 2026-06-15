@@ -12,8 +12,9 @@ toward broad Live Object Model coverage.
 3. `bash scripts/register_mcp.sh` - registers the MCP server with Claude Code.
 4. Restart Claude Code.
 
-**Optional - per-track + master metering:** copy `m4l/MCP Tap.amxd` into your User
-Library, then `deploy_taps` (or drag it) onto tracks - and the Master - to unlock
+**Optional - per-track + master metering:** drag `m4l/MCP Tap.amxd` into Live's
+browser (onto User Library) once - a plain file-copy isn't indexed by the browser
+- then `deploy_taps` (or drag it) onto tracks - and the Master - to unlock
 loudness/true-peak/spectrum/stereo metering (Live Suite / Max for Live). See
 `m4l/README.md`. The taps stream into a registry that feeds `read_track_meter`/
 `measure_loudness`/`measure_mix`, the `analyze_set` mastering rules, and the

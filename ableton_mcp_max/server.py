@@ -562,18 +562,18 @@ def _measure_pass(window_s, region=None, name_by_index=None):
 
     Shared by measure_mix and analyze_set(measure=True). Resets the Python-side
     ring buffers FIRST so integration sees ONLY this window (not accumulated
-    history), best-effort flushes each device, then plays via the
-    _run_measure_playback seam (stubbable in tests). name_by_index backfills the
-    device's blank name from the LOM track index.
+    history), then plays via the _run_measure_playback seam (stubbable in tests).
+    name_by_index backfills the device's blank name from the LOM track index.
+
+    Note: we do NOT send the device a reset command. The tap is a dumb relay
+    that streams continuously and holds no integration state (all math is
+    server-side), and the patch's inbound-reset path halts block emission - so a
+    device reset both gains nothing and silently kills the stream. Clearing the
+    server-side ring buffer is sufficient; the background registry thread refills
+    it with this window's blocks while _run_measure_playback runs.
     """
     name_by_index = name_by_index or {}
     _tap_registry.state.reset()
-    by_conn = dict(getattr(_tap_registry.state, "_by_conn", {}))
-    for cid in by_conn:
-        try:
-            _tap_registry.send_command(cid, "reset")
-        except Exception:
-            pass
     try:
         _run_measure_playback(window_s, region)
     except Exception as e:
@@ -885,10 +885,14 @@ def measure_mix(ctx: Context, window_s: float = 15.0, region: str = None) -> str
 
 # Name the tap device carries when loaded in Live (the .amxd is "MCP Tap.amxd").
 TAP_DEVICE_NAME = "MCP Tap"
-# Browser folder under which the MCP Tap device is indexed once copied into the
-# User Library. Confirmed/refined by spike 0.1; deploy_taps degrades to a
-# manual-drag hint if the load path can't resolve it.
-TAP_BROWSER_PATH = "max_for_live/Max Audio Effect"
+# Browser folder under which the MCP Tap device is indexed once added to the
+# User Library. A user .amxd must be dragged into Live's browser (which copies
+# it AND registers it in Live's content DB); a manual file-copy alone is not
+# indexed. Confirmed by spike 0.1: the device resolves under the User Library
+# "Max Audio Effect" presets folder, not the max_for_live category (that lists
+# only the stock blank template). deploy_taps degrades to a manual-drag hint if
+# the load path can't resolve it.
+TAP_BROWSER_PATH = "user_library/Presets/Audio Effects/Max Audio Effect"
 
 
 def _audio_instrument_track_indices():

@@ -12,10 +12,14 @@ stats to a Python-hosted **registry** inside the MCP server over TCP
 
 ## Install / use
 1. Ensure Ableton Live **Suite** (Max for Live) is installed.
-2. Copy `MCP Tap.amxd` into your User Library once so the browser indexes it,
-   then `deploy_taps` to load it onto every audio/instrument track (and the
-   Master) - or drag `MCP Tap.amxd` on by hand. Leave it enabled. `remove_taps`
-   clears them all.
+2. **Drag `MCP Tap.amxd` into Live's browser** (onto **User Library** in the
+   Places list) once. This both copies it into the User Library *and* registers
+   it in Live's content database - a plain Finder file-copy into the folder is
+   NOT picked up by the browser/`deploy_taps`. Then run `deploy_taps` to load it
+   onto every audio/instrument track (and the Master), or drag `MCP Tap.amxd` on
+   by hand. Leave it enabled; `remove_taps` clears them all. (The shipped device
+   is **frozen** = self-contained, so it loads + initializes correctly from the
+   User Library; an unfrozen build connects but never streams.)
 3. Run `get_audio_tap_status` / `list_taps` - each device appears with its
    resolved `index` + `kind` (`regular` / `return` / `master`).
 4. `read_track_meter(track_index)` reads that track's signal summary
@@ -52,6 +56,15 @@ chain onto a known-good M4L wrapper (the `.amxd` is `ampf`/`meta`/`ptch` chunks
 around the patcher JSON; keep the template `plugin~`/`plugout~` + wrapper, swap
 `boxes`/`lines`). `MCP Tap.maxpat` is the editable patcher source;
 `registry-client.js` is the relay source of truth.
+
+**Freeze before shipping (critical).** After editing the patch / rebuilding the
+`.amxd`, open it in the Max editor and **Freeze** the device (snowflake button),
+then save. Freezing bundles `registry-client.js` (and any other deps) into the
+`.amxd`. An UNFROZEN device only works when loaded from a folder that also holds
+`registry-client.js` (e.g. this `m4l/` dir via a Finder drag); loaded from the
+User Library it can't resolve its deps, so the patcher loads only partially -
+the Node client connects but identity stays `-99` and no audio blocks ever
+stream. The shipped `MCP Tap.amxd` is frozen for exactly this reason.
 
 Live gotchas: `live.path this_device` only ever emits the device's `id` (no path
 output) - resolve the track via `live.object` `get canonical_parent` +
