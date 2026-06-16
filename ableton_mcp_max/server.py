@@ -9,6 +9,7 @@ import gzip
 import glob
 import math
 import time
+import subprocess
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, List, Optional, Union
@@ -1067,6 +1068,175 @@ def remove_taps(ctx: Context) -> str:
     except Exception as e:
         logger.error("Error removing taps: %s", e)
         return _err("Error removing taps: %s" % e)
+
+
+# --- Graceful Live quit / restart -----------------------------------------
+# kill -TERM is a crash from Live's POV (recovery modal on relaunch), so we quit
+# through the Apple 'quit' event and answer the unsaved-changes dialog by
+# keystroke. The LOM exposes no save-state or save API, so "dirty" is detected by
+# Live still being alive shortly after the quit (a clean quit is fast), and
+# "save" is the dialog's Return — an Untitled set has no path, so it then pops a
+# Save-As dialog we can't fill (reported back, not guessed). The OS calls below
+# are seams so the orchestration is unit-testable without touching real apps.
+LIVE_PORT = 9877
+
+
+def _osa(script):
+    """Run an AppleScript and wait. Keystroke/System-Events scripts return
+    immediately; used for the dialog answers. Seam for tests."""
+    subprocess.run(["/usr/bin/osascript", "-e", script],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
+
+
+def _osa_async(script):
+    """Fire an AppleScript without waiting — for the 'quit' event, which BLOCKS
+    until the save dialog (if any) is answered. Seam for tests."""
+    subprocess.Popen(["/usr/bin/osascript", "-e", script],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def _live_app_and_pid(port=LIVE_PORT):
+    """(.app path, pid int) of the Live process listening on `port`, or
+    (None, None). This is authoritatively the Live the MCP talks to."""
+    try:
+        out = subprocess.check_output(
+            ["/usr/sbin/lsof", "-nP", "-iTCP:%d" % port, "-sTCP:LISTEN", "-t"],
+            stderr=subprocess.DEVNULL).split()
+        pid = int(out[0])
+        comm = subprocess.check_output(
+            ["/bin/ps", "-p", str(pid), "-o", "comm="],
+            stderr=subprocess.DEVNULL).decode().strip()
+        if ".app/" in comm:
+            return comm.split(".app/")[0] + ".app", pid
+    except Exception:
+        pass
+    return None, None
+
+
+def _pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except Exception:
+        return False
+
+
+def _open_app(app):
+    subprocess.run(["/usr/bin/open", "-a", app], check=False)
+
+
+def _port_listening(port=LIVE_PORT):
+    try:
+        out = subprocess.check_output(
+            ["/usr/sbin/lsof", "-nP", "-iTCP:%d" % port, "-sTCP:LISTEN", "-t"],
+            stderr=subprocess.DEVNULL)
+        return bool(out.strip())
+    except Exception:
+        return False
+
+
+def _app_name(app_path):
+    """'Ableton Live 12 Suite' from a .app path, for AppleScript 'tell app'."""
+    base = os.path.basename(app_path)
+    return base[:-4] if base.endswith(".app") else base
+
+
+def _wait_until(predicate, timeout, interval=1.0, sleep=time.sleep):
+    """Poll predicate() until truthy or timeout; return the final value."""
+    waited = 0.0
+    while waited < timeout and not predicate():
+        sleep(interval)
+        waited += interval
+    return predicate()
+
+
+def _restart_live_impl(save="discard", relaunch=True, wait_timeout=90.0,
+                       dirty_after=5.0, sleep=time.sleep):
+    """Gracefully quit (and optionally relaunch) the running Live. Returns a
+    status dict; raises ValueError on a bad save policy / RuntimeError if no
+    Live is found."""
+    if save not in ("discard", "save"):
+        raise ValueError("save must be 'discard' or 'save' (got %r)." % save)
+    app, pid = _live_app_and_pid()
+    if not app:
+        raise RuntimeError("No running Ableton Live found on port %d." % LIVE_PORT)
+    name = _app_name(app)
+    result = {"app": app, "pid": pid, "save": save}
+
+    # 1. Ask Live to quit (Apple 'quit' event); it blocks if a save dialog
+    #    appears, so fire it without waiting.
+    _osa_async('tell application "%s" to quit' % name)
+
+    # 2. A clean quit is fast; still alive after dirty_after => a save dialog is
+    #    blocking => the set has unsaved changes.
+    sleep(dirty_after)
+    result["was_dirty"] = _pid_alive(pid)
+
+    if result["was_dirty"]:
+        # Bring Live's dialog frontmost first — System Events keystrokes go to
+        # the frontmost app, so without this they'd miss the dialog entirely.
+        _osa('tell application "%s" to activate' % name)
+        sleep(0.4)
+        if save == "save":
+            # Return = Save (overwrites a set that already has a file; an
+            # Untitled set then pops a Save-As path dialog we can't fill).
+            _osa('tell application "System Events" to keystroke return')
+        else:
+            # Cmd+D = Don't Save in Ableton's save dialog (NOT Cmd+Delete —
+            # Live's dialog is a custom AXDialog that ignores Cmd+Delete).
+            _osa('tell application "System Events" to keystroke "d" using {command down}')
+        result["dialog_answered"] = save
+
+    # 3. Wait for the process to actually exit.
+    if _pid_alive(pid) and not _wait_until(lambda: not _pid_alive(pid),
+                                           timeout=20.0, sleep=sleep):
+        result["quit"] = False
+        result["error"] = (
+            "Live did not quit. With save='save' on an Untitled set the Save-As "
+            "dialog needs a file path (save the set manually first), or System "
+            "Events lacks Accessibility permission to answer the dialog.")
+        return result
+    result["quit"] = True
+
+    # 4. Relaunch and wait for the control surface to bind the port again.
+    if relaunch:
+        _open_app(app)
+        result["relaunched"] = True
+        result["surface_up"] = _wait_until(_port_listening, timeout=wait_timeout,
+                                           sleep=sleep)
+    return result
+
+
+@mcp.tool()
+def restart_live(ctx: Context, save: str = "discard", relaunch: bool = True,
+                 wait_timeout: float = 90.0) -> str:
+    """Gracefully quit and relaunch the running Ableton Live (no crash-recovery
+    prompt). Use this for an automated Live bounce after a Remote Script change.
+
+    save: how to handle UNSAVED changes if Live prompts on quit —
+      'discard' (default; lose unsaved edits) or 'save' (overwrite; only works
+      for a set that already has a file — an Untitled set has no path and the
+      quit is reported as failed so you can save it by hand first).
+    relaunch: reopen Live after it quits (default True), then wait up to
+      wait_timeout seconds for the control surface to rebind port 9877.
+
+    Returns JSON {ok, data:{app, was_dirty, quit, relaunched, surface_up, ...}}.
+    NOTE: this only restarts ABLETON. A server.py change still needs a Claude
+    Code restart (the MCP server can't restart its own process); a Remote-Script
+    change is fully covered by reinstalling the script + this bounce. Discarding
+    unsaved work is irreversible — prefer the /ableton:restart command, which
+    asks before discarding.
+    """
+    try:
+        save = (save or "discard").lower()
+        data = _restart_live_impl(save=save, relaunch=relaunch,
+                                  wait_timeout=wait_timeout)
+        return _ok(data)
+    except (ValueError, RuntimeError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("restart_live error: %s", e)
+        return _err("restart_live error: %s" % e)
 
 
 @mcp.tool()
@@ -3164,14 +3334,51 @@ def load_preset(ctx: Context, track_index: int, path: str, name: str = None) -> 
 # User Library (on launch / browser refresh). Once a filename is indexed,
 # overwriting it and reloading reads fresh — no re-index needed.
 
+# Multi-version glob fallback: matches any installed Live bundle's Core Library.
+# hits[0] is alphabetical = Live 11 when both 11 and 12 are installed (the safer
+# cross-version source — Live upgrades older preset schemas on load).
 _APP_CORE = ("/Applications/Ableton*Live*.app/Contents/App-Resources/"
              "Core Library")
 _FACTORY_TABLE_CACHE = None
 
 
+def _running_live_major():
+    """Major version of the Live the host is talking to (via the Remote Script's
+    get_application_version), or None if it can't be resolved."""
+    try:
+        info = get_ableton_connection().send_command("get_application_version")
+        return int(info.get("major"))
+    except Exception:
+        return None
+
+
+def _core_for_major(major):
+    """Core Library path of an installed Live with the given major version, or
+    None. Seam so _app_core is unit-testable without real .app bundles."""
+    hits = sorted(glob.glob(
+        "/Applications/Ableton*Live*%d*.app/Contents/App-Resources/Core Library"
+        % major))
+    return hits[0] if hits else None
+
+
+def _app_core():
+    """Core Library of the RUNNING Live, so factory-asset reads (presets, the
+    wavetable table list, factory racks) match the version the user is actually
+    using when several Live versions are installed. Falls back to the
+    multi-version glob (_APP_CORE) when the running version can't be resolved or
+    its bundle isn't found. Not cached: stays correct if Live versions switch
+    mid-session, at the cost of one tiny socket read per asset lookup."""
+    major = _running_live_major()
+    if major is not None:
+        core = _core_for_major(major)
+        if core:
+            return core
+    return _APP_CORE
+
+
 def _factory_default_adv(filename, category="Instruments"):
     """Path to a factory-default preset (e.g. 'Wavetable.adv'), or raise."""
-    hits = glob.glob("%s/Defaults/%s/%s" % (_APP_CORE, category, filename))
+    hits = glob.glob("%s/Defaults/%s/%s" % (_app_core(), category, filename))
     if not hits:
         raise FileNotFoundError(
             "Factory default %s/%s not found under /Applications/Ableton*.app. "
@@ -3310,7 +3517,7 @@ def _read_rack_template(template):
     # (b) factory rack by name under any Racks/<kind>/<sub>/<name>.adg
     name = os.path.splitext(os.path.basename(expanded))[0]
     hits = glob.glob(
-        "%s/Racks/**/%s.adg" % (_APP_CORE, glob.escape(name)), recursive=True
+        "%s/Racks/**/%s.adg" % (_app_core(), glob.escape(name)), recursive=True
     )
     if hits:
         with gzip.open(hits[0], "rt") as f:
@@ -3337,7 +3544,7 @@ def _scan_factory_tables(limit=400):
         return _FACTORY_TABLE_CACHE
     names = set()
     files = glob.glob(
-        "%s/Devices/Instruments/Wavetable/**/*.adv" % _APP_CORE, recursive=True
+        "%s/Devices/Instruments/Wavetable/**/*.adv" % _app_core(), recursive=True
     )[:limit]
     for path in files:
         try:

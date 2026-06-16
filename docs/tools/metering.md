@@ -2,7 +2,7 @@
 layout: default
 title: Metering (Audio Tap)
 parent: Tools
-nav_order: 15
+nav_order: 16
 ---
 
 # Metering (Audio Tap)
@@ -143,6 +143,12 @@ failed:[{track_index,error}]}}. If EVERY load fails (e.g. the device isn't in
 the browser), data.manual is true with a drag-it-yourself message listing the
 target tracks - the registry still works once the device is dragged on by
 hand. After deploying, run measure_mix or analyze_set(measure=True).
+
+A slow Max-for-Live / Node-for-Max boot (notably Live 12 / Max 8.6) can
+outlast the socket read timeout, so the load reply is lost even though the
+device loaded + connected. When a load times out, deploy_taps polls the tap
+registry and, if a tap connects on that track, records it as deployed with
+"confirmed_via": "registry" instead of failing.
 
 ## remove_taps
 

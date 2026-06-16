@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **117 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **118 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -86,6 +86,12 @@ Subscribe to real-time Live Object Model changes and poll for events.
 Collapse several mutations into a single atomic Live task / socket round-trip.
 
 `batch`
+
+## [Host Lifecycle](./host.html)
+
+Gracefully quit and relaunch Ableton Live (no crash-recovery prompt) for an automated bounce after a Remote Script change.
+
+`restart_live`
 
 ## [Analysis](./analysis.html)
 
