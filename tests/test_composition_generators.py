@@ -71,3 +71,36 @@ def test_bassline_arp_seventh_count():
     notes = build_bassline(progression=["V7"], style="arp", root=0,
                            intervals=C_MAJOR, bars=1, octave=1)
     assert len(notes) == 4
+
+
+from ableton_mcp_max.composition_utils import (
+    build_melody, build_drum_pattern, GM_DRUMS,
+)
+
+
+def test_melody_in_scale_and_in_time():
+    notes = build_melody(0, C_MAJOR, bars=2, contour="arch", density=0.6,
+                         octave=4, rng=random.Random(42))
+    allowed = set(scale_pitches(0, C_MAJOR, 0, 127))
+    assert notes, "expected some notes"
+    assert all(n["pitch"] in allowed for n in notes)
+    assert all(0.0 <= n["start_time"] < 8.0 for n in notes)   # 2 bars = 8 beats
+
+
+def test_melody_seed_is_reproducible():
+    a = build_melody(0, C_MAJOR, bars=4, octave=4, rng=random.Random(7))
+    b = build_melody(0, C_MAJOR, bars=4, octave=4, rng=random.Random(7))
+    assert a == b
+
+
+def test_drum_four_on_floor_has_kick_on_every_beat():
+    notes = build_drum_pattern(style="four_on_floor", bars=1)
+    kicks = sorted(n["start_time"] for n in notes if n["pitch"] == GM_DRUMS["kick"])
+    assert kicks == [0.0, 1.0, 2.0, 3.0]
+    assert all(n["pitch"] in set(GM_DRUMS.values()) for n in notes)
+
+
+def test_drum_fill_is_deterministic_with_seed():
+    a = build_drum_pattern(style="basic_rock", bars=2, fills=True, rng=random.Random(3))
+    b = build_drum_pattern(style="basic_rock", bars=2, fills=True, rng=random.Random(3))
+    assert a == b

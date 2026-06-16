@@ -260,3 +260,110 @@ def build_bassline(progression=None, style="root", root=0, intervals=None,
         else:
             raise ValueError("Unknown bassline style %r" % (style,))
     return notes
+
+
+GM_DRUMS = {
+    "kick": 36, "snare": 38, "closed_hat": 42, "open_hat": 46,
+    "clap": 39, "rim": 37, "low_tom": 45, "mid_tom": 47, "hi_tom": 50,
+    "crash": 49, "ride": 51,
+}
+
+_CONTOUR_TARGETS = {
+    # fractional position 0..1 -> desired normalized height -1..1
+    "up": lambda f: -1.0 + 2.0 * f,
+    "down": lambda f: 1.0 - 2.0 * f,
+    "arch": lambda f: 1.0 - abs(2.0 * f - 1.0) * 2.0,    # peak mid, low ends
+    "valley": lambda f: abs(2.0 * f - 1.0) * 2.0 - 1.0,  # dip mid, high ends
+    "random": lambda f: 0.0,
+}
+
+
+def build_melody(root, intervals, bars=4, contour="arch", density=0.5,
+                 octave=4, rng=None):
+    """A monophonic in-scale melody of eighth notes. `density` is the
+    probability a slot sounds (vs rests). `contour` biases the pitch drift."""
+    rng = rng or make_rng()
+    if contour not in _CONTOUR_TARGETS:
+        raise ValueError("Unknown contour %r" % (contour,))
+    step = 0.5
+    slots = int(round(bars * _BAR_BEATS / step))
+    lo = _octave_base(octave)
+    pitches = scale_pitches(root, intervals, lo, lo + 12)
+    if not pitches:
+        pitches = [lo]
+    target_fn = _CONTOUR_TARGETS[contour]
+    idx = len(pitches) // 2
+    notes = []
+    for s in range(slots):
+        if rng.random() > density:
+            continue
+        frac = s / float(max(1, slots - 1))
+        target_idx = int(round((target_fn(frac) + 1.0) / 2.0 * (len(pitches) - 1)))
+        drift = rng.choice([-1, 0, 1])
+        idx = max(0, min(len(pitches) - 1, (idx + drift + target_idx) // 2))
+        notes.append(_note(pitches[idx], s * step, step, rng.randint(80, 110)))
+    return notes
+
+
+def _drum_bar(style, t0):
+    out = []
+
+    def hit(name, beat, vel):
+        out.append(_note(GM_DRUMS[name], t0 + beat, 0.25, vel))
+
+    if style == "four_on_floor":
+        for b in range(4):
+            hit("kick", b, 110)
+        for e in range(8):
+            hit("closed_hat", e * 0.5, 95 if e % 2 == 0 else 80)
+        hit("snare", 1, 100)
+        hit("snare", 3, 100)
+    elif style == "basic_rock":
+        hit("kick", 0, 110)
+        hit("kick", 2, 105)
+        hit("snare", 1, 100)
+        hit("snare", 3, 100)
+        for e in range(8):
+            hit("closed_hat", e * 0.5, 90 if e % 2 == 0 else 75)
+    elif style == "breakbeat":
+        hit("kick", 0, 110)
+        hit("kick", 1.5, 100)
+        hit("kick", 2.5, 100)
+        hit("snare", 1, 105)
+        hit("snare", 3, 105)
+        for e in range(8):
+            hit("closed_hat", e * 0.5, 85)
+    elif style == "hihat_8ths":
+        hit("kick", 0, 110)
+        hit("snare", 2, 100)
+        for e in range(8):
+            hit("closed_hat", e * 0.5, 90 if e % 2 == 0 else 75)
+    elif style == "boom_bap":
+        hit("kick", 0, 112)
+        hit("kick", 2.5, 100)
+        hit("snare", 1, 105)
+        hit("snare", 3, 105)
+        for e in range(8):
+            hit("closed_hat", e * 0.5, 88 if e % 2 == 0 else 72)
+    else:
+        raise ValueError("Unknown drum style %r" % (style,))
+    return out
+
+
+def build_drum_pattern(style="four_on_floor", bars=4, fills=False, rng=None):
+    """A drum pattern over `bars` bars using the GM drum map. With fills=True a
+    seeded snare fill replaces beat 4 of the last bar."""
+    rng = rng or make_rng()
+    notes = []
+    for b in range(bars):
+        t0 = b * _BAR_BEATS
+        bar = _drum_bar(style, t0)
+        if fills and b == bars - 1:
+            bar = [n for n in bar if n["start_time"] < t0 + 3.0]
+            sub = rng.choice([0.25, 0.5])
+            k = int(round(1.0 / sub))
+            for j in range(k):
+                bar.append(_note(GM_DRUMS["snare"], t0 + 3.0 + j * sub, sub,
+                                 rng.randint(85, 120)))
+        notes.extend(bar)
+    return notes
