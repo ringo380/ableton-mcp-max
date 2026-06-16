@@ -1419,20 +1419,18 @@ def set_track_fold(
         logger.error(f"Error setting track fold: {str(e)}")
         return _err(f"Error setting track fold: {str(e)}")
 @mcp.tool()
-def get_device_parameters(ctx: Context, track_index: int, device_index: int) -> str:
+def get_device_parameters(
+    ctx: Context, track_index: int, device_index: int, track_type: str = "regular"
+) -> str:
     """
     List all automatable parameters of a device on a track, with current
     value, min, max, whether it's quantized, and (for quantized params) the
     list of selectable value items.
 
-    REGULAR tracks only: there is no track_type argument, so devices on
-    return/master tracks are not reachable here. (get_device_info,
-    get_rack_macros, set_rack_macro, set_chain_property, set_device_on and
-    delete_device DO take track_type if you need return/master devices.)
-
     Parameters:
-    - track_index: index of the regular track
+    - track_index: index of the track (ignored for master)
     - device_index: index of the device on that track (0 = first device)
+    - track_type: 'regular' (default), 'return', or 'master'
 
     Returns JSON with the device name and a parameters list (each: index, name,
     value, min, max, is_quantized, value_items).
@@ -1441,7 +1439,11 @@ def get_device_parameters(ctx: Context, track_index: int, device_index: int) -> 
         ableton = get_ableton_connection()
         result = ableton.send_command(
             "get_device_parameters",
-            {"track_index": track_index, "device_index": device_index},
+            {
+                "track_index": track_index,
+                "device_index": device_index,
+                "track_type": track_type,
+            },
         )
         return _ok(result)
     except Exception as e:
@@ -1454,27 +1456,29 @@ def set_device_parameter(
     device_index: int,
     parameter: Union[int, str],
     value: float,
+    track_type: str = "regular",
 ) -> str:
     """
     Set a single device/instrument parameter.
 
-    REGULAR tracks only: there is no track_type argument, so devices on
-    return/master tracks cannot be set here (use set_rack_macro /
-    set_chain_property / set_device_on, which take track_type, for those).
-
     Parameters:
-    - track_index: index of the regular track
+    - track_index: index of the track (ignored for master)
     - device_index: index of the device on that track
     - parameter: parameter index (int) OR parameter name (str, case-insensitive)
     - value: target value (clamped to the parameter's min/max). For quantized
       parameters, pass the integer index of the desired value item.
+    - track_type: 'regular' (default), 'return', or 'master'
     """
     try:
         ableton = get_ableton_connection()
         # Fetch the parameter list to resolve name->index and validate.
         info = ableton.send_command(
             "get_device_parameters",
-            {"track_index": track_index, "device_index": device_index},
+            {
+                "track_index": track_index,
+                "device_index": device_index,
+                "track_type": track_type,
+            },
         )
         params = info.get("parameters", [])
         idx = resolve_parameter_index(params, parameter)
@@ -1485,6 +1489,7 @@ def set_device_parameter(
                 "device_index": device_index,
                 "parameter_index": idx,
                 "value": value,
+                "track_type": track_type,
             },
         )
         return _ok(result)
