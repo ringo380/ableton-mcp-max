@@ -50,7 +50,7 @@ the next step does that for you.
 ```
 
 This installs the Live Remote Script, warms the server, and walks you through enabling the
-Control Surface. It expects [`uv`](https://docs.astral.sh/uv/) installed and Ableton Live 11.
+Control Surface. It expects [`uv`](https://docs.astral.sh/uv/) installed and Ableton Live 11 or 12.
 
 ### 3. Enable the Control Surface in Live
 

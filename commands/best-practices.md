@@ -59,7 +59,7 @@ pgrep -fl "Ableton Live" || echo "Live not running"
 lsof -nP -iTCP:9877 -sTCP:LISTEN || echo "Nothing listening on 9877 — Control Surface not selected, or Live needs a restart"
 ```
 
-Remote Script load errors / command logs live in `~/Library/Preferences/Ableton/Live 11*/Log.txt` (grep `AbletonMCP` / `Traceback`). Re-run `/ableton:setup` if the Remote Script half isn't loaded.
+Remote Script load errors / command logs live in `~/Library/Preferences/Ableton/Live 1[12]*/Log.txt` (grep `AbletonMCP` / `Traceback`). Re-run `/ableton:setup` if the Remote Script half isn't loaded.
 
 ## (Maintainers only) restart protocol
 

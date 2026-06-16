@@ -29,14 +29,14 @@ add_notes_to_clip(
 )
 ```
 
-Add MIDI notes to a clip (MIDI clips only). Uses Live 11's extended note
+Add MIDI notes to a clip (MIDI clips only). Uses the Live 11+ extended note
 API (no editor dialog).
 
 Parameters:
 - track_index: The index of the track containing the clip
 - clip_index: The index of the clip slot containing the clip
 - notes: List of note dictionaries. Required-ish fields: pitch, start_time,
-  duration, velocity, mute. Optional Live 11 fields (sensible defaults):
+  duration, velocity, mute. Optional Live 11+ fields (sensible defaults):
   probability (0.0-1.0), velocity_deviation, release_velocity (0-127).
 
 ## get_clip_notes
@@ -52,7 +52,7 @@ get_clip_notes(
 )
 ```
 
-Read MIDI notes from a clip (MIDI clips only). Uses Live 11's extended note
+Read MIDI notes from a clip (MIDI clips only). Uses the Live 11+ extended note
 API. Returns a list of note dicts {note_id, pitch, start_time, duration,
 velocity, mute, probability, velocity_deviation, release_velocity}. The
 note_id can be passed to modify_clip_notes to edit a note in place.
@@ -75,7 +75,7 @@ replace_clip_notes(
 ```
 
 Replace ALL notes in a MIDI clip with the given notes (clears existing notes
-first, then adds these). MIDI clips only. Uses Live 11's extended note API.
+first, then adds these). MIDI clips only. Uses the Live 11+ extended note API.
 
 Parameters:
 - track_index / clip_index: locate the clip
