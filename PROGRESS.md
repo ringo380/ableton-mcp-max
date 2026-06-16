@@ -1,5 +1,16 @@
 # ableton-mcp-max — Progress
 
+## SHIPPED v0.10.0 (2026-06-16): master/return device access + composition layer
+PR #25 (composition layer) squash-merged to `main` (@2537e7a); master/return access (#24, @9afd32f) was
+already on main from the prior session. Version bumped 0.9.0 -> 0.10.0 across pyproject/plugin.json/uv.lock
+(@6e52e3b); `gh release create v0.10.0` (tag @6e52e3b); marketplace `ableton` ref bumped v0.9.0 -> v0.10.0 +
+README rebuilt + pushed (@ede39e9 in robworks-claude-code-plugins). Full chain verified: local main =
+origin/main = ls-remote tag commit; remote marketplace ref = v0.10.0. **Tool count 118 -> 126.** Both feature
+areas live-verified vs Live 12.4 (master/return params + load; composition all 8 tools incl. get_song_scale
+auto-read). **Nothing functional queued** after this - the 5-part "autonomous track production" roadmap has #0
+(master/return) + #1 (composition) shipped; #2 arrangement intelligence, #3 closed-loop remediation, #4
+/ableton:produce skill remain as future specs.
+
 ## Composition layer: MIDI generators + clip transformers (2026-06-16)
 Sub-project #1 of the "autonomous track production + closed analyze->act loop" initiative. Adds
 server-side MIDI-composition primitives that emit notes through the existing note path
