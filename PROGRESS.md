@@ -15,9 +15,11 @@ alphabetically-first bundle (Live 11). Now the server asks Live its version and 
   `_factory_default_adv("Wavetable.adv")` sourced from the Live 12 bundle (was Live 11 pre-change). Live-11
   path is the same code with major=11 (offline-tested; `_core_for_major` glob matches "Ableton Live 11 Suite").
 - Offline: +5 tests (`test_app_core.py`), full suite 503 passed. RS stays py_compile-clean / 3.7-safe.
-- **Gotcha learned:** `kill -TERM` on Live with an UNSAVED/blank set makes Live show a "recover your work?"
-  modal on relaunch that blocks control-surface init (9877 never binds). Dismiss with
-  `osascript -e 'tell application "System Events" to keystroke return'` (blank set → recover-or-not is moot).
+- **Graceful Live quit (resolved):** `kill -TERM` is a signal, not a quit — Live flags a crash and shows a
+  "recover your work?" modal on relaunch that blocks control-surface init (9877 never binds). Quit via the
+  real path instead: Apple `quit` event (or ⌘Q) + answer the save dialog by keystroke (⌘⌫ Don't Save /
+  Return Save). `quit saving no` is ignored (times out -1712). VERIFIED on Live 12.4: quit-event + ⌘⌫ →
+  clean shutdown, relaunch bound 9877 in ~5s, no recovery prompt. See CLAUDE.md "Graceful Live quit".
 
 ## Live 12 compatibility (2026-06-15, in progress)
 Plugin was built for Live 11; auditing for Live 12 (both Suite installed on the dev machine).
