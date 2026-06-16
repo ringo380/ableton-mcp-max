@@ -1,5 +1,53 @@
 # ableton-mcp-max — Progress
 
+## Composition layer: MIDI generators + clip transformers (2026-06-16)
+Sub-project #1 of the "autonomous track production + closed analyze->act loop" initiative. Adds
+server-side MIDI-composition primitives that emit notes through the existing note path
+(`create_clip`/`add_notes_to_clip`/`replace_clip_notes`). Branch `feat/composition-layer`. **8 new tools
+(118 -> 126, new "Composition" category, 17 total).**
+- **Pure module `ableton_mcp_max/composition_utils.py`** holds the whole music model + note math (no Live
+  dependency, server-side only): key parsing (sharps/flats), 14-scale interval table + aliases,
+  `resolve_key_scale` (explicit params win, else read the set, else fall back to C natural minor),
+  `scale_pitches`/`degree_to_pitch`/`snap_to_scale`; a chord model (roman numerals resolved DIATONICALLY by
+  stacking scale thirds via `degree_to_pitch` - quality emerges from the scale - plus absolute chord symbols
+  like `Cmaj7`/`Am7`); 4 generators (`build_chord_progression`, `build_bassline`, `build_melody`,
+  `build_drum_pattern`) and 4 transformers (`humanize`, `quantize_to_scale`, `arpeggiate`, `harmonize`). All
+  randomness is seedable via `make_rng(seed)` (same seed+params -> identical notes). Octave convention =
+  Ableton labels (`pitch = pc + 12*(octave+2)`, so octave 3 -> C3 = 60).
+- **4 generator tools** (`generate_chord_progression`/`generate_bassline`/`generate_melody`/
+  `generate_drum_pattern`) write into a session slot: create the MIDI clip if empty (length = bars*4 beats,
+  4/4), else require `replace=true`; `key`/`scale` optional (read the set when omitted). **4 transformer
+  tools** (`humanize_clip`/`quantize_clip_to_scale`/`arpeggiate_clip`/`harmonize_clip`) read a clip's notes,
+  transform, write back via `replace_clip_notes`. All use `clip_index` (house style).
+- **Remote Script:** one new read command `get_song_scale` -> `{scale_name, root_note, scale_intervals}`
+  (inline read off `self._song`, Py2/3.7-safe, try/except-guarded; degrades to defaults on older Live).
+  Powers the auto-read-the-set's-key path. `scale_intervals` is the LOM's own list (e.g. Major ->
+  [0,2,4,5,7,9,11]), so custom set scales work too. Feasibility confirmed against the Live 11/12 LOM doc
+  (scale_name/root_note read/write, scale_intervals read).
+- **Tests:** 48 new offline composition tests (scales/chords/generators/transformers), full suite **566
+  passed**; server imports clean; RS py_compile clean. Built subagent-driven (spec + quality review each
+  task; reviews caught + fixed: walking-bassline fractional-segment bug, durations-length validation,
+  arpeggiate single-note re-trigger footgun, clip_slot_index->clip_index API consistency).
+- **LIVE-VERIFIED 2026-06-16 vs Live 12 Suite** (working-tree server.py driven directly against the live
+  9877 socket, bypassing MCP, on a self-cleaning scratch MIDI track): all 8 tools pass. chords -> 12 notes,
+  pitch-classes exactly {0,2,4,5,7,9,11} (clean C major); bassline 4 roots; melody 11 (seed=42); drums 28
+  with kicks at beats 0-7 (four_on_floor x2 bars); humanize/quantize 11 each; arpeggiate expanded the 12-note
+  chord clip to 64; harmonize 4->8; occupied-slot guard correctly errors without replace and succeeds with
+  replace=true; scratch track deleted -> track_count restored. The `_emit_to_slot` empty-slot probe logs
+  "No clip in slot" by design (try/except treats it as empty -> create).
+- **DEFERRED PATH NOW VERIFIED (2026-06-16, vs Live 12.4 after a Live bounce loaded the new RS):** the
+  `get_song_scale` auto-read (generators with NO key/scale). Pre-bounce, the running Live still had the OLD
+  RS, so `get_song_scale` over 9877 returned "Unknown command" and generators fell back to C natural minor
+  (confirming the fallback). After `restart_live(discard)` loaded the new RS, `get_song_scale` returned
+  `{scale_name:"Major", root_note:0, scale_intervals:[0,2,4,5,7,9,11]}` (the default set's actual C-major
+  scale), and `generate_chord_progression(["I","IV","V","I"])` with no key/scale produced unambiguous MAJOR
+  triads (I=C-E-G 60/64/67, IV=F-A-C, V=G-B-D - E natural 64, NOT the fallback Eb 63). Scratch track
+  deleted -> 4 tracks restored. **Composition layer is now FULLY live-verified.** **NOT yet released** -
+  per plan, one release will bundle #0 + gap C + #1.
+- Specs/plans: `docs/superpowers/specs/2026-06-16-composition-layer-design.md`,
+  `docs/superpowers/plans/2026-06-16-composition-layer.md`. NEXT = release (PR feat/composition-layer ->
+  main, bundle the unreleased master/return #24 already on main + composition layer as v0.10.0).
+
 ## Master/return device access: params + effect loading (2026-06-16)
 First sub-projects of the new "autonomous track production + closed analyze->act loop" initiative
 (5-part roadmap: #0 master/return access, #1 composition layer, #2 arrangement intelligence, #3 closed-loop

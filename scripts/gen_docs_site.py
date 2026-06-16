@@ -88,6 +88,16 @@ CATEGORIES = [
         "deploy_taps",
         "remove_taps",
     ]),
+    ("composition", "Composition", "Generate musical material into clip slots (chords, bass, melody, drums) and transform existing clips (humanize, quantize-to-scale, arpeggiate, harmonize). Key/scale read from the set when not given.", [
+        "generate_chord_progression",
+        "generate_bassline",
+        "generate_melody",
+        "generate_drum_pattern",
+        "humanize_clip",
+        "quantize_clip_to_scale",
+        "arpeggiate_clip",
+        "harmonize_clip",
+    ]),
 ]
 
 SKIP_PARAMS = {"self", "ctx", "context"}

@@ -594,6 +594,8 @@ class AbletonMCP(ControlSurface):
                 response["result"] = self._get_analysis_snapshot()
             elif command_type == "get_application_version":
                 response["result"] = self._get_application_version()
+            elif command_type == "get_song_scale":
+                response["result"] = self._get_song_scale()
             elif command_type == "batch":
                 members = params.get("commands", [])
                 stop_on_error = params.get("stop_on_error", True)
@@ -827,6 +829,27 @@ class AbletonMCP(ControlSurface):
             "minor": app.get_minor_version(),
             "bugfix": app.get_bugfix_version(),
         }
+
+    def _get_song_scale(self):
+        """Report the set's current key/scale for control surfaces (read-only).
+        scale_intervals is a list of semitone offsets from the root (e.g. Major
+        -> [0,2,4,5,7,9,11]). Guarded: older Live or missing endpoints degrade to
+        defaults rather than raising."""
+        song = self._song
+        result = {"scale_name": None, "root_note": 0, "scale_intervals": []}
+        try:
+            result["scale_name"] = song.scale_name
+        except Exception:
+            pass
+        try:
+            result["root_note"] = int(song.root_note)
+        except Exception:
+            pass
+        try:
+            result["scale_intervals"] = [int(i) for i in song.scale_intervals]
+        except Exception:
+            pass
+        return result
 
     def _get_session_info(self):
         """Get information about the current session"""
