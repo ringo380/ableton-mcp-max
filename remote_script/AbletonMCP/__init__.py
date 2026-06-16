@@ -281,8 +281,9 @@ class AbletonMCP(ControlSurface):
             device_index = params.get("device_index", 0)
             parameter_index = params.get("parameter_index", 0)
             value = params.get("value", 0.0)
+            track_type = params.get("track_type", "regular")
             result = self._set_device_parameter(
-                track_index, device_index, parameter_index, value)
+                track_index, device_index, parameter_index, value, track_type)
         elif command_type == "set_mixer_property":
             track_index = params.get("track_index", 0)
             track_type = params.get("track_type", "regular")
@@ -729,7 +730,9 @@ class AbletonMCP(ControlSurface):
             elif command_type == "get_device_parameters":
                 track_index = params.get("track_index", 0)
                 device_index = params.get("device_index", 0)
-                response["result"] = self._get_device_parameters(track_index, device_index)
+                track_type = params.get("track_type", "regular")
+                response["result"] = self._get_device_parameters(
+                    track_index, device_index, track_type)
             elif command_type == "get_device_info":
                 track_index = params.get("track_index", 0)
                 device_index = params.get("device_index", 0)
@@ -1222,14 +1225,9 @@ class AbletonMCP(ControlSurface):
             raise ValueError("Unsupported routing property: " + str(prop))
         return out
 
-    def _get_device_parameters(self, track_index, device_index):
+    def _get_device_parameters(self, track_index, device_index, track_type="regular"):
         """List all automatable parameters of a device on a track."""
-        if track_index < 0 or track_index >= len(self._song.tracks):
-            raise IndexError("Track index out of range")
-        track = self._song.tracks[track_index]
-        if device_index < 0 or device_index >= len(track.devices):
-            raise IndexError("Device index out of range")
-        device = track.devices[device_index]
+        track, device = self._resolve_device(track_index, device_index, track_type)
 
         parameters = []
         for p_index, param in enumerate(device.parameters):
@@ -1251,20 +1249,17 @@ class AbletonMCP(ControlSurface):
 
         return {
             "track_index": track_index,
+            "track_type": track_type,
             "device_index": device_index,
             "device_name": device.name,
             "parameter_count": len(parameters),
             "parameters": parameters,
         }
 
-    def _set_device_parameter(self, track_index, device_index, parameter_index, value):
+    def _set_device_parameter(self, track_index, device_index, parameter_index, value,
+                              track_type="regular"):
         """Set one device parameter by integer index, clamped to its range."""
-        if track_index < 0 or track_index >= len(self._song.tracks):
-            raise IndexError("Track index out of range")
-        track = self._song.tracks[track_index]
-        if device_index < 0 or device_index >= len(track.devices):
-            raise IndexError("Device index out of range")
-        device = track.devices[device_index]
+        track, device = self._resolve_device(track_index, device_index, track_type)
         if parameter_index < 0 or parameter_index >= len(device.parameters):
             raise IndexError("Parameter index out of range")
         param = device.parameters[parameter_index]
@@ -1280,6 +1275,7 @@ class AbletonMCP(ControlSurface):
 
         return {
             "track_index": track_index,
+            "track_type": track_type,
             "device_index": device_index,
             "parameter_index": parameter_index,
             "name": param.name,
