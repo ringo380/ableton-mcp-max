@@ -75,6 +75,9 @@ def resolve_key_scale(key=None, scale=None, song_scale=None):
             ints = [int(i) % 12 for i in ints]
             if ints:
                 return int(song_scale.get("root_note", 0)) % 12, ints
+        # No usable set scale (e.g. the LOM scale endpoints are absent, or no
+        # scale is configured) -> fall back to C natural minor. The configured
+        # root_note is intentionally dropped here since we have no intervals.
         return 0, list(SCALE_INTERVALS["natural_minor"])
     root = parse_key(key) if key is not None else 0
     intervals = parse_scale(scale) if scale is not None else list(SCALE_INTERVALS["major"])
@@ -274,6 +277,8 @@ _CONTOUR_TARGETS = {
     "down": lambda f: 1.0 - 2.0 * f,
     "arch": lambda f: 1.0 - abs(2.0 * f - 1.0) * 2.0,    # peak mid, low ends
     "valley": lambda f: abs(2.0 * f - 1.0) * 2.0 - 1.0,  # dip mid, high ends
+    # "random" targets the center register; combined with +/-1 drift this is a
+    # moderate random walk around the middle octave, not a free-ranging one.
     "random": lambda f: 0.0,
 }
 
