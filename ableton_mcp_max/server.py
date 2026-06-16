@@ -2403,7 +2403,7 @@ def load_instrument_or_effect(ctx: Context, track_index: int, uri: str, track_ty
     Load an instrument or effect onto a track using its URI.
 
     Parameters:
-    - track_index: The index of the track to load the instrument on
+    - track_index: The index of the track to load onto (ignored for master)
     - uri: The URI of the instrument or effect to load (e.g., 'query:Synths#Instrument%20Rack:Bass:FileId_5116')
     - track_type: 'regular' (default), 'return', or 'master'. Only audio effects are valid on return/master tracks.
     """
@@ -2419,12 +2419,12 @@ def load_instrument_or_effect(ctx: Context, track_index: int, uri: str, track_ty
         if result.get("loaded", False):
             new_devices = result.get("new_devices", [])
             if new_devices:
-                return _ok(f"Loaded instrument with URI '{uri}' on track {track_index}. New devices: {', '.join(new_devices)}")
+                return _ok(f"Loaded '{uri}' on {track_type} track {track_index}. New devices: {', '.join(new_devices)}")
             else:
                 devices = result.get("devices_after", [])
-                return _ok(f"Loaded instrument with URI '{uri}' on track {track_index}. Devices on track: {', '.join(devices)}")
+                return _ok(f"Loaded '{uri}' on {track_type} track {track_index}. Devices on track: {', '.join(devices)}")
         else:
-            return _err(f"Failed to load instrument with URI '{uri}'")
+            return _err(f"Failed to load '{uri}' on {track_type} track {track_index}")
     except Exception as e:
         logger.error(f"Error loading instrument by URI: {str(e)}")
         return _err(f"Error loading instrument by URI: {str(e)}")
@@ -3276,7 +3276,7 @@ def load_preset(ctx: Context, track_index: int, path: str, name: str = None, tra
     holds an instrument HOT-SWAPS (replaces) it, matching Live's behavior.
 
     Parameters:
-    - track_index: The index of the (regular) track to load onto.
+    - track_index: The index of the track to load onto (ignored for master).
     - path: If `name` is given, the folder to search (e.g.
             'instruments/Wavetable') — subfolders are searched recursively. If
             `name` is omitted, the full path to a single preset (e.g.
@@ -3325,7 +3325,7 @@ def load_preset(ctx: Context, track_index: int, path: str, name: str = None, tra
         })
         if load_result.get("loaded", False):
             return _ok(f"Loaded preset '{label}' (uri '{uri}') "
-                   f"on track {track_index}.")
+                   f"on {track_type} track {track_index}.")
         return _err(f"Failed to load preset '{label}' (uri '{uri}').")
     except ValueError as e:
         # match_recursive_preset / split_preset_path failures (clean messages).

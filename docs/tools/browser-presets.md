@@ -106,7 +106,7 @@ Works for any loadable browser item, including instrument/effect presets
 holds an instrument HOT-SWAPS (replaces) it, matching Live's behavior.
 
 Parameters:
-- track_index: The index of the (regular) track to load onto.
+- track_index: The index of the track to load onto (ignored for master).
 - path: If `name` is given, the folder to search (e.g.
         'instruments/Wavetable') — subfolders are searched recursively. If
         `name` is omitted, the full path to a single preset (e.g.
