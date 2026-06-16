@@ -1,5 +1,54 @@
 # ableton-mcp-max — Progress
 
+## Live 12 compatibility (2026-06-15, in progress)
+Plugin was built for Live 11; auditing for Live 12 (both Suite installed on the dev machine).
+**Static audit + safe code fixes DONE:**
+- `scripts/install_remote_script.sh` rewritten to install into EVERY installed `Ableton*Live*.app`
+  (Live 11 + 12), with a `LIVE_APP=...` override to target one. Backups namespaced per-app. The old
+  script hardcoded the Live 11 path = the one hard blocker on a 12-only machine.
+- Live 12 Remote Script INSTALLED (owner ryanrobson:admin, not root). `_Framework/ControlSurface.pyc`
+  confirmed present in the Live 12 bundle (59 .pyc, same as 11) → the legacy control-surface base class
+  still exists, so the script will load. **It appears in Live's Control Surface dropdown only because the
+  `AbletonMCP` folder lives in `<app>/Contents/App-Resources/MIDI Remote Scripts/` — Live scans that dir
+  at launch.** Live 12 never had the folder until this install.
+- De-hardcoded the "Live 11" strings: `plugin.json` description ("11 and 12"), server.py factory-preset
+  error message. `_factory_default_adv` already globs `Ableton*Live*.app` (version-agnostic); the
+  factory `Core Library/Defaults/<cat>/` layout is identical in 11 and 12. User Library resolution
+  already globs `Live */Library.cfg` (newest wins).
+- **PORT 9877 IS SINGLE-OCCUPANT:** Live 11 + Live 12 can't both hold the surface at once. Quit Live 11
+  before live-testing Live 12, or they fight over the socket.
+- Preset XML schema bumped 11→12 (`MinorVersion 11.0_11300` → `12.0_12402`, root `MajorVersion=5`
+  unchanged). `_factory_default_adv` `hits[0]` currently picks the Live-11 preset alphabetically =
+  the SAFER cross-version choice (Live upgrades older schemas on load; may reject newer in older Live).
+
+**LIVE-VERIFY ON LIVE 12 — ALL 5 PASSED (2026-06-15, vs Live 12.4 Suite; Live 11 quit, surface selected):**
+1. ✅ Connect + dispatch — `get_session_info` returned 4 tracks/2 returns/master; 9877 bound by Live 12's
+   surface. Confirms the `_Framework`-based Remote Script loads + dispatches in Live 12.
+2. ✅ Preset-patch round-trip — `create_wavetable_preset` WROTE a valid preset (first load deferred only by
+   the normal browser-index lag, same as Live 11). Plus offline: `build_wavetable_adv` +
+   `detect_rack_type`/`summarize_rack_adg` run cleanly against the ACTUAL Live-12 factory `.adv/.adg`
+   (the live tool reads Live 11's copy here since both bundles are installed and `hits[0]` is alphabetical).
+3. ✅ Enums/structure — wavetable legend (146 tables) + unison map resolve. **Live 12 racks expose 16
+   macros (was 8 in 11); `_check_macro_number` already allows 1..16 and `summarize_rack_adg` read all 16
+   — no cap to fix.**
+4. ✅ M4L tap — `MCP Tap.amxd` (built in Live 11 Max 8.5) loads in Live 12's Max 8.6, connects to the
+   registry on 9878, streams (block_count climbing, 48 kHz); `read_track_meter` integrates end-to-end
+   (nulls/peak 0 on a silent track, as expected). `remove_taps` cleared it.
+5. ✅ Browser paths — `user_library/Presets/Audio Effects/Max Audio Effect` resolves; `MCP Tap` device visible.
+
+**ONE FINDING (UX, not a break) — FIXED.** `deploy_taps` on Live 12 returned a FALSE-NEGATIVE
+("Communication error: No data received" → manual-fallback message) because the M4L+Node boot in Live 12's
+Max 8.6 is slower than the socket timeout — but the device DID load and stream (verified via
+`get_track_info` + `get_audio_tap_status`). **FIX (server.py): on a load whose reply was lost (timeout
+signature `_is_load_timeout`), deploy_taps now polls the tap registry (`_confirm_tap_via_registry`, 6×0.5s)
+for a NEWLY-connected tap on that track and records it as deployed `{"confirmed_via":"registry"}` instead
+of failing.** A pre-load uuid snapshot prevents false-confirming a pre-existing tap; clean "not in browser"
+errors still fail fast (no poll). Offline-tested (+4 tests in test_taps_tools.py, suite 498 passed).
+**LIVE-VERIFIED 2026-06-15 on Live 12 (cold Max boot):** with the cached plugin server disabled so the
+working-tree server owned 9878, a cold `deploy_taps([0])` via AbletonDev returned
+`deployed:[{track_index:0, confirmed_via:"registry"}]`, `failed:[]` — the timeout was rescued by the
+registry poll exactly as designed (tap streaming, block_count climbing; removed after).
+
 **PER-TRACK SIGNAL TAPS via a general bridge - SHIPPED as v0.8.0 (2026-06-15).** PR #20 squash-merged to
 `main` (@9b85c0c); `gh release create v0.8.0`; marketplace `ableton` ref bumped v0.7.0 -> v0.8.0 + README
 rebuilt + pushed (@15c0981 in robworks-claude-code-plugins). Live-verified end-to-end (see the Phase 5 entry).
