@@ -300,6 +300,9 @@ def build_melody(root, intervals, bars=4, contour="arch", density=0.5,
         frac = s / float(max(1, slots - 1))
         target_idx = int(round((target_fn(frac) + 1.0) / 2.0 * (len(pitches) - 1)))
         drift = rng.choice([-1, 0, 1])
+        # Blend current index with the contour target plus +/-1 noise. This is a
+        # contour-biased step (pulls toward the target each slot), not a gradual
+        # free walk, so a strong contour reaches its extreme within a bar or two.
         idx = max(0, min(len(pitches) - 1, (idx + drift + target_idx) // 2))
         notes.append(_note(pitches[idx], s * step, step, rng.randint(80, 110)))
     return notes
@@ -359,6 +362,8 @@ def build_drum_pattern(style="four_on_floor", bars=4, fills=False, rng=None):
         t0 = b * _BAR_BEATS
         bar = _drum_bar(style, t0)
         if fills and b == bars - 1:
+            # Clear the last beat (3.0 onward, including the 3.5 off-beat hat) to
+            # make room for the fill.
             bar = [n for n in bar if n["start_time"] < t0 + 3.0]
             sub = rng.choice([0.25, 0.5])
             k = int(round(1.0 / sub))
