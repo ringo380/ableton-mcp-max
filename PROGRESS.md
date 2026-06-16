@@ -17,9 +17,34 @@ alphabetically-first bundle (Live 11). Now the server asks Live its version and 
 - Offline: +5 tests (`test_app_core.py`), full suite 503 passed. RS stays py_compile-clean / 3.7-safe.
 - **Graceful Live quit (resolved):** `kill -TERM` is a signal, not a quit — Live flags a crash and shows a
   "recover your work?" modal on relaunch that blocks control-surface init (9877 never binds). Quit via the
-  real path instead: Apple `quit` event (or ⌘Q) + answer the save dialog by keystroke (⌘⌫ Don't Save /
-  Return Save). `quit saving no` is ignored (times out -1712). VERIFIED on Live 12.4: quit-event + ⌘⌫ →
-  clean shutdown, relaunch bound 9877 in ~5s, no recovery prompt. See CLAUDE.md "Graceful Live quit".
+  real path instead: Apple `quit` event + (if the save dialog appears) ACTIVATE Live then answer by keystroke.
+  **⌘D = Don't Save** (Ableton's custom AXDialog IGNORES ⌘⌫; verified live), **Return = Save**. Now shipped
+  as the `restart_live` tool + `/ableton:restart` command below.
+
+## Automated Live restart: restart_live tool + /ableton:restart command (2026-06-15)
+Lets the agent bounce Ableton end-to-end (quit → relaunch → wait for the surface) with no crash-recovery
+prompt, prompting the user before discarding unsaved work. Motivated by automating the Remote-Script
+reinstall+restart loop.
+- **server.py:** `restart_live(save="discard"|"save", relaunch, wait_timeout)` MCP tool over
+  `_restart_live_impl` + OS seams (`_live_app_and_pid` via the 9877 listener PID, `_osa`/`_osa_async`,
+  `_pid_alive`, `_open_app`, `_port_listening`, `_wait_until`). Flow: fire Apple `quit` (async, since it
+  blocks on the dialog) → "still alive after ~5s" = dirty → ACTIVATE Live + answer (⌘D discard / Return save)
+  → wait for exit → relaunch → wait for 9877. No LOM save-state/save API exists, hence the alive-after-quit
+  dirty heuristic and keystroke save.
+- **command `commands/restart.md` (`/ableton:restart`):** asks Save/Don't-Save/Cancel UP FRONT
+  (AskUserQuestion), then calls the tool with that policy — so prompting works (the MCP server itself can't
+  elicit). Reports `was_dirty`/`quit`/`surface_up`, handles the Untitled+save case, and reminds that a
+  server.py change still needs a Claude Code restart (only Ableton is bounced).
+- **HARD-WON GOTCHAS:** (1) System Events keystrokes go to the FRONTMOST app → must `activate` Live before
+  answering, or ⌘D lands on the terminal. (2) Ableton's save dialog is a custom AXDialog with NO button
+  titles and it IGNORES ⌘⌫ — **⌘D** is Don't Save (found by probing the live dialog). (3) `save` on an
+  Untitled set opens a Save-As path dialog we can't fill → reported `quit:false` (name the set first).
+- **VERIFIED LIVE on Live 12.4** via the working-tree code against the live socket: dirtied the set
+  (set_tempo) → `restart_live(discard)` → `{was_dirty:true, dialog_answered:discard, quit:true,
+  relaunched:true, surface_up:true}`, new Live on 9877, no recovery prompt.
+- Offline: +9 tests (`test_restart_live.py`), full suite 512 passed. New tool filed in both doc-gen group
+  maps ("Host lifecycle" / "Host Lifecycle"); docs regenerated (118 tools, 16 categories; `docs/index.md`
+  hero counts bumped 117→118 / 15→16 + Target → "Live 11 & 12").
 
 ## Live 12 compatibility (2026-06-15, in progress)
 Plugin was built for Live 11; auditing for Live 12 (both Suite installed on the dev machine).

@@ -23,6 +23,7 @@ GROUPS = [
         "set_track_fold",
     ]),
     ("Batch", ["batch"]),
+    ("Host lifecycle", ["restart_live"]),
     ("Tracks (lifecycle)", [
         "get_track_info", "create_midi_track", "create_audio_track",
         "create_return_track", "set_track_name", "delete_track",

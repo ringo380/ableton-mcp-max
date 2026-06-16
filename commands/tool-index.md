@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_117 tools._
+_118 tools._
 
 ## Session & view
 
@@ -39,6 +39,10 @@ _117 tools._
 ## Batch
 
 - **`batch`** - Run several state-mutating commands in ONE Live task / one socket round-trip.
+
+## Host lifecycle
+
+- **`restart_live`** - Gracefully quit and relaunch the running Ableton Live (no crash-recovery
 
 ## Tracks (lifecycle)
 
