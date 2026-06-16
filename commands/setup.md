@@ -22,9 +22,9 @@ This plugin has **two halves** that both must be in place:
    command -v uv || echo "MISSING — install from https://docs.astral.sh/uv/"
    ```
 
-2. Confirm Ableton Live 11 is present:
+2. Confirm Ableton Live (11 or 12) is present:
    ```bash
-   ls -d "/Applications/Ableton Live 11 Suite.app" 2>/dev/null || echo "Live 11 Suite not found at the default path — ask the user where Live is installed."
+   ls -d /Applications/Ableton*Live*.app 2>/dev/null || echo "Ableton Live not found at the default path — ask the user where Live is installed."
    ```
 
 3. Warm the server venv so the first MCP call doesn't time out (creates/syncs the venv from `uv.lock`):
@@ -63,7 +63,7 @@ If it still fails:
 pgrep -fl "Ableton Live" || echo "Live is not running"
 lsof -nP -iTCP:9877 -sTCP:LISTEN || echo "Nothing listening on 9877 — Control Surface not selected, or Live needs a restart"
 ```
-Remote Script load errors are logged in `~/Library/Preferences/Ableton/Live 11*/Log.txt` (grep for `AbletonMCP` or `Traceback`).
+Remote Script load errors are logged in `~/Library/Preferences/Ableton/Live 1[12]*/Log.txt` (grep for `AbletonMCP` or `Traceback`).
 
 ## Done
 

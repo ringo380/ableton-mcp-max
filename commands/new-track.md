@@ -39,7 +39,7 @@ Track creation is undoable but `undo` is **global** (it also undoes the user's h
 
 `add_notes_to_clip(track_index, clip_index, notes)` where each note is a dict:
 `{"pitch": 60, "start_time": 0.0, "duration": 1.0, "velocity": 100, "mute": false}`
-(optional Live 11 fields: `probability`, `velocity_deviation`, `release_velocity`).
+(optional Live 11+ fields: `probability`, `velocity_deviation`, `release_velocity`).
 
 - **Never reach for legacy set_notes/remove_notes** — they pop a blocking modal in Live that stalls the Remote Script and times out the socket (the edit may apply but you get an error). The MCP only exposes the safe extended-API tools (`add_notes_to_clip`, `replace_clip_notes`, `modify_clip_notes`, `remove_clip_notes`) — use those.
 - To rewrite a whole clip, `replace_clip_notes`. To tweak existing notes in place, `modify_clip_notes` by `note_id` (don't remove + re-add).

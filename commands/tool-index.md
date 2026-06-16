@@ -89,8 +89,8 @@ _118 tools._
 - **`duplicate_clip`** - Duplicate a clip into another clip slot on the same track (no scene inserted).
 - **`delete_clip`** - Delete the clip in a clip slot (the slot itself remains, now empty).
 - **`quantize_clip`** - Quantize the notes of a MIDI clip to a grid (MIDI clips only).
-- **`add_notes_to_clip`** - Add MIDI notes to a clip (MIDI clips only). Uses Live 11's extended note
-- **`get_clip_notes`** - Read MIDI notes from a clip (MIDI clips only). Uses Live 11's extended note
+- **`add_notes_to_clip`** - Add MIDI notes to a clip (MIDI clips only). Uses the Live 11+ extended note
+- **`get_clip_notes`** - Read MIDI notes from a clip (MIDI clips only). Uses the Live 11+ extended note
 - **`replace_clip_notes`** - Replace ALL notes in a MIDI clip with the given notes (clears existing notes
 - **`remove_clip_notes`** - Remove MIDI notes within a time/pitch window from a clip (MIDI clips only).
 - **`modify_clip_notes`** - Edit existing notes in a MIDI clip in place, by note_id (MIDI clips only).
