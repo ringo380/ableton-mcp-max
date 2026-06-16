@@ -172,6 +172,24 @@ def _emit_to_slot(track_index, clip_index, notes, bars, replace):
     return len(norm)
 
 
+def _transform_clip(track_index, clip_index, fn):
+    """Read the clip's notes, apply fn(notes)->notes, write them back. Raises if
+    the clip is empty or absent (get_clip_notes raises on a non-MIDI/missing
+    clip; an existing-but-empty MIDI clip yields no notes)."""
+    ableton = get_ableton_connection()
+    result = ableton.send_command("get_clip_notes", {
+        "track_index": track_index, "clip_index": clip_index,
+        "from_time": 0.0, "time_span": -1.0, "from_pitch": 0, "pitch_span": 128})
+    notes = result.get("notes") if isinstance(result, dict) else result
+    if not notes:
+        raise ValueError("no notes in clip (empty or absent)")
+    new_notes = fn([dict(n) for n in notes])
+    ableton.send_command("replace_clip_notes", {
+        "track_index": track_index, "clip_index": clip_index,
+        "notes": [normalize_note(n) for n in new_notes]})
+    return len(new_notes)
+
+
 def _resolve_index(primary, alias, *, default=None, label="index"):
     """Resolve a descriptive index parameter that also accepts the legacy
     `index` alias. Pass the canonical name OR `index` (not both); with a
@@ -2211,6 +2229,108 @@ def generate_drum_pattern(
     except Exception as e:
         logger.error("Error generating drum pattern: %s", e)
         return _err("Error generating drum pattern: %s" % e)
+
+
+@mcp.tool()
+def humanize_clip(
+    ctx: Context, track_index: int, clip_index: int,
+    timing: float = 0.02, velocity: float = 8.0, seed: int = None,
+) -> str:
+    """Humanize a clip: jitter note onsets (+/- timing beats) and velocities
+    (+/- velocity). Rewrites the clip's notes in place.
+
+    Parameters:
+    - track_index / clip_index: locate the clip
+    - timing: max onset jitter in beats (default 0.02)
+    - velocity: max velocity jitter (default 8)
+    - seed: optional int for reproducible jitter
+    """
+    try:
+        rng = comp.make_rng(seed)
+        count = _transform_clip(
+            track_index, clip_index,
+            lambda ns: comp.humanize(ns, timing=timing, velocity=velocity, rng=rng))
+        return _ok({"notes": count})
+    except Exception as e:
+        logger.error("Error humanizing clip: %s", e)
+        return _err("Error humanizing clip: %s" % e)
+
+
+@mcp.tool()
+def quantize_clip_to_scale(
+    ctx: Context, track_index: int, clip_index: int,
+    key: str = None, scale: str = None,
+) -> str:
+    """Snap every note in a clip to the nearest in-scale pitch.
+
+    Parameters:
+    - track_index / clip_index: locate the clip
+    - key/scale: optional; if both omitted, the set's key/scale is read
+    """
+    try:
+        root, intervals = _resolve_scale(key, scale)
+        count = _transform_clip(
+            track_index, clip_index,
+            lambda ns: comp.quantize_to_scale(ns, root, intervals))
+        return _ok({"notes": count})
+    except Exception as e:
+        logger.error("Error quantizing clip to scale: %s", e)
+        return _err("Error quantizing clip to scale: %s" % e)
+
+
+@mcp.tool()
+def arpeggiate_clip(
+    ctx: Context, track_index: int, clip_index: int,
+    mode: str = "up", rate: float = 0.25, gate: float = 0.9, seed: int = None,
+) -> str:
+    """Arpeggiate a clip: expand simultaneous notes (chords) into sequential
+    notes. Single (non-chord) notes pass through unchanged. Rewrites the clip.
+
+    Parameters:
+    - track_index / clip_index: locate the clip
+    - mode: up | down | updown | random | strum
+    - rate: step spacing in beats (default 0.25 = sixteenth)
+    - gate: note length as a fraction of rate (default 0.9)
+    - seed: optional int (only used by mode=random)
+    """
+    try:
+        rng = comp.make_rng(seed)
+        count = _transform_clip(
+            track_index, clip_index,
+            lambda ns: comp.arpeggiate(ns, mode=mode, rate=rate, gate=gate, rng=rng))
+        return _ok({"notes": count, "mode": mode})
+    except Exception as e:
+        logger.error("Error arpeggiating clip: %s", e)
+        return _err("Error arpeggiating clip: %s" % e)
+
+
+@mcp.tool()
+def harmonize_clip(
+    ctx: Context, track_index: int, clip_index: int,
+    intervals: List[int] = None, degrees: List[int] = None,
+    key: str = None, scale: str = None,
+) -> str:
+    """Add a harmony voice to each note in a clip. Provide exactly ONE of
+    intervals (fixed semitone offsets, snapped to scale) or degrees (scale-step
+    offsets, kept diatonic).
+
+    Parameters:
+    - track_index / clip_index: locate the clip
+    - intervals: e.g. [4,7] adds a third and fifth above, snapped to scale
+    - degrees: e.g. [2] adds a note two scale-steps up (a diatonic third)
+    - key/scale: optional; if both omitted, the set's key/scale is read
+    """
+    try:
+        root, scale_intervals = _resolve_scale(key, scale)
+        count = _transform_clip(
+            track_index, clip_index,
+            lambda ns: comp.harmonize(ns, root, scale_intervals,
+                                      intervals=intervals, degrees=degrees))
+        return _ok({"notes": count})
+    except Exception as e:
+        logger.error("Error harmonizing clip: %s", e)
+        return _err("Error harmonizing clip: %s" % e)
+
 
 @mcp.tool()
 def set_clip_name(ctx: Context, track_index: int, clip_index: int, name: str) -> str:
