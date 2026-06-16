@@ -103,6 +103,7 @@ from ableton_mcp_max.masking_utils import (
 )
 from ableton_mcp_max.tap_connection import AudioTapConnection
 from ableton_mcp_max.tap_registry import TapRegistry
+from ableton_mcp_max import composition_utils as comp
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -118,6 +119,55 @@ def _ok(data):
 def _err(message):
     """Wrap a tool failure in the uniform {ok, error} envelope."""
     return json.dumps({"ok": False, "error": str(message)}, indent=2)
+
+
+def _song_scale():
+    """Best-effort read of the set's key/scale via the Remote Script. Returns a
+    dict {scale_name, root_note, scale_intervals} or None on any failure."""
+    try:
+        ableton = get_ableton_connection()
+        return ableton.send_command("get_song_scale", {})
+    except Exception as e:
+        logger.warning("get_song_scale failed: %s", e)
+        return None
+
+
+def _resolve_scale(key, scale):
+    """Resolve (root, intervals): explicit key/scale params win; if both are
+    None, read the set's key/scale. Falls back to C natural minor on failure."""
+    song_scale = None
+    if key is None and scale is None:
+        song_scale = _song_scale()
+    return comp.resolve_key_scale(key=key, scale=scale, song_scale=song_scale)
+
+
+def _emit_to_slot(track_index, clip_slot_index, notes, bars, replace):
+    """Create the MIDI clip if the slot is empty, else require replace=True;
+    then write `notes`. Returns the number of notes written. Raises ValueError
+    on an occupied slot when replace is False."""
+    ableton = get_ableton_connection()
+    try:
+        ableton.send_command(
+            "get_clip_info",
+            {"track_index": track_index, "clip_index": clip_slot_index})
+        has_clip = True
+    except Exception:
+        has_clip = False
+    norm = [normalize_note(n) for n in notes]
+    if has_clip:
+        if not replace:
+            raise ValueError("slot occupied; pass replace=true to overwrite")
+        ableton.send_command("replace_clip_notes", {
+            "track_index": track_index, "clip_index": clip_slot_index,
+            "notes": norm})
+    else:
+        ableton.send_command("create_clip", {
+            "track_index": track_index, "clip_index": clip_slot_index,
+            "length": float(bars) * 4.0})
+        ableton.send_command("add_notes_to_clip", {
+            "track_index": track_index, "clip_index": clip_slot_index,
+            "notes": norm})
+    return len(norm)
 
 
 def _resolve_index(primary, alias, *, default=None, label="index"):
@@ -2041,6 +2091,124 @@ def add_notes_to_clip(
     except Exception as e:
         logger.error(f"Error adding notes to clip: {str(e)}")
         return _err(f"Error adding notes to clip: {str(e)}")
+
+@mcp.tool()
+def generate_chord_progression(
+    ctx: Context, track_index: int, clip_slot_index: int,
+    progression: List[str], key: str = None, scale: str = None,
+    bars: int = 4, octave: int = 3, durations: List[float] = None,
+    replace: bool = False,
+) -> str:
+    """Generate a chord progression into a session clip slot. Creates the MIDI
+    clip if the slot is empty (length = bars*4 beats), else requires replace=true.
+
+    Parameters:
+    - track_index / clip_slot_index: where to write
+    - progression: roman numerals ('I','vi','IV','V') and/or chord symbols
+      ('Cmaj7','Am7'); romans resolve diatonically to key/scale
+    - key/scale: optional; if both omitted, the set's key/scale is read
+    - bars: clip length in 4/4 bars (default 4)
+    - octave: Ableton octave label, C3=60 (default 3)
+    - durations: optional per-chord beat lengths (default: evenly split)
+    - replace: overwrite an occupied slot (default false)
+    """
+    try:
+        root, intervals = _resolve_scale(key, scale)
+        notes = comp.build_chord_progression(
+            progression, root, intervals, bars=bars, octave=octave,
+            durations=durations)
+        count = _emit_to_slot(track_index, clip_slot_index, notes, bars, replace)
+        return _ok({"notes_added": count, "bars": bars,
+                    "chords": len(progression)})
+    except Exception as e:
+        logger.error("Error generating chord progression: %s", e)
+        return _err("Error generating chord progression: %s" % e)
+
+
+@mcp.tool()
+def generate_bassline(
+    ctx: Context, track_index: int, clip_slot_index: int,
+    progression: List[str] = None, style: str = "root",
+    key: str = None, scale: str = None, bars: int = 4, octave: int = 1,
+    seed: int = None, replace: bool = False,
+) -> str:
+    """Generate a bassline into a session clip slot. With a progression the bass
+    follows the chord roots; without one it lays one scale-root per bar.
+
+    Parameters:
+    - progression: optional chord list (roman/symbol) for harmonic context
+    - style: root | octaves | arp | walking (walking needs a progression)
+    - key/scale: optional; if both omitted, the set's key/scale is read
+    - octave: Ableton octave label (default 1)
+    - seed: optional int for reproducible randomness
+    - replace: overwrite an occupied slot
+    """
+    try:
+        root, intervals = _resolve_scale(key, scale)
+        notes = comp.build_bassline(
+            progression=progression, style=style, root=root, intervals=intervals,
+            bars=bars, octave=octave, rng=comp.make_rng(seed))
+        count = _emit_to_slot(track_index, clip_slot_index, notes, bars, replace)
+        return _ok({"notes_added": count, "bars": bars, "style": style})
+    except Exception as e:
+        logger.error("Error generating bassline: %s", e)
+        return _err("Error generating bassline: %s" % e)
+
+
+@mcp.tool()
+def generate_melody(
+    ctx: Context, track_index: int, clip_slot_index: int,
+    key: str = None, scale: str = None, bars: int = 4,
+    contour: str = "arch", density: float = 0.5, octave: int = 4,
+    seed: int = None, replace: bool = False,
+) -> str:
+    """Generate an in-scale monophonic melody into a session clip slot.
+
+    Parameters:
+    - key/scale: optional; if both omitted, the set's key/scale is read
+    - contour: up | down | arch | valley | random
+    - density: 0..1 probability each eighth-note slot sounds (default 0.5)
+    - octave: Ableton octave label (default 4 = around middle C)
+    - seed: optional int for reproducible randomness
+    - replace: overwrite an occupied slot
+    """
+    try:
+        root, intervals = _resolve_scale(key, scale)
+        notes = comp.build_melody(
+            root, intervals, bars=bars, contour=contour, density=density,
+            octave=octave, rng=comp.make_rng(seed))
+        count = _emit_to_slot(track_index, clip_slot_index, notes, bars, replace)
+        return _ok({"notes_added": count, "bars": bars, "contour": contour})
+    except Exception as e:
+        logger.error("Error generating melody: %s", e)
+        return _err("Error generating melody: %s" % e)
+
+
+@mcp.tool()
+def generate_drum_pattern(
+    ctx: Context, track_index: int, clip_slot_index: int,
+    style: str = "four_on_floor", bars: int = 4, fills: bool = False,
+    seed: int = None, replace: bool = False,
+) -> str:
+    """Generate a drum pattern (GM drum map) into a session clip slot. Intended
+    for a Drum Rack track (kick=36, snare=38, closed hat=42, ...).
+
+    Parameters:
+    - style: four_on_floor | basic_rock | breakbeat | hihat_8ths | boom_bap
+    - bars: clip length in 4/4 bars (default 4)
+    - fills: add a seeded snare fill in the last bar
+    - seed: optional int for reproducible randomness
+    - replace: overwrite an occupied slot
+    """
+    try:
+        notes = comp.build_drum_pattern(
+            style=style, bars=bars, fills=fills, rng=comp.make_rng(seed))
+        count = _emit_to_slot(track_index, clip_slot_index, notes, bars, replace)
+        return _ok({"notes_added": count, "bars": bars, "style": style})
+    except Exception as e:
+        logger.error("Error generating drum pattern: %s", e)
+        return _err("Error generating drum pattern: %s" % e)
+
 @mcp.tool()
 def set_clip_name(ctx: Context, track_index: int, clip_index: int, name: str) -> str:
     """
