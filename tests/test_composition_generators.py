@@ -45,3 +45,29 @@ def test_bassline_arp_in_chord():
     allowed = set(scale_pitches(0, C_MAJOR, 0, 127))
     assert all(n["pitch"] in allowed for n in notes)
     assert len(notes) == 3   # triad arpeggiated
+
+
+def test_chord_progression_durations_mismatch_raises():
+    with pytest.raises(ValueError):
+        build_chord_progression(["I", "V"], 0, C_MAJOR, bars=2, octave=3,
+                                durations=[4.0])   # wrong length
+
+
+def test_bassline_walking_quarter_notes():
+    notes = build_bassline(progression=["I", "V"], style="walking", root=0,
+                           intervals=C_MAJOR, bars=2, octave=1)
+    # seg = 4 beats per chord -> 4 quarter notes each = 8 total
+    assert len(notes) == 8
+    assert [n["start_time"] for n in notes] == [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]
+    # each chord's downbeat is its root: I->C1=36, V->G1=43
+    assert notes[0]["pitch"] == 36
+    assert notes[4]["pitch"] == 43
+    allowed = set(scale_pitches(0, C_MAJOR, 0, 127))
+    assert all(n["pitch"] in allowed for n in notes)
+
+
+def test_bassline_arp_seventh_count():
+    # A diatonic seventh chord arpeggiates to 4 notes.
+    notes = build_bassline(progression=["V7"], style="arp", root=0,
+                           intervals=C_MAJOR, bars=1, octave=1)
+    assert len(notes) == 4

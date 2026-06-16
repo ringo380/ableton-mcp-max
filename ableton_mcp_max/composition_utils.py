@@ -200,6 +200,8 @@ def build_chord_progression(progression, root, intervals, bars=4, octave=3,
     """Lay a chord per slot across `bars` bars (4/4). Returns note dicts."""
     if not progression:
         raise ValueError("progression must be a non-empty list")
+    if durations is not None and len(durations) != len(progression):
+        raise ValueError("durations length must match progression length")
     total = bars * _BAR_BEATS
     n = len(progression)
     if durations is None:
@@ -216,7 +218,8 @@ def build_chord_progression(progression, root, intervals, bars=4, octave=3,
 def build_bassline(progression=None, style="root", root=0, intervals=None,
                    bars=4, octave=1, rng=None):
     """Bass notes. With a progression, follow the chord roots; without one, one
-    scale-root per bar. Styles: root, octaves, arp, walking."""
+    scale-root per bar. Styles: root, octaves, arp, walking.
+    rng is used only by the 'arp'/random styles; root/octaves/walking are deterministic."""
     intervals = intervals or SCALE_INTERVALS["natural_minor"]
     rng = rng or make_rng()
     notes = []
@@ -243,11 +246,17 @@ def build_bassline(progression=None, style="root", root=0, intervals=None,
         elif style == "walking":
             nxt = build_chord(progression[(i + 1) % len(progression)],
                               root, intervals, octave)[0]
-            quarters = max(1, int(round(seg)))
+            # 4/4 assumed: quarter-note steps through scale tones toward the
+            # next chord's root, the downbeat anchored to this chord's root.
             pool = scale_pitches(root, intervals, min(base, nxt), max(base, nxt) + 1) or [base]
-            for j in range(quarters):
+            j = 0
+            t = t0
+            while t < t0 + seg - 1e-9:
+                dur = min(1.0, t0 + seg - t)
                 p = base if j == 0 else pool[min(j, len(pool) - 1)]
-                notes.append(_note(p, t0 + j, 1.0, 90))
+                notes.append(_note(p, t, dur, 90))
+                t += 1.0
+                j += 1
         else:
             raise ValueError("Unknown bassline style %r" % (style,))
     return notes
