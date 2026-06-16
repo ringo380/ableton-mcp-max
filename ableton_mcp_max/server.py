@@ -2398,19 +2398,21 @@ def set_tempo(ctx: Context, tempo: float) -> str:
         logger.error(f"Error setting tempo: {str(e)}")
         return _err(f"Error setting tempo: {str(e)}")
 @mcp.tool()
-def load_instrument_or_effect(ctx: Context, track_index: int, uri: str) -> str:
+def load_instrument_or_effect(ctx: Context, track_index: int, uri: str, track_type: str = "regular") -> str:
     """
     Load an instrument or effect onto a track using its URI.
-    
+
     Parameters:
     - track_index: The index of the track to load the instrument on
     - uri: The URI of the instrument or effect to load (e.g., 'query:Synths#Instrument%20Rack:Bass:FileId_5116')
+    - track_type: 'regular' (default), 'return', or 'master'. Only audio effects are valid on return/master tracks.
     """
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("load_browser_item", {
             "track_index": track_index,
-            "item_uri": uri
+            "item_uri": uri,
+            "track_type": track_type,
         })
         
         # Check if the instrument was loaded successfully
@@ -3265,7 +3267,7 @@ def list_device_presets(ctx: Context, path: str, max_depth: int = 6,
         logger.error(f"Error listing device presets: {str(e)}")
         return _err(f"Error listing device presets: {str(e)}")
 @mcp.tool()
-def load_preset(ctx: Context, track_index: int, path: str, name: str = None) -> str:
+def load_preset(ctx: Context, track_index: int, path: str, name: str = None, track_type: str = "regular") -> str:
     """
     Load a preset onto a track by readable name/path (no URI required).
 
@@ -3284,6 +3286,8 @@ def load_preset(ctx: Context, track_index: int, path: str, name: str = None) -> 
             case-insensitive, then unique substring, across name and
             relative_path. Note factory preset names include their file
             extension (e.g. 'Dark Swarm.adg').
+    - track_type: 'regular' (default), 'return', or 'master'. Only audio
+            effects are valid on return/master tracks.
 
     Tip: run list_device_presets first, then pass a preset's `name` or
     `relative_path` here (it resolves nested presets, so either works).
@@ -3317,6 +3321,7 @@ def load_preset(ctx: Context, track_index: int, path: str, name: str = None) -> 
         load_result = ableton.send_command("load_browser_item", {
             "track_index": track_index,
             "item_uri": uri,
+            "track_type": track_type,
         })
         if load_result.get("loaded", False):
             return _ok(f"Loaded preset '{label}' (uri '{uri}') "
