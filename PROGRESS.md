@@ -44,7 +44,10 @@ signature `_is_load_timeout`), deploy_taps now polls the tap registry (`_confirm
 for a NEWLY-connected tap on that track and records it as deployed `{"confirmed_via":"registry"}` instead
 of failing.** A pre-load uuid snapshot prevents false-confirming a pre-existing tap; clean "not in browser"
 errors still fail fast (no poll). Offline-tested (+4 tests in test_taps_tools.py, suite 498 passed).
-LIVE-VERIFY of the fix needs a Claude Code restart (reload server.py) + the AbletonDev tools on Live 12.
+**LIVE-VERIFIED 2026-06-15 on Live 12 (cold Max boot):** with the cached plugin server disabled so the
+working-tree server owned 9878, a cold `deploy_taps([0])` via AbletonDev returned
+`deployed:[{track_index:0, confirmed_via:"registry"}]`, `failed:[]` — the timeout was rescued by the
+registry poll exactly as designed (tap streaming, block_count climbing; removed after).
 
 **PER-TRACK SIGNAL TAPS via a general bridge - SHIPPED as v0.8.0 (2026-06-15).** PR #20 squash-merged to
 `main` (@9b85c0c); `gh release create v0.8.0`; marketplace `ableton` ref bumped v0.7.0 -> v0.8.0 + README
