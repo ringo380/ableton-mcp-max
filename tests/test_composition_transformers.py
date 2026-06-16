@@ -43,3 +43,47 @@ def test_quantize_does_not_mutate_input():
     orig = _notes()
     quantize_to_scale(orig, 0, C_MAJOR)
     assert orig == _notes()
+
+
+from ableton_mcp_max.composition_utils import arpeggiate, harmonize
+
+
+def _triad():
+    # C E G all at t0 for 1 beat
+    return [
+        {"pitch": 60, "start_time": 0.0, "duration": 1.0, "velocity": 100},
+        {"pitch": 64, "start_time": 0.0, "duration": 1.0, "velocity": 100},
+        {"pitch": 67, "start_time": 0.0, "duration": 1.0, "velocity": 100},
+    ]
+
+
+def test_arpeggiate_up_sequences_pitches():
+    out = arpeggiate(_triad(), mode="up", rate=0.25, gate=0.9)
+    # span 1.0 / rate 0.25 = 4 steps cycling C E G C
+    assert [n["pitch"] for n in out] == [60, 64, 67, 60]
+    assert [n["start_time"] for n in out] == [0.0, 0.25, 0.5, 0.75]
+
+
+def test_arpeggiate_down_reverses():
+    out = arpeggiate(_triad(), mode="down", rate=0.5, gate=1.0)
+    assert [n["pitch"] for n in out][:2] == [67, 64]
+
+
+def test_harmonize_fixed_intervals_snapped_to_scale():
+    src = [{"pitch": 60, "start_time": 0.0, "duration": 1.0, "velocity": 100}]
+    out = harmonize(src, 0, C_MAJOR, intervals=[4])   # +4 semis = E (in scale)
+    assert sorted(n["pitch"] for n in out) == [60, 64]
+
+
+def test_harmonize_requires_exactly_one_mode():
+    src = [{"pitch": 60, "start_time": 0.0, "duration": 1.0, "velocity": 100}]
+    with pytest.raises(ValueError):
+        harmonize(src, 0, C_MAJOR, intervals=[4], degrees=[2])
+    with pytest.raises(ValueError):
+        harmonize(src, 0, C_MAJOR)
+
+
+def test_harmonize_scale_degrees_stay_diatonic():
+    src = [{"pitch": 60, "start_time": 0.0, "duration": 1.0, "velocity": 100}]
+    out = harmonize(src, 0, C_MAJOR, degrees=[2])   # a third up the scale = E
+    assert sorted(n["pitch"] for n in out) == [60, 64]

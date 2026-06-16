@@ -400,3 +400,78 @@ def quantize_to_scale(notes, root, intervals):
         m["pitch"] = snap_to_scale(int(n.get("pitch", 60)), root, intervals)
         out.append(m)
     return out
+
+
+def _arp_order(pitches, mode, rng):
+    if mode == "down":
+        return list(reversed(pitches))
+    if mode == "updown" and len(pitches) > 2:
+        return list(pitches) + list(reversed(pitches[1:-1]))
+    if mode == "random":
+        seq = list(pitches)
+        (rng or make_rng()).shuffle(seq)
+        return seq
+    return list(pitches)   # up / strum / updown(<=2)
+
+
+def arpeggiate(notes, mode="up", rate=0.25, gate=0.9, rng=None):
+    """Expand simultaneous notes (chords) into sequential notes. Notes sharing a
+    start_time form a chord; each is played over the chord's duration at `rate`
+    spacing. mode='strum' instead staggers onsets tightly, keeping sustain.
+    Modes: up, down, updown, random, strum."""
+    groups = {}
+    for n in notes:
+        groups.setdefault(round(float(n.get("start_time", 0.0)), 6), []).append(n)
+    out = []
+    for st in sorted(groups):
+        chord = groups[st]
+        pitches = sorted(set(int(n["pitch"]) for n in chord))
+        span = max(float(n.get("duration", rate)) for n in chord)
+        vel = float(chord[0].get("velocity", 100))
+        if mode == "strum":
+            for j, p in enumerate(_arp_order(pitches, "up", rng)):
+                out.append(_note(p, st + j * (rate * 0.1), span, vel))
+            continue
+        order = _arp_order(pitches, mode, rng)
+        steps = max(1, int(round(span / rate)))
+        for k in range(steps):
+            out.append(_note(order[k % len(order)], st + k * rate, rate * gate, vel))
+    return out
+
+
+def _shift_by_scale_degrees(pitch, degrees, scale_root, scale_intervals):
+    snapped = snap_to_scale(pitch, scale_root, scale_intervals)
+    members = sorted(set((scale_root + i) % 12 for i in scale_intervals))
+    pc = snapped % 12
+    base_idx = members.index(pc)
+    n = len(members)
+    oct_shift, new_idx = divmod(base_idx + degrees, n)
+    new_pc = members[new_idx]
+    return _clamp_pitch(snapped - pc + new_pc + 12 * oct_shift)
+
+
+def harmonize(notes, scale_root, scale_intervals, intervals=None, degrees=None):
+    """Add a harmony voice per note. Provide exactly ONE of:
+    - intervals: fixed semitone offsets, each snapped into the scale.
+    - degrees: scale-step offsets (kept diatonic).
+    The original notes are preserved; harmony voices are added.
+
+    The scale is passed as scale_root/scale_intervals (not `intervals`, which is
+    the harmonize semitone-offset argument) to avoid a name collision."""
+    if (intervals is None) == (degrees is None):
+        raise ValueError("provide exactly one of intervals / degrees")
+    out = []
+    for n in notes:
+        out.append(dict(n))
+        p = int(n.get("pitch", 60))
+        if intervals is not None:
+            for iv in intervals:
+                m = dict(n)
+                m["pitch"] = snap_to_scale(p + iv, scale_root, scale_intervals)
+                out.append(m)
+        else:
+            for d in degrees:
+                m = dict(n)
+                m["pitch"] = _shift_by_scale_degrees(p, d, scale_root, scale_intervals)
+                out.append(m)
+    return out
