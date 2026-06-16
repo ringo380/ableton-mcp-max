@@ -3125,7 +3125,7 @@ def _factory_default_adv(filename, category="Instruments"):
     if not hits:
         raise FileNotFoundError(
             "Factory default %s/%s not found under /Applications/Ableton*.app. "
-            "Is Ableton Live 11 Suite installed?" % (category, filename)
+            "Is Ableton Live (11 or 12) Suite installed?" % (category, filename)
         )
     return hits[0]
 
