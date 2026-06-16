@@ -28,8 +28,16 @@ server-side MIDI-composition primitives that emit notes through the existing not
   passed**; server imports clean; RS py_compile clean. Built subagent-driven (spec + quality review each
   task; reviews caught + fixed: walking-bassline fractional-segment bug, durations-length validation,
   arpeggiate single-note re-trigger footgun, clip_slot_index->clip_index API consistency).
-- **NOT yet live-verified** (needs RS reinstall + Live bounce + Claude Code restart so AbletonDev reloads the
-  new server.py). **NOT yet released** - per plan, one release will bundle #0 + gap C + #1.
+- **LIVE-VERIFIED 2026-06-16 vs Live 12 Suite** (working-tree server.py driven directly against the live
+  9877 socket, bypassing MCP, on a self-cleaning scratch MIDI track): all 8 tools pass. chords -> 12 notes,
+  pitch-classes exactly {0,2,4,5,7,9,11} (clean C major); bassline 4 roots; melody 11 (seed=42); drums 28
+  with kicks at beats 0-7 (four_on_floor x2 bars); humanize/quantize 11 each; arpeggiate expanded the 12-note
+  chord clip to 64; harmonize 4->8; occupied-slot guard correctly errors without replace and succeeds with
+  replace=true; scratch track deleted -> track_count restored. The `_emit_to_slot` empty-slot probe logs
+  "No clip in slot" by design (try/except treats it as empty -> create). **ONE path deferred:**
+  `get_song_scale` auto-read (generators with NO key/scale) needs the new RS, which loads only on a Live
+  bounce - verify after the next Live restart (the explicit-key/scale path and the get_song_scale fallback
+  are both verified). **NOT yet released** - per plan, one release will bundle #0 + gap C + #1.
 - Specs/plans: `docs/superpowers/specs/2026-06-16-composition-layer-design.md`,
   `docs/superpowers/plans/2026-06-16-composition-layer.md`. NEXT = live-verify, then release.
 
