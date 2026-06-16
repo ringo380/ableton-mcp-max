@@ -172,3 +172,82 @@ def build_chord(symbol, root, intervals, octave):
     if _is_roman(symbol):
         return _build_roman_chord(symbol, root, intervals, octave)
     return _build_symbol_chord(symbol, octave)
+
+
+# ---------------------------------------------------------------------------
+# Note-generation helpers
+# ---------------------------------------------------------------------------
+
+_BAR_BEATS = 4.0   # 4/4 assumed
+
+
+def _note(pitch, start, duration, velocity):
+    return {
+        "pitch": _clamp_pitch(pitch),
+        "start_time": round(float(start), 6),
+        "duration": round(float(duration), 6),
+        "velocity": float(velocity),
+    }
+
+
+def make_rng(seed=None):
+    """Seeded RNG: int seed -> reproducible; None -> fresh/system-seeded."""
+    return random.Random(seed)
+
+
+def build_chord_progression(progression, root, intervals, bars=4, octave=3,
+                            durations=None, velocity=100):
+    """Lay a chord per slot across `bars` bars (4/4). Returns note dicts."""
+    if not progression:
+        raise ValueError("progression must be a non-empty list")
+    total = bars * _BAR_BEATS
+    n = len(progression)
+    if durations is None:
+        durations = [total / n] * n
+    notes = []
+    t = 0.0
+    for sym, dur in zip(progression, durations):
+        for p in build_chord(sym, root, intervals, octave):
+            notes.append(_note(p, t, dur, velocity))
+        t += dur
+    return notes
+
+
+def build_bassline(progression=None, style="root", root=0, intervals=None,
+                   bars=4, octave=1, rng=None):
+    """Bass notes. With a progression, follow the chord roots; without one, one
+    scale-root per bar. Styles: root, octaves, arp, walking."""
+    intervals = intervals or SCALE_INTERVALS["natural_minor"]
+    rng = rng or make_rng()
+    notes = []
+    if not progression:
+        rp = _octave_base(octave) + root
+        for b in range(bars):
+            notes.append(_note(rp, b * _BAR_BEATS, _BAR_BEATS, 100))
+        return notes
+    seg = (bars * _BAR_BEATS) / len(progression)
+    for i, sym in enumerate(progression):
+        chord = build_chord(sym, root, intervals, octave)
+        base = chord[0]
+        t0 = i * seg
+        if style == "root":
+            notes.append(_note(base, t0, seg, 100))
+        elif style == "octaves":
+            half = seg / 2.0
+            notes.append(_note(base, t0, half, 100))
+            notes.append(_note(base + 12, t0 + half, half, 90))
+        elif style == "arp":
+            step = seg / len(chord)
+            for j, p in enumerate(chord):
+                notes.append(_note(p, t0 + j * step, step, 95))
+        elif style == "walking":
+            nxt = build_chord(progression[(i + 1) % len(progression)],
+                              root, intervals, octave)[0]
+            quarters = max(1, int(round(seg)))
+            pool = scale_pitches(root, intervals, min(base, nxt), max(base, nxt) + 1) or [base]
+            for j in range(quarters):
+                p = base if j == 0 else pool[min(j, len(pool) - 1)]
+                notes.append(_note(p, t0 + j, 1.0, 90))
+        else:
+            raise ValueError("Unknown bassline style %r" % (style,))
+    return notes
