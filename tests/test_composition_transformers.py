@@ -24,8 +24,22 @@ def test_humanize_bounds_and_reproducible():
         assert 1.0 <= h["velocity"] <= 127.0
 
 
+def test_humanize_does_not_mutate_input():
+    orig = _notes()
+    humanize(orig, timing=0.05, velocity=10, rng=random.Random(5))
+    assert orig == _notes()   # input list/dicts untouched
+
+
 def test_quantize_snaps_pitches_into_scale():
     out = quantize_to_scale(_notes(), 0, C_MAJOR)
     assert [n["pitch"] for n in out] == [60, 60]   # 61 (C#) -> 60 (C)
-    # other fields preserved
+    # all non-pitch fields preserved
     assert out[1]["start_time"] == 1.0
+    assert out[1]["duration"] == 1.0
+    assert out[1]["velocity"] == 100
+
+
+def test_quantize_does_not_mutate_input():
+    orig = _notes()
+    quantize_to_scale(orig, 0, C_MAJOR)
+    assert orig == _notes()
