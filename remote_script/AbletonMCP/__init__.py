@@ -590,6 +590,8 @@ class AbletonMCP(ControlSurface):
                 response["result"] = self._get_track_info(track_index)
             elif command_type == "get_analysis_snapshot":
                 response["result"] = self._get_analysis_snapshot()
+            elif command_type == "get_application_version":
+                response["result"] = self._get_application_version()
             elif command_type == "batch":
                 members = params.get("commands", [])
                 stop_on_error = params.get("stop_on_error", True)
@@ -811,7 +813,17 @@ class AbletonMCP(ControlSurface):
         return response
     
     # Command implementations
-    
+
+    def _get_application_version(self):
+        """Report the running Live version (read-only). Lets the host pick
+        factory assets matching the Live the user is actually running."""
+        app = self.application()
+        return {
+            "major": app.get_major_version(),
+            "minor": app.get_minor_version(),
+            "bugfix": app.get_bugfix_version(),
+        }
+
     def _get_session_info(self):
         """Get information about the current session"""
         try:

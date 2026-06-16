@@ -3164,14 +3164,51 @@ def load_preset(ctx: Context, track_index: int, path: str, name: str = None) -> 
 # User Library (on launch / browser refresh). Once a filename is indexed,
 # overwriting it and reloading reads fresh — no re-index needed.
 
+# Multi-version glob fallback: matches any installed Live bundle's Core Library.
+# hits[0] is alphabetical = Live 11 when both 11 and 12 are installed (the safer
+# cross-version source — Live upgrades older preset schemas on load).
 _APP_CORE = ("/Applications/Ableton*Live*.app/Contents/App-Resources/"
              "Core Library")
 _FACTORY_TABLE_CACHE = None
 
 
+def _running_live_major():
+    """Major version of the Live the host is talking to (via the Remote Script's
+    get_application_version), or None if it can't be resolved."""
+    try:
+        info = get_ableton_connection().send_command("get_application_version")
+        return int(info.get("major"))
+    except Exception:
+        return None
+
+
+def _core_for_major(major):
+    """Core Library path of an installed Live with the given major version, or
+    None. Seam so _app_core is unit-testable without real .app bundles."""
+    hits = sorted(glob.glob(
+        "/Applications/Ableton*Live*%d*.app/Contents/App-Resources/Core Library"
+        % major))
+    return hits[0] if hits else None
+
+
+def _app_core():
+    """Core Library of the RUNNING Live, so factory-asset reads (presets, the
+    wavetable table list, factory racks) match the version the user is actually
+    using when several Live versions are installed. Falls back to the
+    multi-version glob (_APP_CORE) when the running version can't be resolved or
+    its bundle isn't found. Not cached: stays correct if Live versions switch
+    mid-session, at the cost of one tiny socket read per asset lookup."""
+    major = _running_live_major()
+    if major is not None:
+        core = _core_for_major(major)
+        if core:
+            return core
+    return _APP_CORE
+
+
 def _factory_default_adv(filename, category="Instruments"):
     """Path to a factory-default preset (e.g. 'Wavetable.adv'), or raise."""
-    hits = glob.glob("%s/Defaults/%s/%s" % (_APP_CORE, category, filename))
+    hits = glob.glob("%s/Defaults/%s/%s" % (_app_core(), category, filename))
     if not hits:
         raise FileNotFoundError(
             "Factory default %s/%s not found under /Applications/Ableton*.app. "
@@ -3310,7 +3347,7 @@ def _read_rack_template(template):
     # (b) factory rack by name under any Racks/<kind>/<sub>/<name>.adg
     name = os.path.splitext(os.path.basename(expanded))[0]
     hits = glob.glob(
-        "%s/Racks/**/%s.adg" % (_APP_CORE, glob.escape(name)), recursive=True
+        "%s/Racks/**/%s.adg" % (_app_core(), glob.escape(name)), recursive=True
     )
     if hits:
         with gzip.open(hits[0], "rt") as f:
@@ -3337,7 +3374,7 @@ def _scan_factory_tables(limit=400):
         return _FACTORY_TABLE_CACHE
     names = set()
     files = glob.glob(
-        "%s/Devices/Instruments/Wavetable/**/*.adv" % _APP_CORE, recursive=True
+        "%s/Devices/Instruments/Wavetable/**/*.adv" % _app_core(), recursive=True
     )[:limit]
     for path in files:
         try:

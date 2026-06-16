@@ -1,5 +1,24 @@
 # ableton-mcp-max — Progress
 
+## Adapt factory-asset reads to the RUNNING Live version (2026-06-15)
+Closes the one spot that ignored which Live the user runs: on a machine with BOTH 11 and 12 installed,
+factory-asset reads (preset patching, the wavetable table list, factory racks) always took the
+alphabetically-first bundle (Live 11). Now the server asks Live its version and reads the matching bundle.
+- **Remote Script:** new `get_application_version` read command → `{major,minor,bugfix}` via
+  `self.application().get_*_version()`. Inline read (no main-thread schedule).
+- **server.py:** `_running_live_major()` (queries the RS) + `_core_for_major(major)` (globs the matching
+  bundle) + `_app_core()` (running bundle's Core Library, else the `_APP_CORE` multi-version glob fallback).
+  All `_APP_CORE` asset-read sites now call `_app_core()`. Not cached → stays correct if Live versions
+  switch mid-session. Single-version installs are unaffected (glob already found the only bundle).
+- **Verified LIVE on Live 12.4.2:** `get_application_version` → `{major:12,minor:4,bugfix:2}`; running the
+  working-tree server against the live socket, `_app_core()` resolved the **Live 12** Core Library and
+  `_factory_default_adv("Wavetable.adv")` sourced from the Live 12 bundle (was Live 11 pre-change). Live-11
+  path is the same code with major=11 (offline-tested; `_core_for_major` glob matches "Ableton Live 11 Suite").
+- Offline: +5 tests (`test_app_core.py`), full suite 503 passed. RS stays py_compile-clean / 3.7-safe.
+- **Gotcha learned:** `kill -TERM` on Live with an UNSAVED/blank set makes Live show a "recover your work?"
+  modal on relaunch that blocks control-surface init (9877 never binds). Dismiss with
+  `osascript -e 'tell application "System Events" to keystroke return'` (blank set → recover-or-not is moot).
+
 ## Live 12 compatibility (2026-06-15, in progress)
 Plugin was built for Live 11; auditing for Live 12 (both Suite installed on the dev machine).
 **Static audit + safe code fixes DONE:**
