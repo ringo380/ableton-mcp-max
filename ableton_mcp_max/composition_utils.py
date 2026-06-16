@@ -372,3 +372,31 @@ def build_drum_pattern(style="four_on_floor", bars=4, fills=False, rng=None):
                                  rng.randint(85, 120)))
         notes.extend(bar)
     return notes
+
+
+# ---------------------------------------------------------------------------
+# Clip transformers
+# ---------------------------------------------------------------------------
+
+def humanize(notes, timing=0.02, velocity=8, rng=None):
+    """Jitter onset (+/- timing beats) and velocity (+/- velocity). Pure."""
+    rng = rng or make_rng()
+    out = []
+    for n in notes:
+        m = dict(n)
+        st = float(n.get("start_time", 0.0)) + rng.uniform(-timing, timing)
+        m["start_time"] = round(max(0.0, st), 6)
+        v = float(n.get("velocity", 100)) + rng.uniform(-velocity, velocity)
+        m["velocity"] = max(1.0, min(127.0, v))
+        out.append(m)
+    return out
+
+
+def quantize_to_scale(notes, root, intervals):
+    """Snap every note's pitch to the nearest in-scale tone. Pure."""
+    out = []
+    for n in notes:
+        m = dict(n)
+        m["pitch"] = snap_to_scale(int(n.get("pitch", 60)), root, intervals)
+        out.append(m)
+    return out
