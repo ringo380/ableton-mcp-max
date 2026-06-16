@@ -34,12 +34,19 @@ server-side MIDI-composition primitives that emit notes through the existing not
   with kicks at beats 0-7 (four_on_floor x2 bars); humanize/quantize 11 each; arpeggiate expanded the 12-note
   chord clip to 64; harmonize 4->8; occupied-slot guard correctly errors without replace and succeeds with
   replace=true; scratch track deleted -> track_count restored. The `_emit_to_slot` empty-slot probe logs
-  "No clip in slot" by design (try/except treats it as empty -> create). **ONE path deferred:**
-  `get_song_scale` auto-read (generators with NO key/scale) needs the new RS, which loads only on a Live
-  bounce - verify after the next Live restart (the explicit-key/scale path and the get_song_scale fallback
-  are both verified). **NOT yet released** - per plan, one release will bundle #0 + gap C + #1.
+  "No clip in slot" by design (try/except treats it as empty -> create).
+- **DEFERRED PATH NOW VERIFIED (2026-06-16, vs Live 12.4 after a Live bounce loaded the new RS):** the
+  `get_song_scale` auto-read (generators with NO key/scale). Pre-bounce, the running Live still had the OLD
+  RS, so `get_song_scale` over 9877 returned "Unknown command" and generators fell back to C natural minor
+  (confirming the fallback). After `restart_live(discard)` loaded the new RS, `get_song_scale` returned
+  `{scale_name:"Major", root_note:0, scale_intervals:[0,2,4,5,7,9,11]}` (the default set's actual C-major
+  scale), and `generate_chord_progression(["I","IV","V","I"])` with no key/scale produced unambiguous MAJOR
+  triads (I=C-E-G 60/64/67, IV=F-A-C, V=G-B-D - E natural 64, NOT the fallback Eb 63). Scratch track
+  deleted -> 4 tracks restored. **Composition layer is now FULLY live-verified.** **NOT yet released** -
+  per plan, one release will bundle #0 + gap C + #1.
 - Specs/plans: `docs/superpowers/specs/2026-06-16-composition-layer-design.md`,
-  `docs/superpowers/plans/2026-06-16-composition-layer.md`. NEXT = live-verify, then release.
+  `docs/superpowers/plans/2026-06-16-composition-layer.md`. NEXT = release (PR feat/composition-layer ->
+  main, bundle the unreleased master/return #24 already on main + composition layer as v0.10.0).
 
 ## Master/return device access: params + effect loading (2026-06-16)
 First sub-projects of the new "autonomous track production + closed analyze->act loop" initiative
