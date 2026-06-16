@@ -29,3 +29,15 @@ def test_literal_symbol_independent_of_key():
 def test_unknown_symbol_raises():
     with pytest.raises(ValueError):
         build_chord("Zsus", 0, C_MAJOR, 3)
+
+
+def test_bare_major_triad_symbol():
+    # The most common symbol form: a bare root letter = major triad.
+    assert build_chord("C", 0, C_MAJOR, 3) == [60, 64, 67]
+    assert build_chord("F#", 0, C_MAJOR, 3) == [66, 70, 73]
+
+
+def test_valid_root_unknown_quality_raises():
+    # Real note letter but an unsupported quality suffix -> ValueError.
+    with pytest.raises(ValueError):
+        build_chord("Csus4", 0, C_MAJOR, 3)
