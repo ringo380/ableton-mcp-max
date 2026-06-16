@@ -1,7 +1,7 @@
 import random
 import pytest
 from ableton_mcp_max.composition_utils import (
-    humanize, quantize_to_scale,
+    humanize, quantize_to_scale, arpeggiate, harmonize,
 )
 
 C_MAJOR = [0, 2, 4, 5, 7, 9, 11]
@@ -43,9 +43,6 @@ def test_quantize_does_not_mutate_input():
     orig = _notes()
     quantize_to_scale(orig, 0, C_MAJOR)
     assert orig == _notes()
-
-
-from ableton_mcp_max.composition_utils import arpeggiate, harmonize
 
 
 def _triad():
