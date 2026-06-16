@@ -275,7 +275,8 @@ class AbletonMCP(ControlSurface):
         elif command_type == "load_browser_item":
             track_index = params.get("track_index", 0)
             item_uri = params.get("item_uri", "")
-            result = self._load_browser_item(track_index, item_uri)
+            track_type = params.get("track_type", "regular")
+            result = self._load_browser_item(track_index, item_uri, track_type)
         elif command_type == "set_device_parameter":
             track_index = params.get("track_index", 0)
             device_index = params.get("device_index", 0)
@@ -3223,33 +3224,31 @@ class AbletonMCP(ControlSurface):
     
     
     
-    def _load_browser_item(self, track_index, item_uri):
+    def _load_browser_item(self, track_index, item_uri, track_type="regular"):
         """Load a browser item onto a track by its URI"""
         try:
-            if track_index < 0 or track_index >= len(self._song.tracks):
-                raise IndexError("Track index out of range")
-            
-            track = self._song.tracks[track_index]
-            
+            track = self._resolve_track(track_index, track_type)
+
             # Access the application's browser instance instead of creating a new one
             app = self.application()
-            
+
             # Find the browser item by URI
             item = self._find_browser_item_by_uri(app.browser, item_uri)
-            
+
             if not item:
                 raise ValueError("Browser item with URI '{0}' not found".format(item_uri))
-            
+
             # Select the track
             self._song.view.selected_track = track
-            
+
             # Load the item
             app.browser.load_item(item)
-            
+
             result = {
                 "loaded": True,
                 "item_name": item.name,
                 "track_name": track.name,
+                "track_type": track_type,
                 "uri": item_uri
             }
             return result
