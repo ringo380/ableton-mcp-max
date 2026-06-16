@@ -95,6 +95,16 @@ GROUPS = [
         "deploy_taps",
         "remove_taps",
     ]),
+    ("Composition", [
+        "generate_chord_progression",
+        "generate_bassline",
+        "generate_melody",
+        "generate_drum_pattern",
+        "humanize_clip",
+        "quantize_clip_to_scale",
+        "arpeggiate_clip",
+        "harmonize_clip",
+    ]),
 ]
 
 PREAMBLE = """# Ableton MCP tool index

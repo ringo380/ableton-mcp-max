@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **118 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **126 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -104,4 +104,10 @@ Inspect the open set against best-practice rulesets and surface findings by doma
 Per-track and master loudness/true-peak/spectrum/stereo from the MCP Tap Max-for-Live devices, plus cross-track mix analysis.
 
 `get_audio_tap_status`, `list_taps`, `reset_meter`, `read_meter`, `read_track_meter`, `measure_loudness`, `measure_mix`, `deploy_taps`, `remove_taps`
+
+## [Composition](./composition.html)
+
+Generate musical material into clip slots (chords, bass, melody, drums) and transform existing clips (humanize, quantize-to-scale, arpeggiate, harmonize). Key/scale read from the set when not given.
+
+`generate_chord_progression`, `generate_bassline`, `generate_melody`, `generate_drum_pattern`, `humanize_clip`, `quantize_clip_to_scale`, `arpeggiate_clip`, `harmonize_clip`
 

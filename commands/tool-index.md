@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_118 tools._
+_126 tools._
 
 ## Session & view
 
@@ -197,3 +197,14 @@ _118 tools._
 - **`measure_mix`** - Timed multi-track measure pass -> per-track signals + cross-track findings.
 - **`deploy_taps`** - Load the MCP Tap metering device onto tracks for per-track analysis.
 - **`remove_taps`** - Remove every loaded MCP Tap device from the set (delete by name match).
+
+## Composition
+
+- **`generate_chord_progression`** - Generate a chord progression into a session clip slot. Creates the MIDI
+- **`generate_bassline`** - Generate a bassline into a session clip slot. With a progression the bass
+- **`generate_melody`** - Generate an in-scale monophonic melody into a session clip slot.
+- **`generate_drum_pattern`** - Generate a drum pattern (GM drum map) into a session clip slot. Intended
+- **`humanize_clip`** - Humanize a clip: jitter note onsets (+/- timing beats) and velocities
+- **`quantize_clip_to_scale`** - Snap every note in a clip to the nearest in-scale pitch.
+- **`arpeggiate_clip`** - Arpeggiate a clip: expand simultaneous notes (chords) into sequential
+- **`harmonize_clip`** - Add a harmony voice to each note in a clip. Provide exactly ONE of

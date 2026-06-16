@@ -2,26 +2,26 @@
 layout: default
 title: Home
 nav_order: 1
-description: "Control Ableton Live 11 and 12 from Claude with 118 MCP tools."
+description: "Control Ableton Live 11 and 12 from Claude with 126 MCP tools."
 permalink: /
 ---
 
 <div class="hero" markdown="0">
   <div class="hero__eyebrow">Claude Code plugin · MCP server</div>
   <h1 class="hero__title">ableton-mcp-max</h1>
-  <p class="hero__tagline">Drive Ableton Live 11 and 12 straight from Claude. 118 tools spanning tracks,
-  clips, MIDI, devices, mixing, automation, arrangement, scenes, transport, and full
+  <p class="hero__tagline">Drive Ableton Live 11 and 12 straight from Claude. 126 tools spanning tracks,
+  clips, MIDI, devices, mixing, automation, arrangement, scenes, transport, composition, and full
   preset generation - built on the Live Object Model with preset-XML backdoors for the
   controls Live keeps hidden.</p>
   <div class="stats">
-    <div><div class="stats__num">118</div><div class="stats__label">Tools</div></div>
-    <div><div class="stats__num">16</div><div class="stats__label">Categories</div></div>
+    <div><div class="stats__num">126</div><div class="stats__label">Tools</div></div>
+    <div><div class="stats__num">17</div><div class="stats__label">Categories</div></div>
     <div><div class="stats__num">Live 11 &amp; 12</div><div class="stats__label">Target</div></div>
     <div><div class="stats__num">MIT</div><div class="stats__label">License</div></div>
   </div>
 </div>
 
-[Browse all 118 tools](./tools/){: .btn .btn-primary .mr-2 }
+[Browse all 126 tools](./tools/){: .btn .btn-primary .mr-2 }
 [Get it on the marketplace](https://github.com/ringo380/robworks-claude-code-plugins){: .btn }
 
 ---
@@ -90,7 +90,7 @@ the server reconnects - just retry once.
 
 Two halves talk over `localhost:9877`:
 
-- A **FastMCP server** (Python, launched by Claude Code) exposes the 118 `@mcp.tool()` functions.
+- A **FastMCP server** (Python, launched by Claude Code) exposes the 126 `@mcp.tool()` functions.
 - A **Remote Script** running inside Live's own Python applies them against the Live Object Model.
 
 Values are resolved, normalized, and clamped on the server, so the Remote Script just applies
