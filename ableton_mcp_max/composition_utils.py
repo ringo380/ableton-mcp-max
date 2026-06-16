@@ -65,7 +65,10 @@ def parse_scale(scale):
 def resolve_key_scale(key=None, scale=None, song_scale=None):
     """Resolve (root, intervals). Explicit params win. If both omitted, use the
     set's root_note + scale_intervals (song_scale dict from get_song_scale). If
-    that is missing/empty, fall back to C natural_minor."""
+    that is missing/empty, fall back to C natural_minor.
+
+    If only `key` is given, the scale defaults to major; if only `scale` is
+    given, the root defaults to C (0)."""
     if key is None and scale is None:
         if song_scale:
             ints = song_scale.get("scale_intervals") or []
@@ -95,6 +98,8 @@ def scale_pitches(root, intervals, lo=0, hi=127):
 
 def degree_to_pitch(root, intervals, degree, octave):
     """Scale degree (0-based, may exceed len for higher octaves) -> MIDI pitch."""
+    if not intervals:
+        raise ValueError("intervals must be non-empty")
     n = len(intervals)
     oct_shift, idx = divmod(int(degree), n)
     return _clamp_pitch(_octave_base(octave) + root + intervals[idx] + 12 * oct_shift)
@@ -102,6 +107,8 @@ def degree_to_pitch(root, intervals, degree, octave):
 
 def snap_to_scale(pitch, root, intervals):
     """Move pitch to the nearest in-scale pitch (prefer downward on a tie)."""
+    if not intervals:
+        raise ValueError("intervals must be non-empty")
     members = set((root + i) % 12 for i in intervals)
     p = int(pitch)
     if p % 12 in members:

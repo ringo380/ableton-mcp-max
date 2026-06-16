@@ -58,3 +58,47 @@ def test_snap_to_scale_moves_to_nearest_member():
     # C major: C#(61) -> C(60), prefer lower on tie
     assert snap_to_scale(61, 0, [0, 2, 4, 5, 7, 9, 11]) == 60
     assert snap_to_scale(60, 0, [0, 2, 4, 5, 7, 9, 11]) == 60
+
+
+def test_parse_scale_unknown_raises():
+    with pytest.raises(ValueError):
+        parse_scale("nope")
+
+
+def test_snap_to_scale_nearest_above():
+    # C major: D#(63) -> E(64) is the nearest in-scale tone above; D(62) is also
+    # distance 1 below, and downward is preferred on a tie -> D
+    assert snap_to_scale(63, 0, [0, 2, 4, 5, 7, 9, 11]) == 62
+
+
+def test_snap_to_scale_pure_above_when_below_farther():
+    # C major: F#(66) -> G(67) (dist 1 above) vs F(65) (dist 1 below) -> tie -> F
+    # Use A#(70): nearest are A(69, below dist1) and B(71, above dist1) -> tie -> A
+    assert snap_to_scale(70, 0, [0, 2, 4, 5, 7, 9, 11]) == 69
+
+
+def test_degree_to_pitch_non_root_degree():
+    # C major octave 3: degree 2 -> E3 = 64
+    assert degree_to_pitch(0, [0, 2, 4, 5, 7, 9, 11], 2, 3) == 64
+
+
+def test_degree_to_pitch_empty_intervals_raises():
+    with pytest.raises(ValueError):
+        degree_to_pitch(0, [], 0, 3)
+
+
+def test_snap_to_scale_empty_intervals_raises():
+    with pytest.raises(ValueError):
+        snap_to_scale(60, 0, [])
+
+
+def test_resolve_key_only_defaults_major():
+    root, intervals = resolve_key_scale(key="D", scale=None, song_scale=None)
+    assert root == 2
+    assert intervals == [0, 2, 4, 5, 7, 9, 11]
+
+
+def test_resolve_scale_only_defaults_root_c():
+    root, intervals = resolve_key_scale(key=None, scale="dorian", song_scale=None)
+    assert root == 0
+    assert intervals == [0, 2, 3, 5, 7, 9, 10]
