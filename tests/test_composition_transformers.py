@@ -84,3 +84,35 @@ def test_harmonize_scale_degrees_stay_diatonic():
     src = [{"pitch": 60, "start_time": 0.0, "duration": 1.0, "velocity": 100}]
     out = harmonize(src, 0, C_MAJOR, degrees=[2])   # a third up the scale = E
     assert sorted(n["pitch"] for n in out) == [60, 64]
+
+
+def test_arpeggiate_single_note_passthrough():
+    src = [{"pitch": 60, "start_time": 0.0, "duration": 1.0, "velocity": 100}]
+    out = arpeggiate(src, mode="up", rate=0.25, gate=0.9)
+    # a lone note is NOT multiplied: one note, original duration preserved
+    assert len(out) == 1
+    assert out[0]["pitch"] == 60
+    assert out[0]["start_time"] == 0.0
+    assert out[0]["duration"] == 1.0
+
+
+def test_arpeggiate_updown_mode():
+    out = arpeggiate(_triad(), mode="updown", rate=0.25, gate=0.9)
+    # C E G E across 4 steps (span 1.0 / rate 0.25)
+    assert [n["pitch"] for n in out] == [60, 64, 67, 64]
+
+
+def test_arpeggiate_strum_staggers_onsets_keeps_sustain():
+    out = arpeggiate(_triad(), mode="strum", rate=0.25, gate=0.9)
+    assert [n["pitch"] for n in out] == [60, 64, 67]
+    # tight stagger = rate*0.1 each; sustain (duration) kept at the chord span
+    assert [n["start_time"] for n in out] == [0.0, 0.025, 0.05]
+    assert all(n["duration"] == 1.0 for n in out)
+
+
+def test_arpeggiate_random_reproducible_with_seed():
+    import random as _r
+    a = arpeggiate(_triad(), mode="random", rate=0.25, rng=_r.Random(1))
+    b = arpeggiate(_triad(), mode="random", rate=0.25, rng=_r.Random(1))
+    assert a == b
+    assert len(a) == 4   # span 1.0 / rate 0.25 = 4 steps

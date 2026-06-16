@@ -418,7 +418,8 @@ def arpeggiate(notes, mode="up", rate=0.25, gate=0.9, rng=None):
     """Expand simultaneous notes (chords) into sequential notes. Notes sharing a
     start_time form a chord; each is played over the chord's duration at `rate`
     spacing. mode='strum' instead staggers onsets tightly, keeping sustain.
-    Modes: up, down, updown, random, strum."""
+    Modes: up, down, updown, random, strum.
+    Single (non-chord) notes pass through unchanged."""
     groups = {}
     for n in notes:
         groups.setdefault(round(float(n.get("start_time", 0.0)), 6), []).append(n)
@@ -428,6 +429,12 @@ def arpeggiate(notes, mode="up", rate=0.25, gate=0.9, rng=None):
         pitches = sorted(set(int(n["pitch"]) for n in chord))
         span = max(float(n.get("duration", rate)) for n in chord)
         vel = float(chord[0].get("velocity", 100))
+        if len(pitches) == 1:
+            # A lone note is not a chord: pass it through at its own duration
+            # rather than re-triggering it. So arpeggiate is safe on a clip that
+            # mixes chords and single notes -- only chords get expanded.
+            out.append(_note(pitches[0], st, span, vel))
+            continue
         if mode == "strum":
             for j, p in enumerate(_arp_order(pitches, "up", rng)):
                 out.append(_note(p, st + j * (rate * 0.1), span, vel))
