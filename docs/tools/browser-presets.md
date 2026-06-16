@@ -96,7 +96,7 @@ most `limit` of them.
 ## load_preset
 
 ```python
-load_preset(track_index: int, path: str, name: str = None)
+load_preset(track_index: int, path: str, name: str = None, track_type: str = 'regular')
 ```
 
 Load a preset onto a track by readable name/path (no URI required).
@@ -106,7 +106,7 @@ Works for any loadable browser item, including instrument/effect presets
 holds an instrument HOT-SWAPS (replaces) it, matching Live's behavior.
 
 Parameters:
-- track_index: The index of the (regular) track to load onto.
+- track_index: The index of the track to load onto (ignored for master).
 - path: If `name` is given, the folder to search (e.g.
         'instruments/Wavetable') — subfolders are searched recursively. If
         `name` is omitted, the full path to a single preset (e.g.
@@ -116,6 +116,8 @@ Parameters:
         case-insensitive, then unique substring, across name and
         relative_path. Note factory preset names include their file
         extension (e.g. 'Dark Swarm.adg').
+- track_type: 'regular' (default), 'return', or 'master'. Only audio
+        effects are valid on return/master tracks.
 
 Tip: run list_device_presets first, then pass a preset's `name` or
 `relative_path` here (it resolves nested presets, so either works).

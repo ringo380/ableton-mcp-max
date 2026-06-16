@@ -1419,20 +1419,18 @@ def set_track_fold(
         logger.error(f"Error setting track fold: {str(e)}")
         return _err(f"Error setting track fold: {str(e)}")
 @mcp.tool()
-def get_device_parameters(ctx: Context, track_index: int, device_index: int) -> str:
+def get_device_parameters(
+    ctx: Context, track_index: int, device_index: int, track_type: str = "regular"
+) -> str:
     """
     List all automatable parameters of a device on a track, with current
     value, min, max, whether it's quantized, and (for quantized params) the
     list of selectable value items.
 
-    REGULAR tracks only: there is no track_type argument, so devices on
-    return/master tracks are not reachable here. (get_device_info,
-    get_rack_macros, set_rack_macro, set_chain_property, set_device_on and
-    delete_device DO take track_type if you need return/master devices.)
-
     Parameters:
-    - track_index: index of the regular track
+    - track_index: index of the track (ignored for master)
     - device_index: index of the device on that track (0 = first device)
+    - track_type: 'regular' (default), 'return', or 'master'
 
     Returns JSON with the device name and a parameters list (each: index, name,
     value, min, max, is_quantized, value_items).
@@ -1441,7 +1439,11 @@ def get_device_parameters(ctx: Context, track_index: int, device_index: int) -> 
         ableton = get_ableton_connection()
         result = ableton.send_command(
             "get_device_parameters",
-            {"track_index": track_index, "device_index": device_index},
+            {
+                "track_index": track_index,
+                "device_index": device_index,
+                "track_type": track_type,
+            },
         )
         return _ok(result)
     except Exception as e:
@@ -1454,27 +1456,29 @@ def set_device_parameter(
     device_index: int,
     parameter: Union[int, str],
     value: float,
+    track_type: str = "regular",
 ) -> str:
     """
     Set a single device/instrument parameter.
 
-    REGULAR tracks only: there is no track_type argument, so devices on
-    return/master tracks cannot be set here (use set_rack_macro /
-    set_chain_property / set_device_on, which take track_type, for those).
-
     Parameters:
-    - track_index: index of the regular track
+    - track_index: index of the track (ignored for master)
     - device_index: index of the device on that track
     - parameter: parameter index (int) OR parameter name (str, case-insensitive)
     - value: target value (clamped to the parameter's min/max). For quantized
       parameters, pass the integer index of the desired value item.
+    - track_type: 'regular' (default), 'return', or 'master'
     """
     try:
         ableton = get_ableton_connection()
         # Fetch the parameter list to resolve name->index and validate.
         info = ableton.send_command(
             "get_device_parameters",
-            {"track_index": track_index, "device_index": device_index},
+            {
+                "track_index": track_index,
+                "device_index": device_index,
+                "track_type": track_type,
+            },
         )
         params = info.get("parameters", [])
         idx = resolve_parameter_index(params, parameter)
@@ -1485,6 +1489,7 @@ def set_device_parameter(
                 "device_index": device_index,
                 "parameter_index": idx,
                 "value": value,
+                "track_type": track_type,
             },
         )
         return _ok(result)
@@ -2393,31 +2398,33 @@ def set_tempo(ctx: Context, tempo: float) -> str:
         logger.error(f"Error setting tempo: {str(e)}")
         return _err(f"Error setting tempo: {str(e)}")
 @mcp.tool()
-def load_instrument_or_effect(ctx: Context, track_index: int, uri: str) -> str:
+def load_instrument_or_effect(ctx: Context, track_index: int, uri: str, track_type: str = "regular") -> str:
     """
     Load an instrument or effect onto a track using its URI.
-    
+
     Parameters:
-    - track_index: The index of the track to load the instrument on
+    - track_index: The index of the track to load onto (ignored for master)
     - uri: The URI of the instrument or effect to load (e.g., 'query:Synths#Instrument%20Rack:Bass:FileId_5116')
+    - track_type: 'regular' (default), 'return', or 'master'. Only audio effects are valid on return/master tracks.
     """
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("load_browser_item", {
             "track_index": track_index,
-            "item_uri": uri
+            "item_uri": uri,
+            "track_type": track_type,
         })
         
         # Check if the instrument was loaded successfully
         if result.get("loaded", False):
             new_devices = result.get("new_devices", [])
             if new_devices:
-                return _ok(f"Loaded instrument with URI '{uri}' on track {track_index}. New devices: {', '.join(new_devices)}")
+                return _ok(f"Loaded '{uri}' on {track_type} track {track_index}. New devices: {', '.join(new_devices)}")
             else:
                 devices = result.get("devices_after", [])
-                return _ok(f"Loaded instrument with URI '{uri}' on track {track_index}. Devices on track: {', '.join(devices)}")
+                return _ok(f"Loaded '{uri}' on {track_type} track {track_index}. Devices on track: {', '.join(devices)}")
         else:
-            return _err(f"Failed to load instrument with URI '{uri}'")
+            return _err(f"Failed to load '{uri}' on {track_type} track {track_index}")
     except Exception as e:
         logger.error(f"Error loading instrument by URI: {str(e)}")
         return _err(f"Error loading instrument by URI: {str(e)}")
@@ -3260,7 +3267,7 @@ def list_device_presets(ctx: Context, path: str, max_depth: int = 6,
         logger.error(f"Error listing device presets: {str(e)}")
         return _err(f"Error listing device presets: {str(e)}")
 @mcp.tool()
-def load_preset(ctx: Context, track_index: int, path: str, name: str = None) -> str:
+def load_preset(ctx: Context, track_index: int, path: str, name: str = None, track_type: str = "regular") -> str:
     """
     Load a preset onto a track by readable name/path (no URI required).
 
@@ -3269,7 +3276,7 @@ def load_preset(ctx: Context, track_index: int, path: str, name: str = None) -> 
     holds an instrument HOT-SWAPS (replaces) it, matching Live's behavior.
 
     Parameters:
-    - track_index: The index of the (regular) track to load onto.
+    - track_index: The index of the track to load onto (ignored for master).
     - path: If `name` is given, the folder to search (e.g.
             'instruments/Wavetable') — subfolders are searched recursively. If
             `name` is omitted, the full path to a single preset (e.g.
@@ -3279,6 +3286,8 @@ def load_preset(ctx: Context, track_index: int, path: str, name: str = None) -> 
             case-insensitive, then unique substring, across name and
             relative_path. Note factory preset names include their file
             extension (e.g. 'Dark Swarm.adg').
+    - track_type: 'regular' (default), 'return', or 'master'. Only audio
+            effects are valid on return/master tracks.
 
     Tip: run list_device_presets first, then pass a preset's `name` or
     `relative_path` here (it resolves nested presets, so either works).
@@ -3312,10 +3321,11 @@ def load_preset(ctx: Context, track_index: int, path: str, name: str = None) -> 
         load_result = ableton.send_command("load_browser_item", {
             "track_index": track_index,
             "item_uri": uri,
+            "track_type": track_type,
         })
         if load_result.get("loaded", False):
             return _ok(f"Loaded preset '{label}' (uri '{uri}') "
-                   f"on track {track_index}.")
+                   f"on {track_type} track {track_index}.")
         return _err(f"Failed to load preset '{label}' (uri '{uri}').")
     except ValueError as e:
         # match_recursive_preset / split_preset_path failures (clean messages).

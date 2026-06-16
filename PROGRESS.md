@@ -1,5 +1,33 @@
 # ableton-mcp-max — Progress
 
+## Master/return device access: params + effect loading (2026-06-16)
+First sub-projects of the new "autonomous track production + closed analyze->act loop" initiative
+(5-part roadmap: #0 master/return access, #1 composition layer, #2 arrangement intelligence, #3 closed-loop
+remediation, #4 /ableton:produce skill). Branch `feat/master-return-device-params`. Closes the major gap that
+the master/return chain was unreachable for device-parameter read/write AND device loading.
+- **Gap #0 - device parameters on return/master:** `get_device_parameters` + `set_device_parameter` gained
+  `track_type='regular'|'return'|'master'` (server forwards it incl. the name->index pre-fetch in
+  set_device_parameter; Remote Script handlers now use the existing `_resolve_device(track_index, device_index,
+  track_type)` helper instead of hardcoding `self._song.tracks[track_index]`). Backward-compatible (default
+  regular). Same pattern as the sibling `track_type` tools (get_device_info/set_device_on/set_chain_property).
+- **Gap C - load effects onto return/master:** `load_instrument_or_effect` + `load_preset` gained `track_type`
+  (both route through the one `load_browser_item` command -> `_load_browser_item`, which now resolves the target
+  via `_resolve_track` and selects it before `app.browser.load_item`). `load_drum_kit` left regular-only
+  (instruments can't host on audio-only return/master). No instrument-vs-effect guard (documented, not guarded).
+  FEASIBILITY CONFIRMED LIVE: `load_item` honors a master/return selection - NO holder-track+copy workaround
+  needed (supersedes the old "master/return can't host loaded devices" note).
+- **Offline:** +6 tests (test_device_params_track_type.py x3, test_load_track_type.py x3), full suite 518 passed,
+  py_compile clean, server imports. Subagent-driven (spec+quality reviewed each task). Docs regenerated, tool
+  count UNCHANGED at 118 (arg-only changes, no new tools).
+- **LIVE-VERIFIED 2026-06-16 vs Live 12.4 (working-tree server via AbletonDev):** Return A Reverb param
+  read+write(Decay Time 0.443->0.75)+separate-read-back+restore; Master EQ Eight read(84 params)+write(`1 Gain A`
+  0->6)+restore; loaded EQ Eight onto Master (idx 0) AND Return A (idx 1, appended after Reverb) via track_type;
+  regular-track load still works with no track_type; all scratch devices deleted (master->0, returnA->1 Reverb,
+  regular->0). RS reinstalled + Live bounced via restart_live twice during the cycle.
+- **Out of scope (later specs):** master/return automation envelopes (B). Specs/plans:
+  `docs/superpowers/specs/2026-06-16-master-return-device-params-design.md` (+ `-load-devices-onto-master-return-design.md`),
+  matching plans under `docs/superpowers/plans/`. NEXT = finish branch (PR) -> release; then sub-project #1 (composition layer).
+
 ## Adapt factory-asset reads to the RUNNING Live version (2026-06-15)
 Closes the one spot that ignored which Live the user runs: on a machine with BOTH 11 and 12 installed,
 factory-asset reads (preset patching, the wavetable table list, factory racks) always took the
