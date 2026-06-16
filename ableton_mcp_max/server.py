@@ -954,6 +954,40 @@ def _delete_device_raw(track_index, device_index):
          "track_type": "regular"})
 
 
+# A slow Max-for-Live / Node-for-Max boot (notably Live 12 / Max 8.6) can outlast
+# the socket read timeout, so load_browser_item's reply is lost even though the
+# device DID load and connect. deploy_taps then confirms the load actually
+# landed by watching the tap registry rather than trusting the lost reply.
+TAP_CONFIRM_ATTEMPTS = 6
+TAP_CONFIRM_DELAY = 0.5
+
+
+def _is_load_timeout(err):
+    """True when err is the lost-reply signature (recv timed out), not a clean
+    'device not in the browser' failure (which should fail fast, not poll)."""
+    text = str(err)
+    return "No data received" in text or "Communication error" in text
+
+
+def _confirm_tap_via_registry(track_index, before_uuids, sleep=time.sleep):
+    """Poll the tap registry for a NEWLY-connected tap at track_index after a
+    load whose socket reply was lost. before_uuids = the uuids connected just
+    before the load, so a pre-existing tap on that index never counts as a false
+    confirm. Returns the new uuid, or None if none appears within the window."""
+    for attempt in range(TAP_CONFIRM_ATTEMPTS):
+        for t in _tap_registry.state.tracks():
+            uuid = t.get("uuid")
+            if uuid in before_uuids:
+                continue
+            idx = t.get("index")
+            if (track_index == -1 and (t.get("kind") == "master" or idx == -1)) \
+                    or idx == track_index:
+                return uuid
+        if attempt < TAP_CONFIRM_ATTEMPTS - 1:
+            sleep(TAP_CONFIRM_DELAY)
+    return None
+
+
 @mcp.tool()
 def deploy_taps(ctx: Context, track_indices: List[int] = None) -> str:
     """Load the MCP Tap metering device onto tracks for per-track analysis.
@@ -968,17 +1002,33 @@ def deploy_taps(ctx: Context, track_indices: List[int] = None) -> str:
     the browser), data.manual is true with a drag-it-yourself message listing the
     target tracks - the registry still works once the device is dragged on by
     hand. After deploying, run measure_mix or analyze_set(measure=True).
+
+    A slow Max-for-Live / Node-for-Max boot (notably Live 12 / Max 8.6) can
+    outlast the socket read timeout, so the load reply is lost even though the
+    device loaded + connected. When a load times out, deploy_taps polls the tap
+    registry and, if a tap connects on that track, records it as deployed with
+    "confirmed_via": "registry" instead of failing.
     """
     try:
         targets = (_audio_instrument_track_indices() if track_indices is None
                    else list(track_indices))
         deployed, failed = [], []
         for i in targets:
+            before = {t.get("uuid") for t in _tap_registry.state.tracks()}
             try:
                 label = _load_tap_on_track(i)
                 deployed.append({"track_index": i, "device": label})
             except Exception as e:
-                failed.append({"track_index": i, "error": str(e)})
+                # A slow M4L/Node boot (e.g. Live 12 / Max 8.6) can drop the
+                # load reply even though the device loaded + connected; confirm
+                # via the registry before declaring failure.
+                uuid = (_confirm_tap_via_registry(i, before)
+                        if _is_load_timeout(e) else None)
+                if uuid:
+                    deployed.append({"track_index": i, "device": TAP_DEVICE_NAME,
+                                     "confirmed_via": "registry"})
+                else:
+                    failed.append({"track_index": i, "error": str(e)})
         data = {"targets": targets, "deployed": deployed, "failed": failed}
         if targets and not deployed:
             data["manual"] = True

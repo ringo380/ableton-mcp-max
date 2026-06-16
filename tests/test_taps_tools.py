@@ -199,6 +199,71 @@ def test_deploy_taps_falls_back_to_manual_when_all_fail(monkeypatch):
     assert out["data"]["deployed"] == []
 
 
+def test_deploy_taps_confirms_via_registry_on_lost_reply(monkeypatch):
+    # A slow M4L boot drops the load reply, but the device DID connect to the
+    # registry -> deploy_taps should confirm it instead of failing.
+    reg = server._tap_registry
+    reg.state.reset()
+
+    def slow_boom(i):
+        reg.feed("late", '{"type":"hello","track":{"uuid":"u-late","name":"X","index":0,"kind":"midi"}}\n')
+        raise Exception("Communication error with Ableton: No data received")
+
+    monkeypatch.setattr(server, "_load_tap_on_track", slow_boom)
+    out = json.loads(server.deploy_taps(None, track_indices=[0]))
+    assert out["ok"] is True
+    assert out["data"]["failed"] == []
+    dep = out["data"]["deployed"]
+    assert dep and dep[0]["track_index"] == 0
+    assert dep[0]["confirmed_via"] == "registry"
+
+
+def test_deploy_taps_timeout_with_no_connection_still_fails(monkeypatch):
+    # Timeout signature but nothing connects -> genuine failure (poll exhausts).
+    server._tap_registry.state.reset()
+    monkeypatch.setattr(server, "TAP_CONFIRM_ATTEMPTS", 1)  # don't sleep in tests
+
+    def boom(i):
+        raise Exception("Communication error with Ableton: No data received")
+
+    monkeypatch.setattr(server, "_load_tap_on_track", boom)
+    out = json.loads(server.deploy_taps(None, track_indices=[0]))
+    assert out["data"]["deployed"] == []
+    assert out["data"]["failed"][0]["track_index"] == 0
+
+
+def test_deploy_taps_does_not_false_confirm_on_preexisting_tap(monkeypatch):
+    # A tap already on index 0 before the load must NOT be mistaken for the
+    # (failed) new load's device.
+    reg = server._tap_registry
+    reg.state.reset()
+    reg.feed("old", '{"type":"hello","track":{"uuid":"u-old","name":"Old","index":0,"kind":"midi"}}\n')
+    monkeypatch.setattr(server, "TAP_CONFIRM_ATTEMPTS", 1)
+
+    def boom(i):
+        raise Exception("Communication error with Ableton: No data received")
+
+    monkeypatch.setattr(server, "_load_tap_on_track", boom)
+    out = json.loads(server.deploy_taps(None, track_indices=[0]))
+    assert out["data"]["deployed"] == []
+    assert out["data"]["failed"][0]["track_index"] == 0
+
+
+def test_deploy_taps_non_timeout_error_fails_fast_without_polling(monkeypatch):
+    # A clean 'not in browser' error must not trigger the registry poll.
+    polled = []
+    monkeypatch.setattr(server, "_confirm_tap_via_registry",
+                        lambda *a, **k: polled.append(True))
+
+    def boom(i):
+        raise RuntimeError("MCP Tap device has no loadable URI")
+
+    monkeypatch.setattr(server, "_load_tap_on_track", boom)
+    out = json.loads(server.deploy_taps(None, track_indices=[0]))
+    assert out["data"]["failed"][0]["track_index"] == 0
+    assert polled == []  # fast path: no registry confirm attempted
+
+
 def test_remove_taps_deletes_matched_devices(monkeypatch):
     found = [(0, 1), (2, 0)]
     monkeypatch.setattr(server, "_find_taps", lambda: list(found))

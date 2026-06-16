@@ -36,12 +36,15 @@ Plugin was built for Live 11; auditing for Live 12 (both Suite installed on the 
    (nulls/peak 0 on a silent track, as expected). `remove_taps` cleared it.
 5. ✅ Browser paths — `user_library/Presets/Audio Effects/Max Audio Effect` resolves; `MCP Tap` device visible.
 
-**ONE FINDING (UX, not a break):** `deploy_taps` on Live 12 returned a FALSE-NEGATIVE
+**ONE FINDING (UX, not a break) — FIXED.** `deploy_taps` on Live 12 returned a FALSE-NEGATIVE
 ("Communication error: No data received" → manual-fallback message) because the M4L+Node boot in Live 12's
 Max 8.6 is slower than the socket timeout — but the device DID load and stream (verified via
-`get_track_info` + `get_audio_tap_status`). Same shape as the song-property write-lag gotcha: after a
-reported deploy failure, check `get_audio_tap_status` rather than trusting the failure. (Potential future
-fix: longer load timeout, or have deploy poll the registry before declaring failure.)
+`get_track_info` + `get_audio_tap_status`). **FIX (server.py): on a load whose reply was lost (timeout
+signature `_is_load_timeout`), deploy_taps now polls the tap registry (`_confirm_tap_via_registry`, 6×0.5s)
+for a NEWLY-connected tap on that track and records it as deployed `{"confirmed_via":"registry"}` instead
+of failing.** A pre-load uuid snapshot prevents false-confirming a pre-existing tap; clean "not in browser"
+errors still fail fast (no poll). Offline-tested (+4 tests in test_taps_tools.py, suite 498 passed).
+LIVE-VERIFY of the fix needs a Claude Code restart (reload server.py) + the AbletonDev tools on Live 12.
 
 **PER-TRACK SIGNAL TAPS via a general bridge - SHIPPED as v0.8.0 (2026-06-15).** PR #20 squash-merged to
 `main` (@9b85c0c); `gh release create v0.8.0`; marketplace `ableton` ref bumped v0.7.0 -> v0.8.0 + README
