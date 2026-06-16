@@ -118,3 +118,57 @@ def snap_to_scale(pitch, root, intervals):
             if 0 <= cand <= 127 and cand % 12 in members:
                 return cand
     return _clamp_pitch(p)
+
+
+# ---------------------------------------------------------------------------
+# Chord model
+# ---------------------------------------------------------------------------
+
+_ROMAN_DEGREE = {"i": 0, "ii": 1, "iii": 2, "iv": 3, "v": 4, "vi": 5, "vii": 6}
+
+_CHORD_QUALITIES = {
+    "": [0, 4, 7], "maj": [0, 4, 7], "m": [0, 3, 7], "min": [0, 3, 7],
+    "dim": [0, 3, 6], "aug": [0, 4, 8],
+    "maj7": [0, 4, 7, 11], "7": [0, 4, 7, 10], "m7": [0, 3, 7, 10],
+    "min7": [0, 3, 7, 10], "dim7": [0, 3, 6, 9], "m7b5": [0, 3, 6, 10],
+    "6": [0, 4, 7, 9], "m6": [0, 3, 7, 9],
+}
+
+
+def _is_roman(symbol):
+    core = re.sub(r"[^a-zA-Z]", "", symbol)
+    return core != "" and all(c in "ivIV" for c in core)
+
+
+def _build_roman_chord(symbol, root, intervals, octave):
+    s = symbol.strip()
+    seventh = s.endswith("7")
+    core = s[:-1] if seventh else s
+    core = core.rstrip("o°+ø").lower()   # strip dim/aug/half-dim marks
+    if core not in _ROMAN_DEGREE:
+        raise ValueError("Unknown roman numeral %r" % (symbol,))
+    deg = _ROMAN_DEGREE[core]
+    steps = [0, 2, 4] + ([6] if seventh else [])
+    # Build the chord by stacking diatonic thirds; quality comes from the scale.
+    return [degree_to_pitch(root, intervals, deg + st, octave) for st in steps]
+
+
+def _build_symbol_chord(symbol, octave):
+    m = re.match(r"^([A-Ga-g][#b]?)(.*)$", symbol.strip())
+    if not m:
+        raise ValueError("Unparseable chord symbol %r" % (symbol,))
+    pc = parse_key(m.group(1))
+    qual = m.group(2)
+    if qual not in _CHORD_QUALITIES:
+        raise ValueError("Unknown chord quality %r in %r" % (qual, symbol))
+    base = _octave_base(octave) + pc
+    return [_clamp_pitch(base + iv) for iv in _CHORD_QUALITIES[qual]]
+
+
+def build_chord(symbol, root, intervals, octave):
+    """Build a chord (list of MIDI pitches). A roman numeral ('I', 'ii', 'V7')
+    is resolved diatonically against (root, intervals); a chord symbol
+    ('Cmaj7', 'Am7') is absolute and ignores the key."""
+    if _is_roman(symbol):
+        return _build_roman_chord(symbol, root, intervals, octave)
+    return _build_symbol_chord(symbol, octave)
