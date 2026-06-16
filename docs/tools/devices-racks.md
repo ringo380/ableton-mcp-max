@@ -181,7 +181,7 @@ Parameters:
 ## load_instrument_or_effect
 
 ```python
-load_instrument_or_effect(track_index: int, uri: str)
+load_instrument_or_effect(track_index: int, uri: str, track_type: str = 'regular')
 ```
 
 Load an instrument or effect onto a track using its URI.
@@ -189,4 +189,5 @@ Load an instrument or effect onto a track using its URI.
 Parameters:
 - track_index: The index of the track to load the instrument on
 - uri: The URI of the instrument or effect to load (e.g., 'query:Synths#Instrument%20Rack:Bass:FileId_5116')
+- track_type: 'regular' (default), 'return', or 'master'. Only audio effects are valid on return/master tracks.
 

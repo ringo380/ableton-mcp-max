@@ -96,7 +96,7 @@ most `limit` of them.
 ## load_preset
 
 ```python
-load_preset(track_index: int, path: str, name: str = None)
+load_preset(track_index: int, path: str, name: str = None, track_type: str = 'regular')
 ```
 
 Load a preset onto a track by readable name/path (no URI required).
@@ -116,6 +116,8 @@ Parameters:
         case-insensitive, then unique substring, across name and
         relative_path. Note factory preset names include their file
         extension (e.g. 'Dark Swarm.adg').
+- track_type: 'regular' (default), 'return', or 'master'. Only audio
+        effects are valid on return/master tracks.
 
 Tip: run list_device_presets first, then pass a preset's `name` or
 `relative_path` here (it resolves nested presets, so either works).
