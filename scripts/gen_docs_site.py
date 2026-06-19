@@ -56,6 +56,9 @@ CATEGORIES = [
         "get_cue_points", "create_cue_point", "delete_cue_point", "jump_to_cue", "set_arrangement_loop",
         "back_to_arrangement", "get_arrangement_clips", "duplicate_clip_to_arrangement", "delete_arrangement_clip",
     ]),
+    ("arrangement-structure", "Arrangement Structure", "Read the structural layout of the arrangement (section map from cue points or clip inference) and build multi-section arrangements from section definitions.", [
+        "get_arrangement_structure", "build_arrangement",
+    ]),
     ("automation", "Automation", "Read and write clip automation envelopes for any automatable parameter.", [
         "get_automation", "set_automation", "create_automation_envelope", "clear_automation",
         "clear_all_automation", "re_enable_automation",

@@ -1,5 +1,25 @@
 # ableton-mcp-max — Progress
 
+## Arrangement intelligence: section map read/write (2026-06-18)
+Roadmap item #2 of the "autonomous track production + closed analyze->act loop"
+initiative. Adds 2 new tools (126 -> 128, new "Arrangement structure" area):
+
+- **`get_arrangement_structure`**: derives section spans from cue points
+  (primary) or clip change-point inference (fallback). Returns per-section facts:
+  active tracks, clip count, coverage, and min-max normalized energy.
+- **`build_arrangement`**: places Session clips onto the Arrangement timeline
+  from an explicit section map (name + length_bars + clips list), tiles clips
+  via `repeat: "fill"` or integer count, and optionally writes named cue
+  locators so the structure round-trips through `get_arrangement_structure`.
+
+New module `arrangement_structure_utils.py` holds all bar/beat math, inference,
+and tiling logic (no Live dependency, fully unit-tested). No new Remote Script
+commands - both tools compose existing `get_transport` / `get_cue_points` /
+`get_arrangement_clips` / `duplicate_clip_to_arrangement` / `create_cue_point`
+calls. Offline test suite: 566 -> 617 passed. Version: 0.10.0 ->
+0.11.0. NEXT = live-verify vs Live 12 Suite (scratch tracks), then
+`gh release create v0.11.0` and marketplace ref bump.
+
 ## SHIPPED v0.10.0 (2026-06-16): master/return device access + composition layer
 PR #25 (composition layer) squash-merged to `main` (@2537e7a); master/return access (#24, @9afd32f) was
 already on main from the prior session. Version bumped 0.9.0 -> 0.10.0 across pyproject/plugin.json/uv.lock

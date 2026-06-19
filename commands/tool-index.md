@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_126 tools._
+_128 tools._
 
 ## Session & view
 
@@ -146,6 +146,11 @@ _126 tools._
 - **`jump_to_cue`** - Jump to the next or previous arrangement cue point.
 - **`back_to_arrangement`** - Re-engage the arrangement timeline after launching session clips (clears
 - **`re_enable_automation`** - Re-enable automation that was overridden by manual control changes.
+
+## Arrangement structure
+
+- **`get_arrangement_structure`** - Derive the song's section structure from the Arrangement timeline.
+- **`build_arrangement`** - Assemble an Arrangement from Session clips using an explicit section map.
 
 ## Automation envelopes
 

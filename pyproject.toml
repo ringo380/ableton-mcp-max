@@ -1,6 +1,6 @@
 [project]
 name = "ableton-mcp-max"
-version = "0.10.0"
+version = "0.11.0"
 description = "Self-owned, extensible Ableton Live MCP server"
 requires-python = ">=3.10"
 dependencies = [

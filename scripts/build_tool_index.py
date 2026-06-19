@@ -63,6 +63,9 @@ GROUPS = [
         "delete_cue_point", "set_arrangement_loop", "jump_to_cue",
         "back_to_arrangement", "re_enable_automation",
     ]),
+    ("Arrangement structure", [
+        "get_arrangement_structure", "build_arrangement",
+    ]),
     ("Automation envelopes", [
         "get_automation", "set_automation", "clear_automation",
         "create_automation_envelope", "clear_all_automation",
