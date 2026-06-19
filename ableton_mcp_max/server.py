@@ -4551,6 +4551,154 @@ def get_arrangement_structure(ctx: Context) -> str:
         return _err("Error getting arrangement structure: %s" % e)
 
 
+@mcp.tool()
+def build_arrangement(
+    ctx: Context,
+    sections: List[dict],
+    write_locators: bool = True,
+    replace: bool = False,
+    start_bar: int = 1,
+) -> str:
+    """Assemble an Arrangement from Session clips using an explicit section map.
+
+    Computes section start beats from bar lengths and the live time signature,
+    then tiles Session clips into each section via duplicate_clip_to_arrangement.
+    Optionally writes named cue points (locators) at each section start so the
+    structure is visible in Live and round-trips through get_arrangement_structure.
+
+    Parameters:
+    - sections: list of section dicts:
+        {
+          "name": "Intro",           # required, non-empty string
+          "length_bars": 8,          # required, positive number
+          "clips": [                 # optional; omit for a silent section
+            {
+              "track_index": 0,      # non-negative int
+              "source_slot_index": 0,# non-negative int (Session slot)
+              "repeat": "fill"       # "fill" (tile to fill) or int (exact count)
+            }
+          ]
+        }
+    - write_locators: write a cue point at each section start (default true).
+      This lets get_arrangement_structure read the structure back via cues.
+    - replace: before placing, delete all existing arrangement clips on every
+      track referenced in the section map (idempotent re-builds). Default false.
+    - start_bar: 1-indexed bar where the first section begins (default 1).
+
+    Returns a summary of placed clips and locators. Always follow with a
+    get_arrangement_structure call to verify (write-lag: returned counts may
+    not reflect Live's final state).
+    """
+    try:
+        validate_section_map(sections)
+        ableton = get_ableton_connection()
+
+        # Time signature
+        transport = ableton.send_command("get_transport", {})
+        num = int(transport.get("signature_numerator", 4))
+        den = int(transport.get("signature_denominator", 4))
+
+        # Compute section start beats
+        computed = compute_section_starts(sections, int(start_bar), num, den)
+
+        # Collect all track indices referenced across sections
+        affected_tracks = set()
+        for s in sections:
+            for c in s.get("clips", []):
+                affected_tracks.add(c["track_index"])
+
+        # replace=True: clear existing arrangement clips on affected tracks
+        if replace:
+            for t in sorted(affected_tracks):
+                try:
+                    r = ableton.send_command(
+                        "get_arrangement_clips", {"track_index": t})
+                    existing = r.get("clips", [])
+                    # Delete high-index-first to avoid re-indexing shift
+                    for clip_entry in sorted(
+                            existing, key=lambda x: x["index"], reverse=True):
+                        ableton.send_command("delete_arrangement_clip", {
+                            "track_index": t,
+                            "clip_index": clip_entry["index"],
+                        })
+                except Exception:
+                    pass  # track may have no arrangement clips - skip
+
+        # Place clips section by section
+        result_sections = []
+        for s, cs in zip(sections, computed):
+            section_start = cs["start_beat"]
+            section_beats = cs["length_beats"]
+            placed = []
+            for clip_entry in s.get("clips", []):
+                t = clip_entry["track_index"]
+                slot = clip_entry["source_slot_index"]
+                repeat = clip_entry.get("repeat", "fill")
+
+                # Get clip length from the Session slot
+                try:
+                    info = ableton.send_command(
+                        "get_clip_info",
+                        {"track_index": t, "clip_index": slot})
+                    clip_length = float(info.get("length", 0))
+                except Exception as e:
+                    raise ValueError(
+                        "Cannot read clip info for track %d slot %d: %s"
+                        % (t, slot, e))
+
+                offsets = tiling_plan(section_beats, clip_length, repeat)
+                for offset in offsets:
+                    ableton.send_command("duplicate_clip_to_arrangement", {
+                        "track_index": t,
+                        "source_slot_index": slot,
+                        "destination_time": section_start + offset,
+                    })
+                placed.append({
+                    "track_index": t,
+                    "source_slot_index": slot,
+                    "count": len(offsets),
+                    "first_time": section_start,
+                })
+
+            result_sections.append({
+                "name": s["name"],
+                "start_bar": 1.0 + section_start / (num * (4.0 / den)),
+                "length_bars": s["length_bars"],
+                "placed_clips": placed,
+                "locator_written": False,  # filled in below if applicable
+            })
+
+        # Write locators if requested
+        total_clips = sum(
+            c["count"]
+            for rs in result_sections
+            for c in rs["placed_clips"]
+        )
+        if write_locators:
+            for rs, cs in zip(result_sections, computed):
+                beat = cs["start_beat"]
+                try:
+                    transport2 = ableton.send_command("get_transport", {})
+                    original = transport2.get("current_song_time", 0.0)
+                    ableton.send_command("set_song_position", {"time_beats": beat})
+                    ableton.send_command("create_cue_at_playhead", {})
+                    ableton.send_command("set_song_position", {"time_beats": original})
+                    rs["locator_written"] = True
+                except Exception:
+                    rs["locator_written"] = False
+
+        return _ok({
+            "built": True,
+            "time_signature": [num, den],
+            "total_clips_placed": total_clips,
+            "sections": result_sections,
+            "note": "Follow with get_arrangement_structure to verify (write-lag).",
+        })
+    except Exception as e:
+        logger.error("Error building arrangement: %s", e)
+        return _err("Error building arrangement: %s" % e)
+
+
 def _resolve_auto_target(ableton, track_index, target_type, device_index,
                          parameter, mixer_property, send_index):
     """Normalize an automation parameter target. For device targets, resolve a
