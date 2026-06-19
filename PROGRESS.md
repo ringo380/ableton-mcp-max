@@ -1,5 +1,18 @@
 # ableton-mcp-max — Progress
 
+## Closed-loop remediation (roadmap #3) - SHIPPED 2026-06-19 as v0.12.0
+Spec: `docs/superpowers/specs/2026-06-18-closed-loop-remediation-design.md`
+Plan: `docs/superpowers/plans/2026-06-18-closed-loop-remediation.md`
+4 new tools (128 -> 132), new "Remediation" category (19 total), no RS changes, 656 tests, version 0.12.0:
+- **`adjust_track_gain`**: shift a track fader by delta_db (no playback; uses live_volume_to_db inverse)
+- **`gain_stage_track`**: play + measure LUFS via tap + iterative convergence to target_db
+- **`balance_mix`**: single coherent measure_mix pass + per-tap-kind level corrections
+- **`apply_findings`**: translate analyze_set findings (with new `action` field) into a correction plan; dry_run=True default
+- **Finding enhancement**: `action` dict added to fixable findings from analyze_set (deterministic fixes only; judgment-required findings stay text-only)
+- **New module**: `remediation_utils.py` (db_to_live_volume inverse, generate_actions, build_correction_plan, compute_balance_deltas)
+- **Tests**: 38 new unit tests (test_remediation_utils.py + 4 new tool test files), 618 -> 656 passing
+- **NEXT ACTION = release**: `gh release create v0.12.0` -> bump marketplace ref -> `node scripts/build-readme.js` -> push marketplace repo
+
 ## Arrangement intelligence: section map read/write (2026-06-18)
 Roadmap item #2 of the "autonomous track production + closed analyze->act loop"
 initiative. Adds 2 new tools (126 -> 128, new "Arrangement structure" area):
