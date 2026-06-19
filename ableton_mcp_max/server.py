@@ -88,6 +88,16 @@ from ableton_mcp_max.arrangement_utils import (
     coerce_time,
     coerce_index,
 )
+from ableton_mcp_max.arrangement_structure_utils import (
+    bars_to_beats,
+    compute_section_starts,
+    sections_from_cues,
+    infer_sections,
+    section_facts,
+    normalize_energy,
+    validate_section_map,
+    tiling_plan,
+)
 from ableton_mcp_max.batch_utils import validate_batch, coerce_stop_on_error
 from ableton_mcp_max.analysis_utils import normalize_snapshot, evaluate_rules
 from ableton_mcp_max.ruleset_utils import load_rulesets
@@ -4413,6 +4423,134 @@ def delete_arrangement_clip(ctx: Context, track_index: int,
     except Exception as e:
         logger.error(f"Error deleting arrangement clip: {str(e)}")
         return _err(f"Error deleting arrangement clip: {str(e)}")
+
+
+@mcp.tool()
+def get_arrangement_structure(ctx: Context) -> str:
+    """Derive the song's section structure from the Arrangement timeline.
+
+    Sections are identified in two ways:
+    - If cue points (locators) exist: sections = spans between consecutive
+      locators (last locator to arrangement end = final section). Section
+      names come from the locator names. source = "cues".
+    - If no cue points: sections are inferred from clip start/stop
+      change-points across all tracks. Named "Section 1", "Section 2", etc.
+      with a density_label ("sparse"/"medium"/"dense"). source = "inferred".
+
+    Each section includes per-section facts: active_tracks (track indices
+    with at least one clip overlapping the span), clip_count, coverage
+    (average per-track clip-beats / span-beats, 0.0-1.0), and energy
+    (active_tracks * coverage, min-max normalized 0.0-1.0 across sections).
+
+    Returns:
+    {
+      time_signature: [num, den],
+      song_end_bar: float,         # bar of the arrangement end (1-indexed)
+      source: "cues" | "inferred",
+      section_count: int,
+      sections: [
+        {name, start_bar, length_bars, start_time, end_time,
+         active_tracks, clip_count, coverage, energy}
+      ]
+    }
+
+    Note: bar fields use Ableton's 1-indexed convention (bar 1 = beat 0).
+    """
+    try:
+        ableton = get_ableton_connection()
+
+        # 1. Time signature
+        transport = ableton.send_command("get_transport", {})
+        num = int(transport.get("signature_numerator", 4))
+        den = int(transport.get("signature_denominator", 4))
+        beats_per_bar = num * (4.0 / den)
+
+        # 2. Track count (for the clips loop)
+        session = ableton.send_command("get_session_info", {})
+        track_count = int(session.get("track_count", 0))
+
+        # 3. Cue points
+        cue_result = ableton.send_command("get_cue_points", {})
+        cue_list = cue_result.get("cue_points", [])
+
+        # 4. Arrangement clips per track
+        clips_by_track = []
+        for t in range(track_count):
+            try:
+                r = ableton.send_command(
+                    "get_arrangement_clips", {"track_index": t})
+                clips_by_track.append(r.get("clips", []))
+            except Exception:
+                clips_by_track.append([])
+
+        # 5. Song end = max end_time across all clips (and last cue)
+        all_ends = [c["end_time"] for track in clips_by_track for c in track]
+        if cue_list:
+            all_ends.append(max(c["time"] for c in cue_list))
+        song_end = max(all_ends) if all_ends else 0.0
+
+        # 6. Derive raw sections (name + start_time + end_time)
+        if cue_list:
+            raw_sections = sections_from_cues(cue_list, song_end)
+            source = "cues"
+        else:
+            raw_sections = infer_sections(clips_by_track, song_end)
+            source = "inferred"
+
+        if not raw_sections:
+            return _ok({
+                "time_signature": [num, den],
+                "song_end_bar": 1,
+                "source": source,
+                "section_count": 0,
+                "sections": [],
+            })
+
+        # 7. Add bar fields and per-section facts
+        result_sections = []
+        for s in raw_sections:
+            start_t = s["start_time"]
+            end_t = s["end_time"]
+            facts = section_facts({"start_time": start_t, "end_time": end_t},
+                                  clips_by_track)
+            # bar is 1-indexed: beat 0 = bar 1
+            start_bar = 1.0 + start_t / beats_per_bar
+            length_bars = (end_t - start_t) / beats_per_bar
+            sec = {
+                "name": s["name"],
+                "start_bar": start_bar,
+                "length_bars": length_bars,
+                "start_time": start_t,
+                "end_time": end_t,
+                "active_tracks": facts["active_tracks"],
+                "clip_count": facts["clip_count"],
+                "coverage": facts["coverage"],
+                "_raw_energy": len(facts["active_tracks"]) * facts["coverage"],
+            }
+            if "density_label" in s:
+                sec["density_label"] = s["density_label"]
+            result_sections.append(sec)
+
+        normalize_energy(result_sections)
+
+        # Remove internal _raw_energy key before returning
+        for s in result_sections:
+            s.pop("_raw_energy", None)
+
+        song_end_bar = 1.0 + song_end / beats_per_bar
+
+        return _ok({
+            "time_signature": [num, den],
+            "song_end_bar": song_end_bar,
+            "source": source,
+            "section_count": len(result_sections),
+            "sections": result_sections,
+        })
+    except Exception as e:
+        logger.error("Error getting arrangement structure: %s", e)
+        return _err("Error getting arrangement structure: %s" % e)
+
+
 def _resolve_auto_target(ableton, track_index, target_type, device_index,
                          parameter, mixer_property, send_index):
     """Normalize an automation parameter target. For device targets, resolve a
