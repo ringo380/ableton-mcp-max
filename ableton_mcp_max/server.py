@@ -4566,6 +4566,71 @@ def search_samples(
         logger.error("Error searching samples: %s", e)
         return _err("Error searching samples: %s" % e)
 
+
+@mcp.tool()
+def load_audio_clip(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    sample_path: str,
+    track_type: str = "regular",
+) -> str:
+    """Load an audio sample (typically a loop) into an audio clip slot.
+
+    Materializes the file from iCloud if needed, resolves its browser URI, selects
+    the target slot, and loads it (Live creates an audio clip in that slot). Reads
+    the file header to report the clip's refined kind (a long one-shot is reported
+    as a loop).
+
+    Parameters:
+    - track_index: index of the audio track.
+    - clip_index: clip slot index on that track.
+    - sample_path: absolute path to the sample (as returned by search_samples).
+    - track_type: "regular" (default). Audio clips are a regular-track concept.
+
+    Returns JSON {ok, data:{track_index, clip_index, sample, uri, frames,
+    sample_rate, kind, loaded}}.
+    """
+    try:
+        local = _ensure_local(sample_path)
+        size, frames, rate = _read_audio_meta(local)
+        uri = _resolve_sample_uri(local, "samples")
+        ableton = get_ableton_connection()
+        tempo = 120.0
+        try:
+            tempo = float(ableton.send_command("get_transport").get("tempo", 120.0))
+        except Exception:
+            pass
+        ableton.send_command("set_highlighted_clip_slot",
+                             {"track_index": track_index, "scene_index": clip_index})
+        result = ableton.send_command("load_browser_item", {
+            "track_index": track_index,
+            "item_uri": uri,
+            "track_type": track_type,
+        })
+        loaded = bool(result.get("loaded", False))
+        if not loaded:
+            return _err("Failed to load audio clip from %s (load_browser_item did "
+                        "not confirm)." % os.path.basename(local))
+        kind = refine_kind_by_length(
+            classify_sample(os.path.basename(local), local), frames, rate, tempo)
+        return _ok({
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "sample": local,
+            "uri": uri,
+            "frames": frames,
+            "sample_rate": rate,
+            "kind": kind,
+            "loaded": True,
+        })
+    except RuntimeError as e:
+        return _err("Error: %s" % e)
+    except Exception as e:
+        logger.error("Error loading audio clip: %s", e)
+        return _err("Error loading audio clip: %s" % e)
+
+
 @mcp.tool()
 def inspect_rack_preset(ctx: Context, template: str) -> str:
     """
