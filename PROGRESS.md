@@ -1040,3 +1040,10 @@ Shared pure core: `ableton_mcp_max/preset_patch.py` (set_attr/set_manual/scope/g
     "Attack" (Live auto-labels a single-mapped unnamed macro with its target = proof the mapping bound).
     Scratch track + preset cleaned up. Addresses params that are DIRECT children of a (non-rack) device;
     nested rack-in-rack params + custom ranges = future. Shipped as plugin v0.3.0.
+
+## Sample sourcing (#4a) spike findings (2026-06-19, vs Live 12 Suite, AbletonDev)
+- Browser lists samples: top-level category "samples" (`query:Samples`), FLAT index of 10447 items, each `{name, uri:"query:Samples#FileId_N", is_loadable}` - NO folders, NO filesystem path exposed by the LOM browser.
+- load_audio_clip PRIMARY (A) CONFIRMED: load_browser_item with a sample URI onto an audio track creates a real AUDIO CLIP in the selected slot (is_audio_clip, length 16, looping, warped) - no device added. Slot used = the highlighted slot (default 0).
+- load_sample_to_drum_pad PRIMARY (A) CONFIRMED-ish: load_browser_item with a sample URI onto a track holding a Drum Rack adds the sample as a PAD/chain (chain_count 0->1, chain name = sample, contains a sample-player device) - no clip. OPEN: targeting a SPECIFIC pad note needs pad pre-selection (not yet exposed) -> new RS command, OR preset-patch .adg fallback (path-based).
+- Factory samples root: <Core Library>/Samples with subfolders Loops/, One Shots/, Multisamples/ (matches classify_sample tokens). User Library: <User Library>/Samples (iCloud).
+- KEY: loaders need the browser URI; the browser exposes no path; the FS-walk search returns paths, not URIs. Design RESOLVED by user = HYBRID: keep FS-walk search (paths+classification), add an RS command to resolve a sample name/path -> browser URI so loaders take paths and resolve internally; keep _ensure_local for the preset-patch fallback.
