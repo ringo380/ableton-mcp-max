@@ -117,6 +117,12 @@ from ableton_mcp_max.masking_utils import (
     build_mix_findings,
     enrich_names,
 )
+from ableton_mcp_max.sample_utils import (
+    classify_sample,
+    name_match,
+    icloud_placeholder_path,
+    refine_kind_by_length,
+)
 from ableton_mcp_max.tap_connection import AudioTapConnection
 from ableton_mcp_max.tap_registry import TapRegistry
 from ableton_mcp_max import composition_utils as comp
@@ -4299,6 +4305,46 @@ def create_wavetable_preset(ctx: Context, name: str, table1: str,
     except Exception as e:
         logger.error(f"Error creating wavetable preset: {str(e)}")
         return _err(f"Error creating wavetable preset: {str(e)}")
+
+def _ensure_local(sample_path, timeout=30):
+    """Materialize an iCloud-dataless sample so its bytes are on disk.
+
+    1. If the file already exists locally, return its path.
+    2. Else if a '.<name>.icloud' placeholder stub exists, run `brctl download`
+       and poll (synchronously) up to `timeout` seconds for the real file.
+    3. On timeout, or if the path is simply missing, raise RuntimeError with
+       user-facing guidance.
+
+    Synchronous blocking poll by design -- this runs server-side, not in the
+    Remote Script. Must be called by every loader BEFORE any header read
+    (_read_audio_meta opens the file and would fail on a placeholder).
+    """
+    sample_path = os.path.expanduser(str(sample_path))
+    if os.path.exists(sample_path):
+        return sample_path
+
+    stub = icloud_placeholder_path(sample_path)
+    if stub is None:
+        raise RuntimeError(
+            "Sample not found and no iCloud placeholder present: %s" % sample_path)
+
+    try:
+        subprocess.run(["/usr/bin/brctl", "download", sample_path],
+                       timeout=timeout, check=False)
+    except Exception as e:
+        logger.warning("brctl download failed for %s: %s", sample_path, e)
+
+    deadline = time.monotonic() + max(1, timeout)
+    while time.monotonic() < deadline:
+        if os.path.exists(sample_path):
+            return sample_path
+        time.sleep(0.5)
+
+    raise RuntimeError(
+        "Sample is still an undownloaded iCloud placeholder after %ss: %s. "
+        "Download it in Finder (or right-click -> Download Now) and retry."
+        % (timeout, sample_path))
+
 def _read_audio_meta(path):
     """Return (file_size_bytes, frames, sample_rate) for an audio file.
 
