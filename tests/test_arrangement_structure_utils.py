@@ -186,3 +186,137 @@ def test_tiling_plan_negative_clip_length_raises():
 def test_tiling_plan_bad_repeat_raises():
     with pytest.raises(ValueError, match="repeat"):
         tiling_plan(16.0, 4.0, "half")
+
+
+# --- sections_from_cues ---------------------------------------------------
+
+def test_sections_from_cues_two_cues():
+    cues = [{"name": "Intro", "time": 0.0},
+            {"name": "Verse", "time": 16.0}]
+    sections = sections_from_cues(cues, song_end=48.0)
+    assert len(sections) == 2
+    assert sections[0] == {"name": "Intro", "start_time": 0.0, "end_time": 16.0}
+    assert sections[1] == {"name": "Verse", "start_time": 16.0, "end_time": 48.0}
+
+def test_sections_from_cues_single_cue():
+    cues = [{"name": "A", "time": 8.0}]
+    sections = sections_from_cues(cues, song_end=32.0)
+    assert len(sections) == 1
+    assert sections[0]["start_time"] == 8.0
+    assert sections[0]["end_time"] == 32.0
+
+def test_sections_from_cues_cue_at_zero():
+    cues = [{"name": "Start", "time": 0.0}, {"name": "End", "time": 32.0}]
+    sections = sections_from_cues(cues, song_end=64.0)
+    assert sections[0]["start_time"] == 0.0
+
+def test_sections_from_cues_empty_returns_empty():
+    assert sections_from_cues([], song_end=32.0) == []
+
+
+# --- infer_sections -------------------------------------------------------
+
+def test_infer_sections_two_tracks_same_boundary():
+    # Both tracks change at beat 16: two sections [0,16) [16,32)
+    clips_by_track = [
+        [{"start_time": 0.0, "end_time": 16.0},
+         {"start_time": 16.0, "end_time": 32.0}],
+        [{"start_time": 0.0, "end_time": 16.0},
+         {"start_time": 16.0, "end_time": 32.0}],
+    ]
+    sections = infer_sections(clips_by_track, song_end=32.0)
+    assert len(sections) == 2
+    assert sections[0]["start_time"] == 0.0
+    assert sections[0]["end_time"] == 16.0
+    assert sections[1]["start_time"] == 16.0
+    assert sections[1]["name"] == "Section 2"
+
+def test_infer_sections_naming():
+    clips_by_track = [
+        [{"start_time": 0.0, "end_time": 8.0},
+         {"start_time": 8.0, "end_time": 16.0},
+         {"start_time": 16.0, "end_time": 24.0}],
+    ]
+    sections = infer_sections(clips_by_track, song_end=24.0)
+    names = [s["name"] for s in sections]
+    assert names == ["Section 1", "Section 2", "Section 3"]
+
+def test_infer_sections_empty_arrangement():
+    assert infer_sections([], song_end=0.0) == []
+
+def test_infer_sections_no_clips():
+    assert infer_sections([[]], song_end=0.0) == []
+
+def test_infer_sections_density_label_present():
+    clips_by_track = [
+        [{"start_time": 0.0, "end_time": 16.0}],
+        [{"start_time": 0.0, "end_time": 16.0}],
+    ]
+    sections = infer_sections(clips_by_track, song_end=16.0)
+    assert "density_label" in sections[0]
+    assert sections[0]["density_label"] in ("sparse", "medium", "dense")
+
+
+# --- section_facts --------------------------------------------------------
+
+def test_section_facts_all_tracks_active():
+    span = {"start_time": 0.0, "end_time": 16.0}
+    clips_by_track = [
+        [{"start_time": 0.0, "end_time": 16.0}],
+        [{"start_time": 0.0, "end_time": 8.0}],
+    ]
+    facts = section_facts(span, clips_by_track)
+    assert facts["active_tracks"] == [0, 1]
+    assert facts["clip_count"] == 2
+    # coverage: track 0 = 16/16=1.0, track 1 = 8/16=0.5, avg=0.75
+    assert abs(facts["coverage"] - 0.75) < 1e-6
+
+def test_section_facts_no_overlap():
+    span = {"start_time": 32.0, "end_time": 48.0}
+    clips_by_track = [
+        [{"start_time": 0.0, "end_time": 16.0}],
+    ]
+    facts = section_facts(span, clips_by_track)
+    assert facts["active_tracks"] == []
+    assert facts["clip_count"] == 0
+    assert facts["coverage"] == 0.0
+
+def test_section_facts_coverage_capped_at_1():
+    # Overlapping clips on same track could exceed 1.0 - must cap
+    span = {"start_time": 0.0, "end_time": 8.0}
+    clips_by_track = [
+        [{"start_time": 0.0, "end_time": 8.0},
+         {"start_time": 4.0, "end_time": 12.0}],
+    ]
+    facts = section_facts(span, clips_by_track)
+    assert facts["coverage"] <= 1.0
+
+
+# --- normalize_energy -----------------------------------------------------
+
+def test_normalize_energy_range():
+    sections = [
+        {"active_tracks": [0, 1], "coverage": 0.5},
+        {"active_tracks": [0], "coverage": 1.0},
+        {"active_tracks": [], "coverage": 0.0},
+    ]
+    # Assign raw energy first (active_tracks * coverage)
+    for s in sections:
+        s["_raw_energy"] = len(s["active_tracks"]) * s["coverage"]
+    result = normalize_energy(sections)
+    energies = [s["energy"] for s in result]
+    assert min(energies) == pytest.approx(0.0)
+    assert max(energies) == pytest.approx(1.0)
+
+def test_normalize_energy_single_section():
+    sections = [{"active_tracks": [0], "coverage": 0.8}]
+    sections[0]["_raw_energy"] = 0.8
+    result = normalize_energy(sections)
+    # Single section: all-equal -> uniform energy 0.0
+    assert result[0]["energy"] == 0.0
+
+def test_normalize_energy_all_equal():
+    sections = [{"_raw_energy": 1.0}, {"_raw_energy": 1.0}]
+    result = normalize_energy(sections)
+    assert result[0]["energy"] == 0.0
+    assert result[1]["energy"] == 0.0

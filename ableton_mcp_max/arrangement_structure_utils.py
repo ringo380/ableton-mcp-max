@@ -122,113 +122,137 @@ def tiling_plan(section_beats, clip_length, repeat):
     return [float(i) * clip_length for i in range(n)]
 
 
-def sections_from_cues(cue_points, total_beats, default_name="Section"):
-    """Derive sections from a list of cue point dicts.
+def sections_from_cues(cue_list, song_end):
+    """Derive section spans from a sorted list of cue dicts.
 
-    cue_points: list of dicts with at least 'time' (beat position) and
-                optionally 'name'. Unsorted input is sorted by time.
-    total_beats: end boundary of the last section.
-    default_name: prefix used when a cue has no name.
+    cue_list: [{"name": str, "time": float}, ...] sorted by time.
+    song_end: the end beat of the arrangement (last section ends here).
 
-    Returns a list of dicts with 'name', 'start_beat', 'length_beats'.
-    Returns [] if cue_points is empty.
+    Returns a list of {"name", "start_time", "end_time"}.
+    Empty cue_list returns [].
     """
-    if not cue_points:
+    if not cue_list:
         return []
-    sorted_cues = sorted(cue_points, key=lambda c: c["time"])
-    result = []
-    for idx, cue in enumerate(sorted_cues):
-        start = cue["time"]
-        end = sorted_cues[idx + 1]["time"] if idx + 1 < len(sorted_cues) else total_beats
-        name = cue.get("name") or ("%s %d" % (default_name, idx + 1))
-        result.append({
-            "name": name,
-            "start_beat": float(start),
-            "length_beats": float(end - start),
-        })
-    return result
-
-
-def infer_sections(clip_list, num, den, gap_bars=2):
-    """Group arrangement clips into sections based on timing gaps.
-
-    clip_list: list of dicts with 'start_beat' and 'length_beats'.
-               Unsorted input is sorted by start_beat.
-    num, den: time signature (used to convert gap threshold to beats).
-    gap_bars: a silence gap >= this many bars starts a new section.
-
-    Returns a list of section dicts:
-      {"start_beat": float, "length_beats": float, "clip_count": int}
-    Returns [] for empty input.
-    """
-    if not clip_list:
-        return []
-    gap_beats = bars_to_beats(gap_bars, num, den)
-    clips = sorted(clip_list, key=lambda c: c["start_beat"])
+    # Sort defensively in case caller didn't
+    sorted_cues = sorted(cue_list, key=lambda c: c["time"])
     sections = []
-    sec_start = clips[0]["start_beat"]
-    sec_end = clips[0]["start_beat"] + clips[0]["length_beats"]
-    count = 1
-    for clip in clips[1:]:
-        c_start = clip["start_beat"]
-        c_end = c_start + clip["length_beats"]
-        if c_start - sec_end >= gap_beats:
-            sections.append({
-                "start_beat": float(sec_start),
-                "length_beats": float(sec_end - sec_start),
-                "clip_count": count,
-            })
-            sec_start = c_start
-            sec_end = c_end
-            count = 1
-        else:
-            sec_end = max(sec_end, c_end)
-            count += 1
-    sections.append({
-        "start_beat": float(sec_start),
-        "length_beats": float(sec_end - sec_start),
-        "clip_count": count,
-    })
+    for i, cue in enumerate(sorted_cues):
+        start = cue["time"]
+        end = sorted_cues[i + 1]["time"] if i + 1 < len(sorted_cues) else song_end
+        sections.append({"name": cue["name"], "start_time": start, "end_time": end})
     return sections
 
 
-def section_facts(section, num, den):
-    """Return a summary dict for a single section.
+def _density_label(coverage):
+    """Map a coverage fraction to a density label."""
+    if coverage < 0.33:
+        return "sparse"
+    elif coverage < 0.67:
+        return "medium"
+    return "dense"
 
-    section: dict with at least 'start_beat' and 'length_beats'.
-    num, den: time signature for bar conversion.
 
-    Returns:
-      {
-        "start_beat": float,
-        "length_beats": float,
-        "start_bar": float,   # 1-indexed
-        "length_bars": float,
-      }
+def _clip_overlap_beats(clip, start, end):
+    """Beats of a clip that overlap [start, end)."""
+    lo = max(clip["start_time"], start)
+    hi = min(clip["end_time"], end)
+    return max(0.0, hi - lo)
+
+
+def infer_sections(clips_by_track, song_end):
+    """Infer section boundaries from clip change-points across all tracks.
+
+    clips_by_track: list of per-track clip lists; each clip has
+                    {"start_time": float, "end_time": float}.
+    song_end: end of the arrangement in beats.
+
+    Collects all unique clip start/end times as potential boundaries,
+    sorts them, filters to non-empty spans, and names them 'Section N'.
+    Returns [] if there are no clips.
     """
-    beats_per_bar = num * (4.0 / den)
-    start = float(section["start_beat"])
-    length = float(section["length_beats"])
+    boundaries = set()
+    for track_clips in clips_by_track:
+        for c in track_clips:
+            boundaries.add(c["start_time"])
+            boundaries.add(c["end_time"])
+    if not boundaries:
+        return []
+    # Ensure song_end is included as a boundary
+    boundaries.add(song_end)
+    sorted_b = sorted(boundaries)
+    sections = []
+    for i in range(len(sorted_b) - 1):
+        start = sorted_b[i]
+        end = sorted_b[i + 1]
+        if end <= start:
+            continue
+        span_beats = end - start
+        # Quick coverage estimate for density label
+        covered = 0.0
+        for track_clips in clips_by_track:
+            for c in track_clips:
+                covered += _clip_overlap_beats(c, start, end)
+        raw_coverage = covered / span_beats if span_beats > 0 else 0.0
+        coverage = min(1.0, raw_coverage)
+        n = len(sections) + 1
+        sections.append({
+            "name": "Section %d" % n,
+            "start_time": start,
+            "end_time": end,
+            "density_label": _density_label(coverage),
+        })
+    return sections
+
+
+def section_facts(span, clips_by_track):
+    """Compute per-section facts from clip geometry.
+
+    span: {"start_time": float, "end_time": float}
+    clips_by_track: list of per-track clip lists (each clip has
+                    "start_time" and "end_time" in beats).
+
+    Returns {"active_tracks": [track indices], "clip_count": int, "coverage": float}.
+    coverage = average per-track coverage fraction (capped at 1.0).
+    """
+    start = span["start_time"]
+    end = span["end_time"]
+    span_beats = end - start
+    active_tracks = []
+    clip_count = 0
+    total_coverage = 0.0
+    for t_idx, track_clips in enumerate(clips_by_track):
+        track_covered = 0.0
+        track_active = False
+        for c in track_clips:
+            overlap = _clip_overlap_beats(c, start, end)
+            if overlap > 0:
+                track_active = True
+                clip_count += 1
+                track_covered += overlap
+        if track_active:
+            active_tracks.append(t_idx)
+            per_track_cov = min(1.0, track_covered / span_beats) if span_beats > 0 else 0.0
+            total_coverage += per_track_cov
+    n_active = len(active_tracks)
+    coverage = (total_coverage / n_active) if n_active > 0 else 0.0
     return {
-        "start_beat": start,
-        "length_beats": length,
-        "start_bar": start / beats_per_bar + 1.0,
-        "length_bars": length / beats_per_bar,
+        "active_tracks": active_tracks,
+        "clip_count": clip_count,
+        "coverage": coverage,
     }
 
 
-def normalize_energy(values):
-    """Normalize a list of numeric energy values to the [0.0, 1.0] range.
+def normalize_energy(sections):
+    """Add 'energy' (0.0-1.0) to each section dict in place and return sections.
 
-    If all values are identical (including a single-element list), returns
-    a list of 0.0s (no meaningful range to normalize).
-    Returns [] for empty input.
+    Reads '_raw_energy' from each section (caller sets this as
+    len(active_tracks) * coverage). Min-max normalizes across all sections.
+    All-equal -> 0.0 for all. Modifies sections in place.
     """
-    if not values:
-        return []
-    lo = min(values)
-    hi = max(values)
-    if hi == lo:
-        return [0.0] * len(values)
+    raw = [s.get("_raw_energy", 0.0) for s in sections]
+    lo = min(raw)
+    hi = max(raw)
     span = hi - lo
-    return [(v - lo) / span for v in values]
+    for s, r in zip(sections, raw):
+        s["energy"] = (r - lo) / span if span > 0 else 0.0
+    return sections
