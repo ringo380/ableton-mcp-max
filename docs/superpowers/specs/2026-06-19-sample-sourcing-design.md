@@ -53,18 +53,48 @@ placeholder-path derivation, post-load kind refinement)
 **One server.py helper:** `_ensure_local(sample_path, timeout=30)` - iCloud materialization,
 called by every loader before any header read.
 
-**No Remote Script changes planned.** All tools orchestrate existing server primitives
-(`load_browser_item`, the preset-patch `.adg` infrastructure). The drum-pad spike may
-discover a need for a new RS load path - if so, that is decided and scoped at spike time,
-not assumed now. Version bump: 0.12.0 -> 0.13.0.
+**Remote Script: one new resolver command** (see Spike outcome below). The loaders take a
+filesystem `sample_path` (as `search_samples` returns) and must turn it into a browser
+URI to load; the browser exposes no path, so a new RS command resolves a sample name ->
+its browser URI, plus a pad-select helper for drum-pad targeting. This needs a Remote
+Script reinstall + Live bounce (the standard dual-restart). Version bump: 0.12.0 -> 0.13.0.
 
 ## Approach
 
-Approach A: **one search tool + targeted loaders + a pure util.** Search is a single
-server-side browser walk that classifies each hit and ranks by name match. Loaders are
-thin: materialize the file, then drive the existing browser/preset-patch load path. All
-resolution/normalization happens server-side in `sample_utils.py` (the Remote Script
-cannot import it - see CLAUDE.md architecture notes).
+Approach A: **one search tool + targeted loaders + a pure util.** Search is a
+server-side filesystem walk that classifies each hit and ranks by name match. Loaders are
+thin: materialize the file, resolve its browser URI via the new RS command, then
+`load_browser_item`. All resolution/normalization happens server-side in `sample_utils.py`
+(the Remote Script cannot import it - see CLAUDE.md architecture notes).
+
+## Spike outcome (2026-06-19) - hybrid resolution
+
+The Task 1 live spike (vs Live 12 Suite; full findings in PROGRESS.md) established:
+
+- **Both loaders load via the browser URI** (`query:Samples#FileId_N`). Loading a sample
+  URI with `load_browser_item` onto an audio track creates a real **audio clip** in the
+  highlighted slot (no device); onto a Drum-Rack track it adds the sample as a **pad/chain**.
+  Primary path A confirmed for both - no preset-patch fallback needed for the happy path.
+- **The LOM browser exposes no filesystem path** - only `{name, uri}`. The "samples"
+  category is a flat 10447-item index, no folders.
+- **`search_samples` (already built) walks the filesystem** and returns paths +
+  folder-based classification. Its `uri` is null.
+
+**Conflict:** search returns paths; loaders need URIs. **Resolution (user-chosen, hybrid):**
+keep the filesystem-walk search (rich folder classification + real paths for iCloud
+materialization), and add a **Remote Script command** that resolves a sample name ->
+its browser URI so the loaders can take a `sample_path` and resolve internally:
+
+- `find_sample_uri` (RS): given a sample base name (and a category hint: `samples` or
+  `drums`), walk that browser category and return the matching item's `uri` (first match;
+  report ambiguity count). Server wrapper `_resolve_sample_uri(sample_path, category)`.
+- `select_drum_pad` (RS): given `track_index` + `pad_note`, select that pad on the track's
+  Drum Rack so a subsequent `load_browser_item` lands on it. Falls back to the preset-patch
+  `.adg` path (path-based, why `_ensure_local` is retained) if pad-note selection proves
+  infeasible.
+
+This keeps Tasks 2/3/4 (sample_utils, `_ensure_local`, `search_samples`) **as already
+built and reviewed**; only the gated loaders change and one RS task is added.
 
 ## Tool designs
 
@@ -103,7 +133,7 @@ Returns:
     {
       "name": "Kick Deep 01.wav",
       "path": "/Users/.../User Library/Samples/Drums/Kicks/Kick Deep 01.wav",
-      "uri": "query:Samples#Kick%20Deep%2001.wav",
+      "uri": null,
       "kind": "one_shot",
       "source": "user",
       "folder": "Samples/Drums/Kicks",
@@ -114,7 +144,9 @@ Returns:
 ```
 
 `count` is total matches found; `returned`/`truncated` follow the existing reader-limit
-convention (CLAUDE.md). `uri` is the browser item URI used by the loaders.
+convention (CLAUDE.md). `uri` is `null` - the LOM browser exposes no path on a sample item
+and search walks the filesystem, so the loaders resolve the browser URI at load time from
+`path` via the RS `find_sample_uri` command (see Spike outcome).
 
 ### `load_audio_clip`
 
@@ -122,15 +154,15 @@ convention (CLAUDE.md). `uri` is the browser item URI used by the loaders.
 load_audio_clip(track_index, clip_index, sample_path, track_type="regular") -> {ok, data}
 ```
 
-Load a sample (typically a loop) into an audio clip slot. **Feasibility-gated** - the
-spike confirms whether the LOM can drop a sample onto an audio clip slot before this is
-built (see Feasibility gates).
+Load a sample (typically a loop) into an audio clip slot. Spike-confirmed: the LOM creates
+a real audio clip in the highlighted slot from a browser-URI `load_browser_item`.
 
 Flow:
 1. `_ensure_local(sample_path)` - materialize from iCloud if needed.
-2. Resolve the sample's browser item.
-3. Select the target audio track + clip slot.
-4. `load_browser_item` on the sample's browser item.
+2. Resolve the sample's browser URI: `_resolve_sample_uri(sample_path, "samples")`
+   (RS `find_sample_uri` by base name).
+3. Select the target audio track + clip slot (`set_highlighted_clip_slot`).
+4. `load_browser_item` with the resolved URI.
 5. Read the materialized file's header (`wave`/`aifc`) for frames + sample rate, then
    `refine_kind_by_length(kind, frames, sample_rate, tempo)` to upgrade a mis-classified
    one-shot to a loop now that the true length is known. Reported back as `kind` on the
@@ -151,17 +183,20 @@ load_sample_to_drum_pad(track_index, pad_note, sample_path) -> {ok, data}
 ```
 
 Load a one-shot onto a single Drum Rack pad (`pad_note` is the MIDI note of the pad).
-**Feasibility-gated** - primary path is selecting the pad chain and `load_browser_item`;
-fallback is a preset-patch of the Drum Rack `.adg` injecting the sample at the pad's note
-(reusing the rack `.adg` backdoor infrastructure). The spike decides which.
+Spike-confirmed: loading a sample URI onto a Drum-Rack track adds it as a pad. Targeting a
+specific `pad_note` uses the RS `select_drum_pad` helper before the load; if pad selection
+proves infeasible, the fallback is a preset-patch of the Drum Rack `.adg` injecting the
+sample at the pad's note (reusing the rack `.adg` backdoor; path-based, hence `_ensure_local`).
 
 Flow:
 1. `_ensure_local(sample_path)`.
-2. Locate the Drum Rack on the track and the pad chain for `pad_note`.
-3. Load the sample onto that pad (primary or fallback path per spike).
-4. Return pad assignment confirmation.
+2. `_resolve_sample_uri(sample_path, "samples")` -> browser URI.
+3. `select_drum_pad(track_index, pad_note)` (RS) to target the pad.
+4. `load_browser_item` with the resolved URI; the sample lands on the selected pad.
+5. Return pad assignment confirmation.
 
-Errors: undownloaded placeholder, no Drum Rack on track, invalid pad note.
+Errors: undownloaded placeholder, URI not resolvable (sample not indexed), no Drum Rack on
+track, invalid pad note.
 
 ### `populate_drum_rack`
 
@@ -246,19 +281,15 @@ Confirmed: `brctl` is at `/usr/bin/brctl`; the User Library is at
 `~/Library/Mobile Documents/com~apple~CloudDocs/Production/User Library` (iCloud). This
 must precede any `wave`/`aifc` header read - those open the file and fail on a placeholder.
 
-## Feasibility gates
+## Feasibility gates (RESOLVED by the Task 1 spike, 2026-06-19)
 
-Per the project standing rule, the **first plan task is a live spike** verifying each
-gated loader before it is built. Tool shapes adapt to spike results.
+Both gates passed on the primary path - see Spike outcome above and PROGRESS.md:
 
-- **`load_audio_clip`:** can the LOM drop a sample onto an audio clip slot? Test: select
-  an audio track + slot, `load_browser_item` on the sample's browser item - does an audio
-  clip appear? If audio clips turn out to be UI-drag-only, **fallback** = load the loop
-  into Simpler in a loop-playback config and report that honestly.
-- **`load_sample_to_drum_pad`:** can a sample target a specific Drum Rack pad? Primary:
-  the pad is a chain -> select the pad chain, `load_browser_item`. Fallback: preset-patch
-  a Drum Rack `.adg` injecting the sample at the pad's note (reuse the rack `.adg` backdoor
-  infra). The spike picks the path; only the fallback could require a new RS load path.
+- **`load_audio_clip`:** RESOLVED - `load_browser_item` with a sample URI on an audio track
+  creates a real audio clip in the highlighted slot. No Simpler fallback needed.
+- **`load_sample_to_drum_pad`:** RESOLVED - loading a sample URI onto a Drum-Rack track adds
+  it as a pad. Specific-pad targeting uses the new RS `select_drum_pad`; preset-patch `.adg`
+  remains the documented fallback if pad-note selection is infeasible.
 
 ## Testing
 
@@ -288,14 +319,16 @@ Honest limits, to be surfaced by the #4b produce skill:
 - **Content / audio-similarity matching** - search is name/path only, no audio analysis.
 - **Auto-warp-to-tempo fine-tuning** - Live auto-warps on load; we don't tweak warp markers
   (warp-marker editing is read-only in the LOM anyway).
-- Any Remote Script change beyond what the drum-pad spike may force.
+- Remote Script changes beyond the two resolver/pad-select commands (`find_sample_uri`,
+  `select_drum_pad`).
 
 ## Version and release
 
-Version 0.12.0 -> 0.13.0. Single PR `feat/sample-sourcing`. RS install only if the
-drum-pad spike forces a new load path. Tool count 132 -> 136. New "Samples" category in
-`gen_docs_site.py` group map (19 -> 20 categories). Hero counts in `docs/index.md` need
-manual update.
+Version 0.12.0 -> 0.13.0. Single PR `feat/sample-sourcing`. **RS install + Live bounce
+required** (the two new RS commands - standard dual-restart). Tool count 132 -> 136 (the RS
+resolver/pad-select commands are wire commands, not `@mcp.tool()`s, so they do not change the
+count). New "Samples" category in `gen_docs_site.py` group map (19 -> 20 categories). Hero
+counts in `docs/index.md` need manual update.
 
 Marketplace publish flow is the same as prior releases (bump 3 version files -> `uv lock`
 -> commit -> `gh release create v0.13.0` -> bump marketplace ref ->

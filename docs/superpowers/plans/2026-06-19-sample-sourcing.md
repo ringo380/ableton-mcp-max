@@ -11,7 +11,8 @@
 ## Global Constraints
 
 - All logic in `sample_utils.py` is importable without Live running. `classify_sample`, `name_match`, and `refine_kind_by_length` are pure (no I/O); `icloud_placeholder_path` touches the filesystem only (no Live/socket dependency) and is tested with real temp dirs.
-- Remote Script: **zero changes planned.** Task 1 (spike) may discover the drum-pad fallback needs a new RS load path; if and only if it does, that is scoped as an extra task at spike time and triggers the dual-restart + RS-install protocol (see project CLAUDE.md). The default assumption for Tasks 2-8 is server-side only, no Live restart.
+- Remote Script: **two new commands** (`find_sample_uri`, `select_drum_pad`) in Task 4.5, per the Task 1 spike outcome (loaders need a browser URI; the LOM browser exposes no path, so a name->URI resolver is required, plus a pad-select for drum-pad targeting). Task 4.5 triggers the RS-install + Live-bounce (dual-restart) protocol (see project CLAUDE.md). Tasks 2/3/4/5/6/7 are server-side only; the RS edit is isolated to Task 4.5.
+- Spike outcome (Task 1, done): both loaders load via `load_browser_item` with a browser URI (`query:Samples#FileId_N`); confirmed for audio clips (clip in highlighted slot) and drum pads (sample becomes a pad). Search stays a filesystem walk (returns `path`, `uri:null`); loaders resolve `path`->URI via `_resolve_sample_uri` (RS `find_sample_uri`). Full findings in PROGRESS.md.
 - iCloud materialization uses `brctl` at the absolute path `/usr/bin/brctl`. The User Library is iCloud-backed at `~/Library/Mobile Documents/com~apple~CloudDocs/Production/User Library` (resolved at runtime via `_user_library_dir()`, never hardcoded).
 - A dataless iCloud file `Foo.wav` is stored on disk as a sibling stub `.Foo.wav.icloud` (leading dot, original name, `.icloud` suffix). Downloading materializes the real path and removes the stub.
 - Sample classifications are exactly the four strings: `"loop"`, `"one_shot"`, `"kit"`, `"instrument"`.
@@ -830,62 +831,220 @@ git commit -m "feat(samples): add search_samples tool (filesystem walk + classif
 
 ---
 
-### Task 5: `load_audio_clip` tool (spike-gated)
+### Task 4.5: Remote Script — `find_sample_uri` + `select_drum_pad` commands (LIVE)
+
+**Files:**
+- Modify: `remote_script/AbletonMCP/__init__.py` (add two command handlers)
+- Modify: `ableton_mcp_max/server.py` (add `_resolve_sample_uri` helper)
+- Create: `tests/test_resolve_sample_uri.py`
+
+**Interfaces:**
+- Produces (RS wire commands):
+  - `find_sample_uri` (READ): params `{name, category}` (category "samples" or "drums") → `{uri, matches}` (uri of the first browser item whose name matches `name`; `matches` = count). `{uri: None, matches: 0}` if not found.
+  - `select_drum_pad` (mutation): params `{track_index, pad_note}` → `{selected: bool}`; selects the Drum Rack pad for that MIDI note so a following `load_browser_item` lands on it.
+- Produces (server): `_resolve_sample_uri(sample_path, category="samples") -> str` — calls `find_sample_uri` with the basename; raises `RuntimeError` if unresolved.
+
+**This task changes the Remote Script — it is driven in the MAIN LOOP (not a subagent):** edit the RS, `bash scripts/install_remote_script.sh`, bounce Live (`restart_live` tool / `/ableton:restart`), then live-verify. RS handlers cannot be offline-unit-tested (the RS runs in Live's own interpreter and is not importable); only `_resolve_sample_uri` (server wrapper) gets an offline test.
+
+- [ ] **Step 1: Study the RS browser + selection structure**
+
+Read `remote_script/AbletonMCP/__init__.py` around the existing browser handlers (`get_browser_tree`, `_get_browser_item`, `_find_browser_item_by_uri`, `_load_browser_item`) and the `_process_command` dispatch + `main_thread_task` mutation list. Note: reads run inline in `_process_command`; mutations go in BOTH the `elif command_type in [...]` list AND a `main_thread_task` branch (see CLAUDE.md).
+
+- [ ] **Step 2: Implement `find_sample_uri` (READ, inline in `_process_command`)**
+
+Walk the named browser category (reuse the same browser-walk the existing browser handlers use) collecting `(name, uri)` for loadable leaf items; return the first whose name equals `name` (exact, then case-insensitive), with a `matches` count. Pattern (adapt to the file's actual browser-walk helper):
+
+```python
+elif command_type == "find_sample_uri":
+    name = params.get("name", "")
+    category = params.get("category", "samples")
+    response["result"] = self.find_sample_uri(name, category)
+```
+
+Add the method (walk `app.browser.<category>` recursively, collect loadable items, match by name):
+
+```python
+def find_sample_uri(self, name, category="samples"):
+    app = self.application()
+    root = getattr(app.browser, category, None)
+    if root is None:
+        return {"uri": None, "matches": 0}
+    hits = []
+    def walk(item):
+        try:
+            children = list(item.children)
+        except Exception:
+            children = []
+        if not children and getattr(item, "is_loadable", False):
+            hits.append((item.name, item.uri))
+        for c in children:
+            walk(c)
+    walk(root)
+    lower = name.lower()
+    exact = [u for (n, u) in hits if n == name]
+    ci = [u for (n, u) in hits if n.lower() == lower]
+    chosen = exact[0] if exact else (ci[0] if ci else None)
+    return {"uri": chosen, "matches": len(exact) or len(ci)}
+```
+
+- [ ] **Step 3: Implement `select_drum_pad` (mutation)**
+
+Add `select_drum_pad` to the mutating-commands list AND a `main_thread_task` branch. It finds the Drum Rack on the track, selects the drum pad for `pad_note` (set the rack device view's `selected_drum_pad` to the pad whose `note == pad_note`):
+
+```python
+def select_drum_pad(self, track_index, pad_note):
+    track = self._song.tracks[track_index]
+    rack = None
+    for d in track.devices:
+        if d.can_have_drum_pads:
+            rack = d
+            break
+    if rack is None:
+        return {"selected": False, "error": "no drum rack"}
+    for pad in rack.drum_pads:
+        if pad.note == pad_note:
+            rack.view.selected_drum_pad = pad
+            return {"selected": True}
+    return {"selected": False, "error": "no pad for note"}
+```
+
+If `rack.view.selected_drum_pad` is not settable (raises), record it and fall back at the tool level to the preset-patch `.adg` path (documented in Task 6). Confirm settability during Step 6 live-verify.
+
+- [ ] **Step 4: Add `_resolve_sample_uri` to server.py + its offline test**
+
+Add after `_ensure_local` (or near the sample tools). Write the test first:
+
+```python
+# tests/test_resolve_sample_uri.py
+import pytest
+import ableton_mcp_max.server as server
+
+
+def test_resolve_sample_uri_returns_uri(monkeypatch):
+    class _Conn:
+        def send_command(self, cmd, params=None):
+            assert cmd == "find_sample_uri"
+            assert params["name"] == "Kick.wav"
+            assert params["category"] == "samples"
+            return {"uri": "query:Samples#FileId_1", "matches": 1}
+    monkeypatch.setattr(server, "get_ableton_connection", lambda: _Conn())
+    assert server._resolve_sample_uri("/x/Kick.wav") == "query:Samples#FileId_1"
+
+
+def test_resolve_sample_uri_not_found_raises(monkeypatch):
+    class _Conn:
+        def send_command(self, cmd, params=None):
+            return {"uri": None, "matches": 0}
+    monkeypatch.setattr(server, "get_ableton_connection", lambda: _Conn())
+    with pytest.raises(RuntimeError):
+        server._resolve_sample_uri("/x/Ghost.wav")
+```
+
+Run to confirm failure, then implement:
+
+```python
+def _resolve_sample_uri(sample_path, category="samples"):
+    """Resolve a sample file path to its Live browser URI via the RS.
+
+    Matches by base name (the LOM browser exposes name + uri, not a path), so a
+    duplicate name across packs resolves to the first match. Raises RuntimeError
+    if the sample is not indexed in the browser.
+    """
+    name = os.path.basename(sample_path)
+    ableton = get_ableton_connection()
+    res = ableton.send_command("find_sample_uri", {"name": name, "category": category})
+    uri = (res or {}).get("uri")
+    if not uri:
+        raise RuntimeError(
+            "Could not resolve '%s' to a browser item. Live may not have indexed "
+            "it yet (refresh the browser or relaunch Live), or it is in a category "
+            "other than '%s'." % (name, category))
+    return uri
+```
+
+Run the test: `PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run --with pytest pytest tests/test_resolve_sample_uri.py -q` → 2 passed. Server import check passes.
+
+- [ ] **Step 5: Reinstall RS, py_compile, bounce Live**
+
+```bash
+PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run python -m py_compile remote_script/AbletonMCP/__init__.py
+bash scripts/install_remote_script.sh
+```
+Then bounce Live (`restart_live` MCP tool, or `/ableton:restart`). Wait for 9877 to bind.
+
+- [ ] **Step 6: Live-verify both RS commands**
+
+With Live up, create a scratch MIDI track + load a Drum Rack. Then via the AbletonDev connection (a raw `send_command` through any tool path, or temporarily exercise via the loaders in Task 6): confirm `find_sample_uri` returns a real `query:Samples#FileId_...` for a known sample base name, and `select_drum_pad` returns `{selected:true}` for note 36 (and that a subsequent sample load lands on pad 36). If `selected_drum_pad` is not settable, record it and switch Task 6 to the preset-patch fallback. Delete the scratch track. Record results in PROGRESS.md.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add remote_script/AbletonMCP/__init__.py ableton_mcp_max/server.py tests/test_resolve_sample_uri.py
+git commit -m "feat(samples): RS find_sample_uri + select_drum_pad commands + _resolve_sample_uri helper"
+```
+
+---
+
+### Task 5: `load_audio_clip` tool
 
 **Files:**
 - Modify: `ableton_mcp_max/server.py` (add `load_audio_clip` after `search_samples`)
 - Create: `tests/test_load_audio_clip.py`
 
 **Interfaces:**
-- Consumes: `_ensure_local`, `_read_audio_meta`, `refine_kind_by_length`, `classify_sample`, `get_ableton_connection`, `_ok`, `_err` — plus (FALLBACK only) `build_simpler_adv`, `_read_default_adv`, `_write_user_preset`, `_load_user_preset`, `validate_preset_name`
+- Consumes: `_ensure_local`, `_resolve_sample_uri`, `_read_audio_meta`, `refine_kind_by_length`, `classify_sample`, `get_ableton_connection`, `_ok`, `_err`
 - Produces: `load_audio_clip(ctx, track_index, clip_index, sample_path, track_type="regular") -> str`
 
-**Spike decision:** Implement the variant Task 1 selected.
-- **PRIMARY (spike result A):** `load_browser_item` drops the sample onto the audio slot.
-- **FALLBACK (spike result B):** load the sample into a Simpler in loop-playback config and report honestly.
+**Spike-confirmed mechanism:** `load_browser_item` with the resolved sample URI onto an audio track creates a real audio clip in the highlighted slot.
 
-- [ ] **Step 1: Write the failing tests (variant-agnostic on the public contract)**
+- [ ] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_load_audio_clip.py
 import json
-import os
 import ableton_mcp_max.server as server
 
 
-def test_load_audio_clip_materializes_then_loads(tmp_path, monkeypatch):
+def test_load_audio_clip_resolves_and_loads(tmp_path, monkeypatch):
     sample = tmp_path / "Loop 120 bpm.wav"
     sample.write_bytes(b"RIFF")
 
-    calls = {"ensure": [], "load": []}
+    calls = {"ensure": [], "sent": []}
     monkeypatch.setattr(server, "_ensure_local",
                         lambda p, timeout=30: (calls["ensure"].append(p) or str(sample)))
-    # header read returns a 2-second loop @ 48k
-    monkeypatch.setattr(server, "_read_audio_meta",
-                        lambda p: (1000, 2 * 48000, 48000))
+    monkeypatch.setattr(server, "_read_audio_meta", lambda p: (1000, 2 * 48000, 48000))
+    monkeypatch.setattr(server, "_resolve_sample_uri",
+                        lambda p, category="samples": "query:Samples#FileId_9")
 
-    class _FakeConn:
+    class _Conn:
         def send_command(self, cmd, params=None):
-            calls["load"].append((cmd, params))
-            if cmd in ("load_browser_item",):
-                return {"loaded": True}
+            calls["sent"].append((cmd, params))
             if cmd == "get_transport":
                 return {"tempo": 120.0}
-            return {"loaded": True}
+            if cmd == "load_browser_item":
+                return {"loaded": True}
+            return {}
 
-    monkeypatch.setattr(server, "get_ableton_connection", lambda: _FakeConn())
+    monkeypatch.setattr(server, "get_ableton_connection", lambda: _Conn())
 
     out = json.loads(server.load_audio_clip(
         ctx=None, track_index=3, clip_index=0, sample_path=str(sample)))
     assert out["ok"] is True
-    # materialization ran before any load
-    assert calls["ensure"], "expected _ensure_local to be called"
+    assert calls["ensure"], "expected _ensure_local before load"
+    cmds = [c for c, _ in calls["sent"]]
+    assert "set_highlighted_clip_slot" in cmds
+    assert "load_browser_item" in cmds
+    # the resolved URI was passed to load_browser_item
+    lbi = next(p for c, p in calls["sent"] if c == "load_browser_item")
+    assert lbi["item_uri"] == "query:Samples#FileId_9"
     d = out["data"]
     assert d["track_index"] == 3
-    assert d["sample"].endswith("Loop 120 bpm.wav")
+    assert d["clip_index"] == 0
+    assert d["kind"] == "loop"   # 2-beat sample at 120 bpm refines to loop
+    assert d["loaded"] is True
 
 
-def test_load_audio_clip_placeholder_error(tmp_path, monkeypatch):
+def test_load_audio_clip_placeholder_error(monkeypatch):
     def boom(p, timeout=30):
         raise RuntimeError("undownloaded iCloud placeholder after 30s")
     monkeypatch.setattr(server, "_ensure_local", boom)
@@ -893,6 +1052,20 @@ def test_load_audio_clip_placeholder_error(tmp_path, monkeypatch):
         ctx=None, track_index=0, clip_index=0, sample_path="/x/Ghost.wav"))
     assert out["ok"] is False
     assert "placeholder" in out["error"].lower()
+
+
+def test_load_audio_clip_unresolvable_uri_error(tmp_path, monkeypatch):
+    sample = tmp_path / "Mystery.wav"
+    sample.write_bytes(b"RIFF")
+    monkeypatch.setattr(server, "_ensure_local", lambda p, timeout=30: str(sample))
+    monkeypatch.setattr(server, "_read_audio_meta", lambda p: (10, 48000, 48000))
+    def boom(p, category="samples"):
+        raise RuntimeError("Could not resolve 'Mystery.wav' to a browser item.")
+    monkeypatch.setattr(server, "_resolve_sample_uri", boom)
+    out = json.loads(server.load_audio_clip(
+        ctx=None, track_index=0, clip_index=0, sample_path=str(sample)))
+    assert out["ok"] is False
+    assert "resolve" in out["error"].lower()
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -900,9 +1073,9 @@ def test_load_audio_clip_placeholder_error(tmp_path, monkeypatch):
 ```bash
 PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run --with pytest pytest tests/test_load_audio_clip.py -q
 ```
-Expected: AttributeError.
+Expected: AttributeError (`load_audio_clip` not defined).
 
-- [ ] **Step 3a: Implement the PRIMARY variant (spike result A)** — after `search_samples`
+- [ ] **Step 3: Implement `load_audio_clip` after `search_samples`**
 
 ```python
 @mcp.tool()
@@ -915,9 +1088,10 @@ def load_audio_clip(
 ) -> str:
     """Load an audio sample (typically a loop) into an audio clip slot.
 
-    Materializes the file from iCloud first if needed, then loads it onto the
-    target audio track + clip slot. Reads the file header to report the clip's
-    refined kind (a long one-shot is reported as a loop).
+    Materializes the file from iCloud if needed, resolves its browser URI, selects
+    the target slot, and loads it (Live creates an audio clip in that slot). Reads
+    the file header to report the clip's refined kind (a long one-shot is reported
+    as a loop).
 
     Parameters:
     - track_index: index of the audio track.
@@ -925,36 +1099,37 @@ def load_audio_clip(
     - sample_path: absolute path to the sample (as returned by search_samples).
     - track_type: "regular" (default). Audio clips are a regular-track concept.
 
-    Returns JSON {ok, data:{track_index, clip_index, sample, frames,
+    Returns JSON {ok, data:{track_index, clip_index, sample, uri, frames,
     sample_rate, kind, loaded}}.
     """
     try:
         local = _ensure_local(sample_path)
         size, frames, rate = _read_audio_meta(local)
+        uri = _resolve_sample_uri(local, "samples")
         ableton = get_ableton_connection()
         tempo = 120.0
         try:
             tempo = float(ableton.send_command("get_transport").get("tempo", 120.0))
         except Exception:
             pass
-        # Select the target slot, then load the sample item onto it.
         ableton.send_command("set_highlighted_clip_slot",
                              {"track_index": track_index, "scene_index": clip_index})
         result = ableton.send_command("load_browser_item", {
             "track_index": track_index,
-            "item_uri": "samples:%s" % local,   # spike confirms the uri grammar
+            "item_uri": uri,
             "track_type": track_type,
         })
         loaded = bool(result.get("loaded", False))
         if not loaded:
-            return _err("Failed to load audio clip from %s (load_browser_item "
-                        "did not confirm)." % os.path.basename(local))
+            return _err("Failed to load audio clip from %s (load_browser_item did "
+                        "not confirm)." % os.path.basename(local))
         kind = refine_kind_by_length(
             classify_sample(os.path.basename(local), local), frames, rate, tempo)
         return _ok({
             "track_index": track_index,
             "clip_index": clip_index,
             "sample": local,
+            "uri": uri,
             "frames": frames,
             "sample_rate": rate,
             "kind": kind,
@@ -967,76 +1142,6 @@ def load_audio_clip(
         return _err("Error loading audio clip: %s" % e)
 ```
 
-**NOTE for the implementer:** the exact `item_uri` grammar / whether `set_highlighted_clip_slot` is the right selection call is what the Task 1 spike pins down. Replace `"samples:%s" % local` and the selection call with the verified mechanism from the spike findings. If `load_browser_item` cannot take a raw path (spike result A still requires a real browser URI), have the spike record the URI-resolution step and add it here.
-
-- [ ] **Step 3b: ALTERNATIVELY implement the FALLBACK variant (spike result B)**
-
-If the spike found audio clips are not browser-loadable, build on `create_simpler_instrument`'s proven path instead — load the loop into a Simpler set to loop playback, on the target track:
-
-```python
-@mcp.tool()
-def load_audio_clip(
-    ctx: Context,
-    track_index: int,
-    clip_index: int,
-    sample_path: str,
-    track_type: str = "regular",
-) -> str:
-    """Load an audio sample as a looping Simpler instrument on a track.
-
-    NOTE: Live's API does not let MCP drop a raw sample onto an audio clip slot
-    (verified in the sample-sourcing spike), so this loads the sample into a
-    Simpler configured for loop playback and reports that honestly. The clip_index
-    is accepted for API symmetry but the sample plays via the instrument, not a
-    clip in that slot.
-
-    Returns JSON {ok, data:{track_index, sample, frames, sample_rate, kind,
-    loaded, mode:"simpler_loop", note}}.
-    """
-    try:
-        local = _ensure_local(sample_path)
-        safe = validate_preset_name(os.path.splitext(os.path.basename(local))[0])
-        size, frames, rate = _read_audio_meta(local)
-        if frames <= 0:
-            return _err("Error: could not read a frame count for %r. Convert to "
-                        "WAV/AIFF first." % os.path.basename(local))
-        xml = build_simpler_adv(
-            _read_default_adv("Simpler.adv"), sample_path=local,
-            file_size=size, frames=frames, sample_rate=rate, name=safe,
-            root_key=60, relative_path=os.path.basename(local),
-            relative_path_type=0,
-        )
-        dest, browser_path = _write_user_preset(xml, safe, "Simpler")
-        loaded, note = _load_user_preset(track_index, browser_path, safe)
-        ableton = get_ableton_connection()
-        tempo = 120.0
-        try:
-            tempo = float(ableton.send_command("get_transport").get("tempo", 120.0))
-        except Exception:
-            pass
-        kind = refine_kind_by_length(
-            classify_sample(os.path.basename(local), local), frames, rate, tempo)
-        return _ok({
-            "track_index": track_index,
-            "sample": local,
-            "frames": frames,
-            "sample_rate": rate,
-            "kind": kind,
-            "loaded": loaded,
-            "mode": "simpler_loop",
-            "note": note,
-        })
-    except RuntimeError as e:
-        return _err("Error: %s" % e)
-    except (ValueError, FileNotFoundError) as e:
-        return _err("Error: %s" % e)
-    except Exception as e:
-        logger.error("Error loading audio clip: %s", e)
-        return _err("Error loading audio clip: %s" % e)
-```
-
-If you implement variant 3b, update the two tests in Step 1: the FALLBACK returns `data["mode"] == "simpler_loop"` and does not require `set_highlighted_clip_slot`/`load_browser_item`; adjust the `_FakeConn` to handle `get_browser_presets`/`load_browser_item` for `_load_user_preset` and add `build_simpler_adv`/`_read_default_adv`/`_write_user_preset`/`_load_user_preset` monkeypatches as needed. Keep the placeholder-error test unchanged.
-
 - [ ] **Step 4: Run tests + server import + full suite**
 
 ```bash
@@ -1044,7 +1149,7 @@ PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run --with p
 PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run python -c "import ableton_mcp_max.server; print('ok')"
 PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run --with pytest pytest tests/ -q
 ```
-Expected: 2 passed (new), "ok", ~687 total.
+Expected: 3 passed (new), "ok", suite green.
 
 - [ ] **Step 5: Commit**
 
@@ -1055,17 +1160,17 @@ git commit -m "feat(samples): add load_audio_clip tool"
 
 ---
 
-### Task 6: `load_sample_to_drum_pad` tool (spike-gated)
+### Task 6: `load_sample_to_drum_pad` tool
 
 **Files:**
 - Modify: `ableton_mcp_max/server.py` (add `load_sample_to_drum_pad` after `load_audio_clip`)
 - Create: `tests/test_load_sample_to_drum_pad.py`
 
 **Interfaces:**
-- Consumes: `_ensure_local`, `_read_audio_meta`, `get_ableton_connection`, `_ok`, `_err` — plus (FALLBACK) the rack `.adg` patch infra (`_read_rack_template`, `_write_user_preset`, `_load_user_preset`) and a new `rack_preset_utils` helper if the spike requires injecting a sample at a pad note.
+- Consumes: `_ensure_local`, `_resolve_sample_uri`, `get_ableton_connection`, `_ok`, `_err`
 - Produces: `load_sample_to_drum_pad(ctx, track_index, pad_note, sample_path) -> str`
 
-**Spike decision:** Implement the variant Task 1 selected (A = select pad chain + `load_browser_item`; B = preset-patch the Drum Rack `.adg`). If the spike found a NEW RS command is required for B, that is Task 6.5 (insert before this), built per the dual-restart protocol.
+**Spike-confirmed mechanism:** select the pad via the RS `select_drum_pad`, then `load_browser_item` with the resolved URI lands the sample on that pad. (If Task 4.5 Step 6 found `selected_drum_pad` not settable, use the preset-patch `.adg` fallback noted at the end of Step 3.)
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1079,26 +1184,55 @@ def test_load_sample_to_drum_pad_happy(tmp_path, monkeypatch):
     sample = tmp_path / "Kick.wav"
     sample.write_bytes(b"RIFF")
     monkeypatch.setattr(server, "_ensure_local", lambda p, timeout=30: str(sample))
-    monkeypatch.setattr(server, "_read_audio_meta", lambda p: (100, 24000, 48000))
+    monkeypatch.setattr(server, "_resolve_sample_uri",
+                        lambda p, category="samples": "query:Samples#FileId_2")
 
     calls = []
 
-    class _FakeConn:
+    class _Conn:
         def send_command(self, cmd, params=None):
             calls.append((cmd, params))
-            if cmd == "get_rack_chains":
-                return {"chains": [{"index": 0, "name": "Kick", "note": 36}]}
-            return {"loaded": True}
+            if cmd == "select_drum_pad":
+                return {"selected": True}
+            if cmd == "load_browser_item":
+                return {"loaded": True}
+            return {}
 
-    monkeypatch.setattr(server, "get_ableton_connection", lambda: _FakeConn())
+    monkeypatch.setattr(server, "get_ableton_connection", lambda: _Conn())
 
     out = json.loads(server.load_sample_to_drum_pad(
         ctx=None, track_index=2, pad_note=36, sample_path=str(sample)))
     assert out["ok"] is True
+    cmds = [c for c, _ in calls]
+    assert "select_drum_pad" in cmds
+    assert "load_browser_item" in cmds
+    sp = next(p for c, p in calls if c == "select_drum_pad")
+    assert sp["pad_note"] == 36
     d = out["data"]
     assert d["track_index"] == 2
     assert d["pad_note"] == 36
-    assert d["sample"].endswith("Kick.wav")
+    assert d["uri"] == "query:Samples#FileId_2"
+    assert d["loaded"] is True
+
+
+def test_load_sample_to_drum_pad_no_rack_error(tmp_path, monkeypatch):
+    sample = tmp_path / "Kick.wav"
+    sample.write_bytes(b"RIFF")
+    monkeypatch.setattr(server, "_ensure_local", lambda p, timeout=30: str(sample))
+    monkeypatch.setattr(server, "_resolve_sample_uri",
+                        lambda p, category="samples": "query:Samples#FileId_2")
+
+    class _Conn:
+        def send_command(self, cmd, params=None):
+            if cmd == "select_drum_pad":
+                return {"selected": False, "error": "no drum rack"}
+            return {}
+
+    monkeypatch.setattr(server, "get_ableton_connection", lambda: _Conn())
+    out = json.loads(server.load_sample_to_drum_pad(
+        ctx=None, track_index=2, pad_note=36, sample_path=str(sample)))
+    assert out["ok"] is False
+    assert "drum rack" in out["error"].lower()
 
 
 def test_load_sample_to_drum_pad_placeholder_error(monkeypatch):
@@ -1118,9 +1252,7 @@ PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run --with p
 ```
 Expected: AttributeError.
 
-- [ ] **Step 3: Implement the spike-selected variant** — after `load_audio_clip`
-
-PRIMARY (spike result A) skeleton — adjust the chain-selection + load calls to the exact mechanism the spike recorded:
+- [ ] **Step 3: Implement `load_sample_to_drum_pad` after `load_audio_clip`**
 
 ```python
 @mcp.tool()
@@ -1132,31 +1264,29 @@ def load_sample_to_drum_pad(
 ) -> str:
     """Load a one-shot sample onto a single Drum Rack pad.
 
-    Materializes the file from iCloud first if needed, locates the Drum Rack on
-    the track and the pad chain for `pad_note` (MIDI note of the pad, e.g. 36 =
-    C1), and loads the sample onto that pad.
+    Materializes the file from iCloud if needed, resolves its browser URI, selects
+    the pad for `pad_note` (MIDI note, e.g. 36 = C1) on the track's Drum Rack, and
+    loads the sample so it lands on that pad.
 
     Parameters:
     - track_index: index of the track holding the Drum Rack.
     - pad_note: MIDI note number of the target pad.
     - sample_path: absolute path to the one-shot (as returned by search_samples).
 
-    Returns JSON {ok, data:{track_index, pad_note, sample, loaded}}.
+    Returns JSON {ok, data:{track_index, pad_note, sample, uri, loaded}}.
     """
     try:
         local = _ensure_local(sample_path)
+        uri = _resolve_sample_uri(local, "samples")
         ableton = get_ableton_connection()
-        chains = ableton.send_command("get_rack_chains", {"track_index": track_index})
-        pads = chains.get("chains", []) if isinstance(chains, dict) else []
-        pad = next((c for c in pads if c.get("note") == pad_note), None)
-        if pad is None and not pads:
-            return _err("No Drum Rack chains found on track %s. Load a Drum Rack "
-                        "first." % track_index)
-        # Select the pad chain + load (exact calls per Task 1 spike findings).
+        sel = ableton.send_command(
+            "select_drum_pad", {"track_index": track_index, "pad_note": pad_note})
+        if not (sel or {}).get("selected", False):
+            return _err("Could not select pad %s on track %s: %s"
+                        % (pad_note, track_index, (sel or {}).get("error", "unknown")))
         result = ableton.send_command("load_browser_item", {
             "track_index": track_index,
-            "item_uri": "samples:%s" % local,
-            "pad_note": pad_note,
+            "item_uri": uri,
         })
         loaded = bool(result.get("loaded", False))
         if not loaded:
@@ -1166,6 +1296,7 @@ def load_sample_to_drum_pad(
             "track_index": track_index,
             "pad_note": pad_note,
             "sample": local,
+            "uri": uri,
             "loaded": True,
         })
     except RuntimeError as e:
@@ -1175,7 +1306,14 @@ def load_sample_to_drum_pad(
         return _err("Error loading sample to drum pad: %s" % e)
 ```
 
-**NOTE for the implementer:** replace the `load_browser_item` params (`item_uri` grammar, `pad_note` routing) with the verified mechanism from the spike. If the spike selected FALLBACK B (preset-patch), implement instead by: reading the track's current Drum Rack `.adg` (or a factory Drum Rack template via `_read_rack_template`), injecting a `<MultiSamplePart>` referencing `local` into the pad chain at `pad_note` (add a pure helper `inject_drum_pad_sample(xml, pad_note, sample_path, frames, sample_rate)` in `rack_preset_utils.py` with its own offline test mirroring the existing rack-XML tests + a `@pytest.mark.skipif` real-`.adg` round-trip), writing via `_write_user_preset(..., category="Drums", ext="adg")`, and loading via `_load_user_preset`. Keep the public return shape identical so the tests above pass unchanged.
+**Fallback (only if Task 4.5 found `selected_drum_pad` not settable):** replace the
+`select_drum_pad` + `load_browser_item` steps with the preset-patch path — read the track's
+Drum Rack `.adg` (or a factory Drum Rack template via `_read_rack_template`), inject a
+`<MultiSamplePart>` referencing `local` into the pad chain at `pad_note` (add a pure helper
+`inject_drum_pad_sample(xml, pad_note, sample_path, frames, sample_rate)` in
+`rack_preset_utils.py` with its own offline test + a `@pytest.mark.skipif` real-`.adg`
+round-trip), write via `_write_user_preset(..., category="Drums", ext="adg")`, and load via
+`_load_user_preset`. Keep the public return shape identical so the tests above pass.
 
 - [ ] **Step 4: Run tests + server import + full suite**
 
@@ -1184,7 +1322,7 @@ PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run --with p
 PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run python -c "import ableton_mcp_max.server; print('ok')"
 PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run --with pytest pytest tests/ -q
 ```
-Expected: 2 passed (new; more if a `rack_preset_utils` helper test was added), "ok", ~689 total.
+Expected: 3 passed (new), "ok", suite green.
 
 - [ ] **Step 5: Commit**
 
@@ -1192,8 +1330,6 @@ Expected: 2 passed (new; more if a `rack_preset_utils` helper test was added), "
 git add ableton_mcp_max/server.py tests/test_load_sample_to_drum_pad.py
 git commit -m "feat(samples): add load_sample_to_drum_pad tool"
 ```
-
----
 
 ### Task 7: `populate_drum_rack` tool
 
