@@ -768,6 +768,7 @@ def analyze_set(ctx: Context, focus: str = "all", measure: bool = False,
                 result["summary"]["deferred"] = len(result["deferred_rules"])
             except Exception as e:
                 logger.info("measure pass for analyze_set failed: %s", e)
+        result["findings"] = generate_actions(result["findings"], snapshot)
         return _ok(result)
     except Exception as e:
         logger.error(f"Error analyzing set: {str(e)}")
@@ -1398,6 +1399,83 @@ def balance_mix(
     except Exception as e:
         logger.error("Error in balance_mix: %s", e)
         return _err("Error in balance_mix: %s" % e)
+
+
+@mcp.tool()
+def apply_findings(
+    ctx: Context,
+    findings: list,
+    dry_run: bool = True,
+    severity_filter: list = None,
+    focus: list = None,
+) -> str:
+    """Translate analyze_set findings into a correction plan and optionally apply it.
+
+    Takes the ``findings`` list from analyze_set output (or a merged list) and
+    executes the mechanically-fixable ones. Findings with an ``action`` dict
+    (added by analyze_set's generate_actions enrichment) that match the
+    severity_filter are applied; others are reported as skipped with a reason.
+
+    IMPORTANT: dry_run defaults to True - the plan is returned without mutating
+    Live. Always inspect the plan before passing dry_run=False.
+
+    Parameters:
+    - findings: list of finding dicts from analyze_set data.findings (must
+      have been produced with action enrichment - i.e. from this server v0.12+)
+    - dry_run: when True (default), return the plan without applying changes
+    - severity_filter: list of severities to include (default ["fail", "warn"])
+    - focus: optional list of finding ids to restrict to
+
+    Returns JSON {ok, data:{dry_run, plan:[{finding_id, severity, action, status,
+    [error]}], planned_count, skipped_count, skipped_reasons}}.
+    """
+    try:
+        sev = severity_filter if severity_filter is not None else ["fail", "warn"]
+        plan_data = build_correction_plan(findings, severity_filter=sev, focus=focus)
+
+        if dry_run:
+            return _ok({
+                "dry_run": True,
+                "plan": plan_data["plan"],
+                "planned_count": plan_data["planned_count"],
+                "skipped_count": plan_data["skipped_count"],
+                "skipped_reasons": plan_data["skipped_reasons"],
+            })
+
+        ableton = get_ableton_connection()
+        results = []
+        for entry in plan_data["plan"]:
+            action = entry["action"]
+            tool_name = action.get("tool")
+            params = action.get("params", {})
+            try:
+                if tool_name == "set_mixer_property":
+                    ableton.send_command("set_mixer_property", {
+                        "track_index": params.get("track_index", 0),
+                        "track_type": params.get("track_type", "regular"),
+                        "property": params.get("property"),
+                        "value": params.get("value"),
+                        "send_index": params.get("send_index", -1),
+                    })
+                    results.append({**entry, "status": "applied"})
+                else:
+                    results.append({**entry, "status": "error",
+                                    "error": "unknown tool %s" % tool_name})
+            except Exception as exc:
+                results.append({**entry, "status": "error", "error": str(exc)})
+
+        applied = sum(1 for r in results if r["status"] == "applied")
+        return _ok({
+            "dry_run": False,
+            "plan": results,
+            "planned_count": len(results),
+            "applied_count": applied,
+            "skipped_count": plan_data["skipped_count"],
+            "skipped_reasons": plan_data["skipped_reasons"],
+        })
+    except Exception as e:
+        logger.error("Error in apply_findings: %s", e)
+        return _err("Error in apply_findings: %s" % e)
 
 
 # --- Graceful Live quit / restart -----------------------------------------
