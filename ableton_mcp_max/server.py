@@ -99,7 +99,13 @@ from ableton_mcp_max.arrangement_structure_utils import (
     tiling_plan,
 )
 from ableton_mcp_max.batch_utils import validate_batch, coerce_stop_on_error
-from ableton_mcp_max.analysis_utils import normalize_snapshot, evaluate_rules
+from ableton_mcp_max.analysis_utils import normalize_snapshot, evaluate_rules, live_volume_to_db
+from ableton_mcp_max.remediation_utils import (
+    db_to_live_volume,
+    generate_actions,
+    build_correction_plan,
+    compute_balance_deltas,
+)
 from ableton_mcp_max.ruleset_utils import load_rulesets
 from ableton_mcp_max.loudness_utils import compute_metrics
 from ableton_mcp_max.spectrum_utils import integrate_bands, stereo_metrics
@@ -1148,6 +1154,57 @@ def remove_taps(ctx: Context) -> str:
     except Exception as e:
         logger.error("Error removing taps: %s", e)
         return _err("Error removing taps: %s" % e)
+
+
+@mcp.tool()
+def adjust_track_gain(
+    ctx: Context,
+    track_index: int,
+    delta_db: float,
+    track_type: str = "regular",
+) -> str:
+    """Shift a track's fader by a signed dB amount without playback.
+
+    Reads the current volume knob value, converts using Live's 40x log taper
+    (unity = 0.85), applies delta_db, clamps to [-70, +6] dB, and writes the
+    new value back via set_mixer_property. No tap or playback required.
+
+    Parameters:
+    - track_index: index of the track (ignored for master; pass 0)
+    - delta_db: signed dB shift; positive = louder, negative = quieter
+    - track_type: "regular" (default), "return", or "master"
+
+    Returns JSON {ok, data:{track_index, delta_db, volume_before, volume_after,
+    db_before, db_after}}.
+    """
+    try:
+        ableton = get_ableton_connection()
+        mixer = ableton.send_command(
+            "get_mixer", {"track_index": track_index, "track_type": track_type}
+        )
+        current_vol = mixer.get("volume")
+        if current_vol is None:
+            return _err("Volume not available for track %s (%s)" % (track_index, track_type))
+        current_db = live_volume_to_db(current_vol)
+        new_db = max(-70.0, min(6.0, current_db + delta_db))
+        new_vol = db_to_live_volume(new_db)
+        ableton.send_command(
+            "set_mixer_property",
+            {"track_index": track_index, "track_type": track_type,
+             "property": "volume", "value": new_vol, "send_index": -1},
+        )
+        return _ok({
+            "track_index": track_index,
+            "track_type": track_type,
+            "delta_db": delta_db,
+            "volume_before": current_vol,
+            "volume_after": new_vol,
+            "db_before": current_db,
+            "db_after": round(new_db, 1),
+        })
+    except Exception as e:
+        logger.error("Error adjusting track gain: %s", e)
+        return _err("Error adjusting track gain: %s" % e)
 
 
 # --- Graceful Live quit / restart -----------------------------------------
