@@ -54,7 +54,7 @@ placeholder-path derivation, post-load kind refinement)
 called by every loader before any header read.
 
 **No Remote Script changes planned.** All tools orchestrate existing server primitives
-(`browser.load_item`, the preset-patch `.adg` infrastructure). The drum-pad spike may
+(`load_browser_item`, the preset-patch `.adg` infrastructure). The drum-pad spike may
 discover a need for a new RS load path - if so, that is decided and scoped at spike time,
 not assumed now. Version bump: 0.12.0 -> 0.13.0.
 
@@ -84,7 +84,8 @@ Server-side LOM browser walk over the requested `sources`, name-matching `query`
 via `sample_utils.classify_sample`, and returning the ranked top `limit`. READ-only -
 it does **not** download anything (a search must not trigger hundreds of iCloud
 downloads); it only **flags** `is_icloud_placeholder` so the caller knows a later load
-will materialize.
+will materialize. `is_icloud_placeholder` is just `icloud_placeholder_path(path) is not None`
+- no separate bool helper.
 
 `sources`: `"factory"` walks the Core Library / factory packs; `"user"` walks the User
 Library branch (the iCloud-backed one - resolve its path the way the preset-patch tools
@@ -129,8 +130,16 @@ Flow:
 1. `_ensure_local(sample_path)` - materialize from iCloud if needed.
 2. Resolve the sample's browser item.
 3. Select the target audio track + clip slot.
-4. `browser.load_item` on the sample's browser item.
-5. Confirm an audio clip appeared; return its info.
+4. `load_browser_item` on the sample's browser item.
+5. Read the materialized file's header (`wave`/`aifc`) for frames + sample rate, then
+   `refine_kind_by_length(kind, frames, sample_rate, tempo)` to upgrade a mis-classified
+   one-shot to a loop now that the true length is known. Reported back as `kind` on the
+   returned clip info.
+6. Confirm an audio clip appeared; return its info.
+
+`refine_kind_by_length` is invoked **only here** (and would be the same call in the
+Simpler fallback) - `search_samples` is READ-only and never reads headers, so the post-load
+refinement is the loader's job. `tempo` comes from the set's transport.
 
 Errors: undownloaded iCloud placeholder after timeout, track/slot not found, non-audio
 track type, sample not a loadable audio format.
@@ -142,7 +151,7 @@ load_sample_to_drum_pad(track_index, pad_note, sample_path) -> {ok, data}
 ```
 
 Load a one-shot onto a single Drum Rack pad (`pad_note` is the MIDI note of the pad).
-**Feasibility-gated** - primary path is selecting the pad chain and `browser.load_item`;
+**Feasibility-gated** - primary path is selecting the pad chain and `load_browser_item`;
 fallback is a preset-patch of the Drum Rack `.adg` injecting the sample at the pad's note
 (reusing the rack `.adg` backdoor infrastructure). The spike decides which.
 
@@ -171,10 +180,15 @@ Returns:
   "loaded_count": 6,
   "results": [
     {"pad_note": 36, "sample_path": ".../Kick.wav", "status": "loaded"},
-    {"pad_note": 38, "sample_path": ".../Snare.wav", "status": "loaded"}
+    {"pad_note": 38, "sample_path": ".../Snare.wav", "status": "loaded"},
+    {"pad_note": 40, "sample_path": ".../Clap.wav", "status": "error", "error": "undownloaded iCloud placeholder"}
   ]
 }
 ```
+
+Each entry mirrors a single `load_sample_to_drum_pad` call: `status` is `"loaded"` or
+`"error"` (with an `error` string). `loaded_count` counts only the successes - the call
+does not abort on the first failure.
 
 ## Module: `sample_utils.py`
 
@@ -224,6 +238,10 @@ _ensure_local(sample_path, timeout=30) -> resolved local path | error
    then poll up to `timeout` seconds for the real path to appear.
 3. timeout -> `_err(...)` ("undownloaded iCloud placeholder; download in Finder or retry").
 
+The poll is a **synchronous blocking** loop (like the other server-side primitives) - it
+runs on the server, not in the Remote Script, so blocking is acceptable. Do not make it
+async.
+
 Confirmed: `brctl` is at `/usr/bin/brctl`; the User Library is at
 `~/Library/Mobile Documents/com~apple~CloudDocs/Production/User Library` (iCloud). This
 must precede any `wave`/`aifc` header read - those open the file and fail on a placeholder.
@@ -234,11 +252,11 @@ Per the project standing rule, the **first plan task is a live spike** verifying
 gated loader before it is built. Tool shapes adapt to spike results.
 
 - **`load_audio_clip`:** can the LOM drop a sample onto an audio clip slot? Test: select
-  an audio track + slot, `browser.load_item` on the sample's browser item - does an audio
+  an audio track + slot, `load_browser_item` on the sample's browser item - does an audio
   clip appear? If audio clips turn out to be UI-drag-only, **fallback** = load the loop
   into Simpler in a loop-playback config and report that honestly.
 - **`load_sample_to_drum_pad`:** can a sample target a specific Drum Rack pad? Primary:
-  the pad is a chain -> select the pad chain, `browser.load_item`. Fallback: preset-patch
+  the pad is a chain -> select the pad chain, `load_browser_item`. Fallback: preset-patch
   a Drum Rack `.adg` injecting the sample at the pad's note (reuse the rack `.adg` backdoor
   infra). The spike picks the path; only the fallback could require a new RS load path.
 
