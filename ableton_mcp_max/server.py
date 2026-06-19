@@ -4432,7 +4432,9 @@ def get_arrangement_structure(ctx: Context) -> str:
     Sections are identified in two ways:
     - If cue points (locators) exist: sections = spans between consecutive
       locators (last locator to arrangement end = final section). Section
-      names come from the locator names. source = "cues".
+      names come from the locator names (note: Live auto-assigns sequential
+      names "1", "2", etc. - original section names are not preserved in
+      locators). source = "cues".
     - If no cue points: sections are inferred from clip start/stop
       change-points across all tracks. Named "Section 1", "Section 2", etc.
       with a density_label ("sparse"/"medium"/"dense"). source = "inferred".
@@ -4483,10 +4485,13 @@ def get_arrangement_structure(ctx: Context) -> str:
             except Exception:
                 clips_by_track.append([])
 
-        # 5. Song end = max end_time across all clips (and last cue)
+        # 5. Song end = max end_time across all clips (and past last cue)
         all_ends = [c["end_time"] for track in clips_by_track for c in track]
         if cue_list:
-            all_ends.append(max(c["time"] for c in cue_list))
+            # Add 4 bars past the last cue so the final section has positive length
+            # when there are no arrangement clips yet (common before calling build_arrangement)
+            last_cue_time = max(c["time"] for c in cue_list)
+            all_ends.append(last_cue_time + bars_to_beats(4, num, den))
         song_end = max(all_ends) if all_ends else 0.0
 
         # 6. Derive raw sections (name + start_time + end_time)
@@ -4563,8 +4568,11 @@ def build_arrangement(
 
     Computes section start beats from bar lengths and the live time signature,
     then tiles Session clips into each section via duplicate_clip_to_arrangement.
-    Optionally writes named cue points (locators) at each section start so the
-    structure is visible in Live and round-trips through get_arrangement_structure.
+    Optionally writes cue points (locators) at each section start so section
+    positions are visible in Live and round-trip through get_arrangement_structure.
+    Note: Live's LOM does not support setting CuePoint names - written locators
+    receive Live's auto-sequential names ("1", "2", etc.), not the section names
+    passed here.
 
     Parameters:
     - sections: list of section dicts:
@@ -4580,7 +4588,8 @@ def build_arrangement(
           ]
         }
     - write_locators: write a cue point at each section start (default true).
-      This lets get_arrangement_structure read the structure back via cues.
+      Positions are correct; names are Live's auto-sequential labels, not the
+      section names.
     - replace: before placing, delete all existing arrangement clips on every
       track referenced in the section map (idempotent re-builds). Default false.
     - start_bar: 1-indexed bar where the first section begins (default 1).
@@ -4675,17 +4684,23 @@ def build_arrangement(
             for c in rs["placed_clips"]
         )
         if write_locators:
+            try:
+                transport2 = ableton.send_command("get_transport", {})
+                original = transport2.get("current_song_time", 0.0)
+            except Exception:
+                original = 0.0
             for rs, cs in zip(result_sections, computed):
                 beat = cs["start_beat"]
                 try:
-                    transport2 = ableton.send_command("get_transport", {})
-                    original = transport2.get("current_song_time", 0.0)
                     ableton.send_command("set_song_position", {"time_beats": beat})
                     ableton.send_command("create_cue_at_playhead", {})
-                    ableton.send_command("set_song_position", {"time_beats": original})
                     rs["locator_written"] = True
                 except Exception:
                     rs["locator_written"] = False
+            try:
+                ableton.send_command("set_song_position", {"time_beats": original})
+            except Exception:
+                pass
 
         return _ok({
             "built": True,

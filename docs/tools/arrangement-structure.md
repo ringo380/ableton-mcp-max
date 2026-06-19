@@ -30,7 +30,8 @@ Derive the song's section structure from the Arrangement timeline.
 Sections are identified in two ways:
 - If cue points (locators) exist: sections = spans between consecutive
   locators (last locator to arrangement end = final section). Section
-  names come from the locator names. source = "cues".
+  names come from the locator names (note: Live auto-assigns names; section
+  names are not preserved). source = "cues".
 - If no cue points: sections are inferred from clip start/stop
   change-points across all tracks. Named "Section 1", "Section 2", etc.
   with a density_label ("sparse"/"medium"/"dense"). source = "inferred".
@@ -69,8 +70,10 @@ Assemble an Arrangement from Session clips using an explicit section map.
 
 Computes section start beats from bar lengths and the live time signature,
 then tiles Session clips into each section via duplicate_clip_to_arrangement.
-Optionally writes named cue points (locators) at each section start so the
-structure is visible in Live and round-trips through get_arrangement_structure.
+Optionally writes cue points (locators) at each section start so section
+positions are visible in Live and round-trip through get_arrangement_structure.
+Note: Live auto-assigns sequential names ("1", "2", etc.) to locators; section
+names are not preserved.
 
 Parameters:
 - sections: list of section dicts:
@@ -86,7 +89,8 @@ Parameters:
       ]
     }
 - write_locators: write a cue point at each section start (default true).
-  This lets get_arrangement_structure read the structure back via cues.
+  Positions are correct; names are Live's auto-sequential labels, not the
+  section names.
 - replace: before placing, delete all existing arrangement clips on every
   track referenced in the section map (idempotent re-builds). Default false.
 - start_bar: 1-indexed bar where the first section begins (default 1).

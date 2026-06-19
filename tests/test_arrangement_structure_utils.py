@@ -213,6 +213,18 @@ def test_sections_from_cues_cue_at_zero():
 def test_sections_from_cues_empty_returns_empty():
     assert sections_from_cues([], song_end=32.0) == []
 
+def test_sections_from_cues_song_end_equals_last_cue_time():
+    # song_end == last cue's time means the final section would be zero-length
+    # This tests the boundary condition; the fix is in get_arrangement_structure
+    # which now adds 4 bars past the last cue before calling sections_from_cues
+    cues = [{"name": "Intro", "time": 0.0}, {"name": "Outro", "time": 16.0}]
+    sections = sections_from_cues(cues, song_end=16.0)
+    # With song_end == last cue time, final section is zero-length - this is the
+    # raw behavior that get_arrangement_structure guards against
+    assert len(sections) == 2
+    assert sections[1]["start_time"] == 16.0
+    assert sections[1]["end_time"] == 16.0  # zero-length - confirmed
+
 
 # --- infer_sections -------------------------------------------------------
 
