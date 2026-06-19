@@ -4632,6 +4632,57 @@ def load_audio_clip(
 
 
 @mcp.tool()
+def load_sample_to_drum_pad(
+    ctx: Context,
+    track_index: int,
+    pad_note: int,
+    sample_path: str,
+) -> str:
+    """Load a one-shot sample onto a single Drum Rack pad.
+
+    Materializes the file from iCloud if needed, resolves its browser URI, selects
+    the pad for `pad_note` (MIDI note, e.g. 36 = C1) on the track's Drum Rack, and
+    loads the sample so it lands on that pad.
+
+    Parameters:
+    - track_index: index of the track holding the Drum Rack.
+    - pad_note: MIDI note number of the target pad.
+    - sample_path: absolute path to the one-shot (as returned by search_samples).
+
+    Returns JSON {ok, data:{track_index, pad_note, sample, uri, loaded}}.
+    """
+    try:
+        local = _ensure_local(sample_path)
+        uri = _resolve_sample_uri(local, "samples")
+        ableton = get_ableton_connection()
+        sel = ableton.send_command(
+            "select_drum_pad", {"track_index": track_index, "pad_note": pad_note})
+        if not (sel or {}).get("selected", False):
+            return _err("Could not select pad %s on track %s: %s"
+                        % (pad_note, track_index, (sel or {}).get("error", "unknown")))
+        result = ableton.send_command("load_browser_item", {
+            "track_index": track_index,
+            "item_uri": uri,
+        })
+        loaded = bool(result.get("loaded", False))
+        if not loaded:
+            return _err("Failed to load %s onto pad %s of track %s."
+                        % (os.path.basename(local), pad_note, track_index))
+        return _ok({
+            "track_index": track_index,
+            "pad_note": pad_note,
+            "sample": local,
+            "uri": uri,
+            "loaded": True,
+        })
+    except RuntimeError as e:
+        return _err("Error: %s" % e)
+    except Exception as e:
+        logger.error("Error loading sample to drum pad: %s", e)
+        return _err("Error loading sample to drum pad: %s" % e)
+
+
+@mcp.tool()
 def inspect_rack_preset(ctx: Context, template: str) -> str:
     """
     Inspect a rack preset (.adg) and report its macros and chain zones.
