@@ -16,9 +16,24 @@ New module `arrangement_structure_utils.py` holds all bar/beat math, inference,
 and tiling logic (no Live dependency, fully unit-tested). No new Remote Script
 commands - both tools compose existing `get_transport` / `get_cue_points` /
 `get_arrangement_clips` / `duplicate_clip_to_arrangement` / `create_cue_point`
-calls. Offline test suite: 566 -> 617 passed. Version: 0.10.0 ->
-0.11.0. NEXT = live-verify vs Live 12 Suite (scratch tracks), then
-`gh release create v0.11.0` and marketplace ref bump.
+calls. Offline test suite: 566 -> 618 passed. Version: 0.10.0 -> 0.11.0.
+Released as v0.11.0; marketplace ref bumped.
+
+**LIVE-VERIFIED 2026-06-18 vs Live 12.4 Suite (4/4, 120 BPM):**
+- `build_arrangement` 3-section map (Intro 4 / Main 8 / Outro 4 bars), 2 scratch
+  MIDI tracks, `repeat: "fill"`, `write_locators: true` -> 28 clips placed (4+4 /
+  8+8 / 4), 3 locators written ✓
+- `get_arrangement_structure` read-back: `source: "cues"`, 3 sections, correct
+  start_bar/length_bars, active_tracks/energy ordering ✓. Locators receive Live
+  auto-sequential names ("1"/"2"/"3"), not section names (LOM read-only - doc
+  reflects this) ✓
+- `replace: true` re-build: 28 clips after (no duplicates, existing cleared) ✓
+- Delete all locators -> `get_arrangement_structure` falls to `source: "inferred"`;
+  16 "Section N" sections (1-bar change-points from uniform 1-bar clips), density
+  labels present, energy ordering correct ✓
+- Negative cases: empty name, negative length_bars, empty slot - all clean errors
+  with no mutation ✓
+- Self-cleaned: scratch tracks + locators deleted, set back to baseline 4 tracks ✓
 
 ## SHIPPED v0.10.0 (2026-06-16): master/return device access + composition layer
 PR #25 (composition layer) squash-merged to `main` (@2537e7a); master/return access (#24, @9afd32f) was
