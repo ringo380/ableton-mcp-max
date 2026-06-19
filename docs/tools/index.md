@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **132 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **136 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -122,4 +122,10 @@ Generate musical material into clip slots (chords, bass, melody, drums) and tran
 Translate analysis findings into applied mix corrections: shift faders by dB, auto-stage a track to a target LUFS via its MCP Tap, balance all tapped tracks in one coherent pass, and execute a structured correction plan from analyze_set findings.
 
 `adjust_track_gain`, `gain_stage_track`, `balance_mix`, `apply_findings`
+
+## [Samples](./samples.html)
+
+Discover audio samples in Live's User Library and factory packs and load them as audio clips, single drum-rack pads, or full drum kits: search by name with automatic loop/one-shot/kit/instrument classification, and load with transparent iCloud materialization.
+
+`search_samples`, `load_audio_clip`, `load_sample_to_drum_pad`, `populate_drum_rack`
 

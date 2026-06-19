@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_128 tools._
+_136 tools._
 
 ## Session & view
 
@@ -213,3 +213,17 @@ _128 tools._
 - **`quantize_clip_to_scale`** - Snap every note in a clip to the nearest in-scale pitch.
 - **`arpeggiate_clip`** - Arpeggiate a clip: expand simultaneous notes (chords) into sequential
 - **`harmonize_clip`** - Add a harmony voice to each note in a clip. Provide exactly ONE of
+
+## Remediation
+
+- **`adjust_track_gain`** - Shift a track's fader by a signed dB amount without playback.
+- **`gain_stage_track`** - Play the set, measure the track's LUFS via its MCP Tap, and iteratively
+- **`balance_mix`** - Single coherent measure pass + batch-apply level corrections.
+- **`apply_findings`** - Translate analyze_set findings into a correction plan and optionally apply it.
+
+## Samples
+
+- **`search_samples`** - Search Live's sample library by name and return classified, ranked hits.
+- **`load_audio_clip`** - Load an audio sample (typically a loop) into an audio clip slot.
+- **`load_sample_to_drum_pad`** - Load a one-shot sample onto a single Drum Rack pad.
+- **`populate_drum_rack`** - Load many one-shot samples onto many Drum Rack pads in one call.

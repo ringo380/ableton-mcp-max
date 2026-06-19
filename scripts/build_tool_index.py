@@ -108,6 +108,18 @@ GROUPS = [
         "arpeggiate_clip",
         "harmonize_clip",
     ]),
+    ("Remediation", [
+        "adjust_track_gain",
+        "gain_stage_track",
+        "balance_mix",
+        "apply_findings",
+    ]),
+    ("Samples", [
+        "search_samples",
+        "load_audio_clip",
+        "load_sample_to_drum_pad",
+        "populate_drum_rack",
+    ]),
 ]
 
 PREAMBLE = """# Ableton MCP tool index
