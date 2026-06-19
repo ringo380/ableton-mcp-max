@@ -1051,3 +1051,12 @@ Shared pure core: `ableton_mcp_max/preset_patch.py` (set_attr/set_manual/scope/g
 ### Task 4.5 live-verify (2026-06-19): RS find_sample_uri + select_drum_pad
 - `find_sample_uri` (socket probe, blank set): "3Q_AMD_Clap_21.wav" -> query:Samples#FileId_281815, "3Q_AMD_Full_Drum_Loop_08.wav" -> query:Samples#FileId_281788 (match the spike's browser URIs), nonexistent -> {uri:null, matches:0}. PASS.
 - `select_drum_pad`: note 36 + 38 both -> {selected:true}. Full hybrid flow verified: select_drum_pad(4,36) -> resolve clap uri -> load_browser_item landed the clap on PAD 36 (chain 0). PASS. (A back-to-back 2nd load via the raw probe socket hit the probe's recv timeout, leaving an empty pad-38 chain - not an RS defect; load_browser_item is pre-existing.) Scratch track deleted.
+
+### Task 9 live-verify (2026-06-19, Live 12 Suite): all 4 sample tools
+Verified end-to-end via subprocess import of the working-tree server (real tool code -> real 9877 connection -> Live):
+- search_samples: "kick"/one_shot 442 hits, "loop"/loop 882 hits (user+factory), empty 4625 total; correct source/kind/icloud flags.
+- load_audio_clip: "Hihat Closed Loop.aif" (factory) -> real AUDIO CLIP (is_audio_clip=True, kind=loop, loaded=True, uri resolved).
+- load_sample_to_drum_pad: "Kick 909 Tune1 g.wav" -> pad 36 (loaded=True).
+- populate_drum_rack: 2 one-shots -> pads 38/40, loaded_count=2; rack pads = [Kick 909, Kick Open Hat Combo, Rim Clap ER].
+- Scratch tracks self-cleaned (track_count back to baseline).
+- Incidental: a few User Library samples are 4-bit WAVs Live can't read; load_audio_clip surfaces that honestly as ok:false (correct, not a bug).
