@@ -4431,6 +4431,118 @@ def create_simpler_instrument(ctx: Context, name: str, sample_path: str,
     except Exception as e:
         logger.error(f"Error creating simpler instrument: {str(e)}")
         return _err(f"Error creating simpler instrument: {str(e)}")
+
+# Audio sample file extensions enumerated by search_samples. Preset extensions
+# (.adv/.adg) are also enumerated so kits/instruments surface.
+_SAMPLE_EXTS = (".wav", ".aif", ".aiff", ".aifc", ".flac", ".mp3", ".ogg",
+                ".adv", ".adg")
+
+
+def _sample_search_roots(sources):
+    """Resolve (root_dir, source_label) pairs to walk for the given sources.
+
+    'user'   -> the configured User Library (iCloud-backed).
+    'factory'-> the running Live's Core Library Samples tree (per Task 1 spike).
+    Missing roots are skipped. Seam: monkeypatched in tests.
+    """
+    roots = []
+    if "user" in sources:
+        lib = _user_library_dir()
+        if lib and os.path.isdir(lib):
+            roots.append((lib, "user"))
+    if "factory" in sources:
+        core = _app_core()
+        if core:
+            fac = os.path.join(core, "Samples")
+            if os.path.isdir(fac):
+                roots.append((fac, "factory"))
+    return roots
+
+
+@mcp.tool()
+def search_samples(
+    ctx: Context,
+    query: str,
+    kinds: list = None,
+    limit: int = 40,
+    sources: list = None,
+) -> str:
+    """Search Live's sample library by name and return classified, ranked hits.
+
+    Filesystem-walks the User Library and/or factory Core Library sample trees,
+    matching `query` (space-separated terms, OR) against each file's name and
+    folder, classifying each hit (loop / one_shot / kit / instrument), and
+    returning the top `limit` by match score. READ-only: it never downloads --
+    it only FLAGS files that are undownloaded iCloud placeholders so a later
+    load knows to materialize them.
+
+    Parameters:
+    - query: space-separated search terms (OR). Empty string matches everything.
+    - kinds: restrict to these classifications (default all four:
+      ["loop","one_shot","kit","instrument"]).
+    - limit: max results to return (default 40).
+    - sources: which trees to walk: ["factory","user"] (default both).
+
+    Returns JSON {ok, data:{count, returned, truncated, items:[{name, path,
+    uri, kind, source, folder, is_icloud_placeholder}]}}. `count` is total
+    matches; `items` holds at most `limit`, highest score first. `uri` is None
+    (loaders take `sample_path`, not a browser URI).
+    """
+    try:
+        kinds = kinds or ["loop", "one_shot", "kit", "instrument"]
+        sources = sources or ["factory", "user"]
+        kind_set = set(kinds)
+
+        hits = []
+        for root, source in _sample_search_roots(sources):
+            for dirpath, _dirs, filenames in os.walk(root):
+                for fn in filenames:
+                    # iCloud stubs are hidden ".<name>.icloud" files; recover the
+                    # real sample name + path from the stub so placeholders surface.
+                    is_stub = fn.startswith(".") and fn.endswith(".icloud")
+                    if is_stub:
+                        real_name = fn[1:-len(".icloud")]
+                    else:
+                        real_name = fn
+                    ext = os.path.splitext(real_name)[1].lower()
+                    if ext not in _SAMPLE_EXTS:
+                        continue
+                    real_path = os.path.join(dirpath, real_name)
+                    rel_folder = os.path.relpath(dirpath, root)
+                    matched, score = name_match(query, real_name, rel_folder)
+                    if not matched:
+                        continue
+                    kind = classify_sample(real_name, os.path.join(rel_folder, real_name))
+                    if kind not in kind_set:
+                        continue
+                    hits.append({
+                        "name": real_name,
+                        "path": real_path,
+                        "uri": None,
+                        "kind": kind,
+                        "source": source,
+                        "folder": rel_folder,
+                        "is_icloud_placeholder": icloud_placeholder_path(real_path) is not None,
+                        "_score": score,
+                    })
+
+        hits.sort(key=lambda h: h["_score"], reverse=True)
+        total = len(hits)
+        shown = hits[:limit] if limit and limit > 0 else hits
+        for h in shown:
+            h.pop("_score", None)
+        for h in hits[len(shown):]:
+            h.pop("_score", None)
+        return _ok({
+            "count": total,
+            "returned": len(shown),
+            "truncated": len(shown) < total,
+            "items": shown,
+        })
+    except Exception as e:
+        logger.error("Error searching samples: %s", e)
+        return _err("Error searching samples: %s" % e)
+
 @mcp.tool()
 def inspect_rack_preset(ctx: Context, template: str) -> str:
     """
