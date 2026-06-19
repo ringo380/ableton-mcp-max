@@ -255,6 +255,7 @@ MUTATING_COMMANDS = frozenset({
     "set_selected_scene", "set_detail_clip", "set_highlighted_clip_slot",
     "set_track_fold", "capture_midi", "capture_and_insert_scene",
     "trigger_session_record", "stop_all_clips", "tap_tempo",
+    "select_drum_pad",
 })
 
 # Subset of MUTATING_COMMANDS whose Live write settles ASYNCHRONOUSLY, so a
@@ -4344,6 +4345,28 @@ def _ensure_local(sample_path, timeout=30):
         "Sample is still an undownloaded iCloud placeholder after %ss: %s. "
         "Download it in Finder (or right-click -> Download Now) and retry."
         % (timeout, sample_path))
+
+
+def _resolve_sample_uri(sample_path, category="samples"):
+    """Resolve a sample file path to its Live browser URI via the Remote Script.
+
+    The LOM browser exposes a sample's name + uri but not its filesystem path,
+    so the loaders (which hold the path from a filesystem walk) resolve the uri
+    here by base name. Matches the first browser item with that name (a
+    duplicate name across packs resolves to the first match). Raises
+    RuntimeError if the sample is not indexed in the browser.
+    """
+    name = os.path.basename(sample_path)
+    ableton = get_ableton_connection()
+    res = ableton.send_command("find_sample_uri", {"name": name, "category": category})
+    uri = (res or {}).get("uri")
+    if not uri:
+        raise RuntimeError(
+            "Could not resolve '%s' to a browser item. Live may not have indexed "
+            "it yet (refresh the browser or relaunch Live), or it is in a category "
+            "other than '%s'." % (name, category))
+    return uri
+
 
 def _read_audio_meta(path):
     """Return (file_size_bytes, frames, sample_rate) for an audio file.
