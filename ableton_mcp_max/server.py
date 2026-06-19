@@ -1207,6 +1207,108 @@ def adjust_track_gain(
         return _err("Error adjusting track gain: %s" % e)
 
 
+@mcp.tool()
+def gain_stage_track(
+    ctx: Context,
+    track_index: int,
+    target_db: float = -18.0,
+    window_s: float = 4.0,
+    max_iterations: int = 3,
+    track_type: str = "regular",
+) -> str:
+    """Play the set, measure the track's LUFS via its MCP Tap, and iteratively
+    converge the fader to target_db.
+
+    Requires an MCP Tap device deployed on the target track (via deploy_taps).
+    Plays the arrangement for window_s seconds each iteration, integrates the
+    buffered tap blocks into LUFS, computes the correction, and applies it via
+    the fader. Repeats up to max_iterations times or until within 1 dB of target.
+
+    Parameters:
+    - track_index: index of the regular/return/master track to stage
+    - target_db: target integrated LUFS (default -18.0, a standard gain-staging level)
+    - window_s: playback capture window per iteration in seconds (default 4.0)
+    - max_iterations: maximum correction cycles (default 3)
+    - track_type: "regular" (default), "return", or "master"
+
+    Returns JSON {ok, data:{track_index, target_db, before_db, after_db,
+    correction_db, converged, iterations, volume_before, volume_after}}.
+    {ok:false,error} if no tap is connected for this track.
+    """
+    try:
+        uuid = _uuid_for_index(track_index)
+        if uuid is None:
+            return _err("No tap connected for track %s" % track_index)
+
+        ableton = get_ableton_connection()
+        mixer_initial = ableton.send_command(
+            "get_mixer", {"track_index": track_index, "track_type": track_type}
+        )
+        volume_before = mixer_initial.get("volume")
+        if volume_before is None:
+            return _err("Volume not available for track %s" % track_index)
+
+        sample_rate = 48000
+        for t in _tap_registry.state.tracks():
+            if t.get("uuid") == uuid:
+                sample_rate = t.get("sample_rate", 48000)
+                break
+
+        before_db = None
+        measured_db = None
+        last_vol = volume_before
+        total_correction = 0.0
+        converged = False
+        iterations = 0
+
+        for _ in range(max(1, max_iterations)):
+            iterations += 1
+            _tap_registry.state.reset(uuid)
+            _run_measure_playback(window_s)
+            buf = _tap_registry.state.buffer(uuid)
+            metrics = _integrate_buffer(buf, sample_rate)
+            measured_db = metrics.get("integrated_lufs")
+            if measured_db is None:
+                return _err("No audio data received for track %s; is the set playing?" % track_index)
+            if before_db is None:
+                before_db = measured_db
+            delta = target_db - measured_db
+            if abs(delta) < 1.0:
+                converged = True
+                break
+            current_db = live_volume_to_db(last_vol)
+            new_db = max(-70.0, min(6.0, current_db + delta))
+            new_vol = db_to_live_volume(new_db)
+            ableton.send_command(
+                "set_mixer_property",
+                {"track_index": track_index, "track_type": track_type,
+                 "property": "volume", "value": new_vol, "send_index": -1},
+            )
+            last_vol = new_vol
+            total_correction += delta
+
+        mixer_final = ableton.send_command(
+            "get_mixer", {"track_index": track_index, "track_type": track_type}
+        )
+        volume_after = mixer_final.get("volume", last_vol)
+
+        return _ok({
+            "track_index": track_index,
+            "track_type": track_type,
+            "target_db": target_db,
+            "before_db": before_db,
+            "after_db": measured_db,
+            "correction_db": round(total_correction, 1),
+            "converged": converged,
+            "iterations": iterations,
+            "volume_before": volume_before,
+            "volume_after": volume_after,
+        })
+    except Exception as e:
+        logger.error("Error in gain_stage_track: %s", e)
+        return _err("Error in gain_stage_track: %s" % e)
+
+
 # --- Graceful Live quit / restart -----------------------------------------
 # kill -TERM is a crash from Live's POV (recovery modal on relaunch), so we quit
 # through the Apple 'quit' event and answer the unsaved-changes dialog by
