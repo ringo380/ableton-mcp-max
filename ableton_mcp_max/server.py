@@ -1338,6 +1338,7 @@ def balance_mix(
     """
     try:
         tracks_out, sigs = _measure_pass(window_s)
+        kind_by_index = {t.get("index"): t.get("kind", "regular") for t in tracks_out}
         ref_lufs = None
         for s in sigs:
             if s.get("index") == reference_track_index:
@@ -1369,19 +1370,29 @@ def balance_mix(
                 })
                 continue
             idx = d["track_index"]
+            track_type = kind_by_index.get(idx, "regular")
             mixer = ableton.send_command(
-                "get_mixer", {"track_index": idx, "track_type": "regular"}
+                "get_mixer", {"track_index": idx, "track_type": track_type}
             )
             vol = mixer.get("volume")
-            if vol is not None:
-                current_db = live_volume_to_db(vol)
-                new_db = max(-70.0, min(6.0, current_db + d["delta_db"]))
-                new_vol = db_to_live_volume(new_db)
-                ableton.send_command(
-                    "set_mixer_property",
-                    {"track_index": idx, "track_type": "regular",
-                     "property": "volume", "value": new_vol, "send_index": -1},
-                )
+            if vol is None:
+                adjustments.append({
+                    "track_index": idx,
+                    "name": d["name"],
+                    "before_db": d["current_lufs"],
+                    "delta_db": d["delta_db"],
+                    "skipped": True,
+                    "skip_reason": "volume not available",
+                })
+                continue
+            current_db = live_volume_to_db(vol)
+            new_db = max(-70.0, min(6.0, current_db + d["delta_db"]))
+            new_vol = db_to_live_volume(new_db)
+            ableton.send_command(
+                "set_mixer_property",
+                {"track_index": idx, "track_type": track_type,
+                 "property": "volume", "value": new_vol, "send_index": -1},
+            )
             adjustments.append({
                 "track_index": idx,
                 "name": d["name"],
