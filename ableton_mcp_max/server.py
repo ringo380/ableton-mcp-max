@@ -1309,6 +1309,97 @@ def gain_stage_track(
         return _err("Error in gain_stage_track: %s" % e)
 
 
+@mcp.tool()
+def balance_mix(
+    ctx: Context,
+    reference_track_index: int,
+    window_s: float = 8.0,
+    target_offsets: list = None,
+    tracks: list = None,
+) -> str:
+    """Single coherent measure pass + batch-apply level corrections.
+
+    Runs one measure_mix-style playback window across all connected taps,
+    then adjusts each track's fader so its integrated LUFS matches the
+    reference track (plus any per-track offset_db you specify). Tracks within
+    1 dB of their target are skipped. All corrections are applied individually
+    (not batched) so each adjust_track_gain call validates its own target.
+
+    Parameters:
+    - reference_track_index: track whose LUFS is the balance baseline
+    - window_s: capture length in seconds (default 8.0)
+    - target_offsets: optional list of {track_index, offset_db} specifying
+      how many dB above/below the reference each track should sit
+    - tracks: optional list of track indices to correct (subset of tapped tracks)
+
+    Returns JSON {ok, data:{reference_track_index, reference_db, window_s,
+    adjustments:[{track_index, name, before_db, delta_db, skipped}]}}.
+    """
+    try:
+        tracks_out, sigs = _measure_pass(window_s)
+        ref_lufs = None
+        for s in sigs:
+            if s.get("index") == reference_track_index:
+                ref_lufs = s.get("integrated_lufs")
+                break
+        if ref_lufs is None:
+            return _err(
+                "Reference track %s not found in tap signals. "
+                "Is a tap deployed on that track?" % reference_track_index
+            )
+
+        deltas = compute_balance_deltas(sigs, reference_track_index, target_offsets)
+
+        # Filter to the requested subset
+        if tracks is not None:
+            track_set = set(tracks)
+            deltas = [d for d in deltas if d["track_index"] in track_set]
+
+        ableton = get_ableton_connection()
+        adjustments = []
+        for d in deltas:
+            if d["skipped"]:
+                adjustments.append({
+                    "track_index": d["track_index"],
+                    "name": d["name"],
+                    "before_db": d["current_lufs"],
+                    "delta_db": d["delta_db"],
+                    "skipped": True,
+                })
+                continue
+            idx = d["track_index"]
+            mixer = ableton.send_command(
+                "get_mixer", {"track_index": idx, "track_type": "regular"}
+            )
+            vol = mixer.get("volume")
+            if vol is not None:
+                current_db = live_volume_to_db(vol)
+                new_db = max(-70.0, min(6.0, current_db + d["delta_db"]))
+                new_vol = db_to_live_volume(new_db)
+                ableton.send_command(
+                    "set_mixer_property",
+                    {"track_index": idx, "track_type": "regular",
+                     "property": "volume", "value": new_vol, "send_index": -1},
+                )
+            adjustments.append({
+                "track_index": idx,
+                "name": d["name"],
+                "before_db": d["current_lufs"],
+                "delta_db": d["delta_db"],
+                "skipped": False,
+            })
+
+        return _ok({
+            "reference_track_index": reference_track_index,
+            "reference_db": ref_lufs,
+            "window_s": window_s,
+            "adjustments": adjustments,
+        })
+    except Exception as e:
+        logger.error("Error in balance_mix: %s", e)
+        return _err("Error in balance_mix: %s" % e)
+
+
 # --- Graceful Live quit / restart -----------------------------------------
 # kill -TERM is a crash from Live's POV (recovery modal on relaunch), so we quit
 # through the Apple 'quit' event and answer the unsaved-changes dialog by
