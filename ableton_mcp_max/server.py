@@ -4683,6 +4683,58 @@ def load_sample_to_drum_pad(
 
 
 @mcp.tool()
+def populate_drum_rack(
+    ctx: Context,
+    track_index: int,
+    mapping: list,
+) -> str:
+    """Load many one-shot samples onto many Drum Rack pads in one call.
+
+    Loops load_sample_to_drum_pad over `mapping`. Does NOT abort on the first
+    failure -- each entry's result is reported so partial failures are visible.
+
+    Parameters:
+    - track_index: index of the track holding the Drum Rack.
+    - mapping: list of {pad_note, sample_path}.
+
+    Returns JSON {ok, data:{track_index, loaded_count, results:[{pad_note,
+    sample_path, status:"loaded"|"error", error?}]}}.
+    """
+    try:
+        if not isinstance(mapping, list) or not mapping:
+            return _err("mapping must be a non-empty list of {pad_note, sample_path}.")
+        results = []
+        loaded_count = 0
+        for entry in mapping:
+            if not isinstance(entry, dict) or "pad_note" not in entry \
+                    or "sample_path" not in entry:
+                return _err("Each mapping entry needs 'pad_note' and 'sample_path'; "
+                            "got %r." % (entry,))
+            pad_note = entry["pad_note"]
+            sample_path = entry["sample_path"]
+            raw = load_sample_to_drum_pad(
+                ctx, track_index=track_index, pad_note=pad_note,
+                sample_path=sample_path)
+            res = json.loads(raw)
+            if res.get("ok"):
+                loaded_count += 1
+                results.append({"pad_note": pad_note, "sample_path": sample_path,
+                                "status": "loaded"})
+            else:
+                results.append({"pad_note": pad_note, "sample_path": sample_path,
+                                "status": "error",
+                                "error": res.get("error", "unknown error")})
+        return _ok({
+            "track_index": track_index,
+            "loaded_count": loaded_count,
+            "results": results,
+        })
+    except Exception as e:
+        logger.error("Error populating drum rack: %s", e)
+        return _err("Error populating drum rack: %s" % e)
+
+
+@mcp.tool()
 def inspect_rack_preset(ctx: Context, template: str) -> str:
     """
     Inspect a rack preset (.adg) and report its macros and chain zones.
