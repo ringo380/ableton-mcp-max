@@ -65,6 +65,41 @@ def test_adjust_track_gain_clamps_at_floor():
         s.get_ableton_connection = orig
 
 
+class _DictVolConn:
+    """Mirrors the real Remote Script get_mixer, which returns volume as a
+    {value, min, max} dict (_param_dict), not a bare float."""
+    def __init__(self, value=0.85):
+        self._value = value
+        self.last_set = None
+
+    def send_command(self, cmd, params=None):
+        if cmd == "get_mixer":
+            return {"volume": {"value": self._value, "min": 0.0, "max": 1.0}}
+        if cmd == "set_mixer_property":
+            self.last_set = params
+            return {"ok": True}
+        return {}
+
+
+def test_adjust_track_gain_handles_dict_volume():
+    """Regression: get_mixer returns volume as {value,min,max}; the gain tool
+    must coerce it to a float instead of crashing on dict <= float."""
+    conn = _DictVolConn(value=0.85)  # 0.85 = 0 dB
+    import ableton_mcp_max.server as s
+    orig = s.get_ableton_connection
+    s.get_ableton_connection = lambda: conn
+    try:
+        out = json.loads(s.adjust_track_gain(ctx=None, track_index=0, delta_db=-3.5))
+        assert out["ok"] is True, out
+        d = out["data"]
+        assert abs(d["db_before"] - 0.0) < 0.1
+        assert abs(d["db_after"] - (-3.5)) < 0.2
+        assert d["volume_after"] < d["volume_before"]
+        assert conn.last_set is not None
+    finally:
+        s.get_ableton_connection = orig
+
+
 def test_adjust_track_gain_no_volume_returns_error():
     class NoVolConn:
         def send_command(self, cmd, params=None):
