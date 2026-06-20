@@ -11,7 +11,7 @@ Plan: `docs/superpowers/plans/2026-06-18-closed-loop-remediation.md`
 - **Finding enhancement**: `action` dict added to fixable findings from analyze_set (deterministic fixes only; judgment-required findings stay text-only)
 - **New module**: `remediation_utils.py` (db_to_live_volume inverse, generate_actions, build_correction_plan, compute_balance_deltas)
 - **Tests**: 38 new unit tests (test_remediation_utils.py + 4 new tool test files), 618 -> 656 passing
-- **NEXT ACTION = release**: `gh release create v0.12.0` -> bump marketplace ref -> `node scripts/build-readme.js` -> push marketplace repo
+- **SHIPPED v0.13.0 (2026-06-19): sample sourcing** - PR #26 squash-merged (@6b85ebc), release v0.13.0 published, marketplace ableton ref bumped v0.12.0->v0.13.0 + pushed (@af7f30b). 136 tools, 699 tests, 20 categories. NEXT = sub-project #4b (/ableton:produce skill).
 
 ## Arrangement intelligence: section map read/write (2026-06-18)
 Roadmap item #2 of the "autonomous track production + closed analyze->act loop"
