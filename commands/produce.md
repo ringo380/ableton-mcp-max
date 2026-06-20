@@ -74,7 +74,7 @@ Fill any brief gap from this table; for a genre not listed, derive sensible valu
 
 ## Stage 5 - Mix
 
-- TAP GATE: check `list_taps` / `get_audio_tap_status`. If no taps are connected, OFFER to `deploy_taps` and continue with real signal work; if the user declines, proceed configuration-only and clearly mark the mix as un-metered (never fabricate levels).
+- TAP GATE: check `list_taps` / `get_audio_tap_status`. If no taps are connected, OFFER to `deploy_taps`: if the user accepts, continue with real signal work; if they decline, proceed configuration-only and clearly mark the mix as un-metered (never fabricate levels).
 - `balance_mix` / `gain_stage_track` / `adjust_track_gain` toward the brief's targets. See `/ableton:analyze` for the metering rationale and the "Needs metering" framing.
 - Checkpoint: play the densest section (`set_song_position` to that section's start + `start_playback`).
 
