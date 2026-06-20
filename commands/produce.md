@@ -15,6 +15,8 @@ Build a complete track from an empty (or near-empty) Live set: brief -> foundati
 
 - Sample selection is by name/path keyword, not by listening - no audio-content matching.
 - Real mix/master levels need MCP Tap devices loaded; without taps the mix/master pass is configuration-only and is marked un-metered (never invent dB/LUFS).
+- Per-track taps are PRE-FADER (the tap is a device, the fader is after the chain): per-track LUFS reflects instrument level, not the fader, so you cannot verify a fader balance by re-measuring the same taps, and master/program loudness needs a tap on the MASTER (the only post-fader point) - which `deploy_taps` does not auto-add. State master loudness as un-measured unless a master tap is present.
+- No arrangement TIMELINE automation (MCP can't write param envelopes bound to timeline position). "FX automation" = self-animating LFO devices (Auto Filter / Auto Pan) + static return sends, which are constant across the whole arrangement. Clip envelopes don't survive `build_arrangement`.
 - Generated parts are musically-sensible but algorithmic starting points - the checkpoint loop is how you shape them.
 - Scope is one track/idea: empty set -> one arranged structure. Not multi-song, not stem export.
 
@@ -56,8 +58,8 @@ Fill any brief gap from this table; for a genre not listed, derive sensible valu
 
 - `set_tempo`; verify with a separate `get_transport` (write-lag).
 - Create the tracks the template calls for and load instruments - see `/ableton:new-track` for creation + the HOT-SWAP warning (loading replaces an existing instrument; build on empty tracks).
-- Source keyword-driven samples: `search_samples` -> `load_drum_kit` / `populate_drum_rack` (drums) / `load_audio_clip` (loops). iCloud materialization and feasibility gates live inside those tools.
-- Checkpoint: `fire_scene` on the row holding the loaded material.
+- Source keyword-driven samples: `search_samples` -> `load_drum_kit` / `populate_drum_rack` (drums) / `load_audio_clip` (loops). iCloud materialization and feasibility gates live inside those tools. NOTE: drum "kits" are browser DEVICES (`.adg` under `Drums/`), not samples - load via the device browser, not `search_samples` (which walks sample trees only). For a MONOPHONIC lead, avoid sampled "chord"/"stab" presets (e.g. "* Stab", "* Chord", "Chord Pluck"): they trigger a whole chord sample per note, so single-note lines stack transposed chords and clash. Use a bare single-oscillator synth (Wavetable, Operator) for leads.
+- Checkpoint: there are no notes yet, so DON'T auto-fire (an empty loop is silent) - print a summary of the tracks + instruments loaded and pause for redirect.
 
 ## Stage 3 - Parts
 
@@ -70,17 +72,26 @@ Fill any brief gap from this table; for a genre not listed, derive sensible valu
 - Build the section map from the genre structure template scaled to the brief's length (name + length_bars + clips per section).
 - `build_arrangement(..., write_locators=True)` to place Session clips on the timeline; locators let it round-trip through `get_arrangement_structure` (Live auto-names locators sequentially, not by section - expected).
 - Verify with `get_arrangement_clips` before advancing.
-- Checkpoint: `set_song_position(0)` + `start_playback`.
+- Checkpoint: `back_to_arrangement` then `set_song_position(0)` + `start_playback`. Tell the user to press **Tab** to view the Arrangement - `build_arrangement` writes the timeline but the Session loop stays in place, so a user looking at Session sees no change.
+
+### Optional - FX & movement (between Arrangement and Mix)
+
+Offer to add FX/movement if the brief calls for vibe/atmosphere. Timeline automation is not writable (see Honest limits), so use:
+- Self-animating devices: `load_instrument_or_effect` an Auto Filter with a tempo-synced LFO (low-pass, `LFO T Mode`=Synced, set `LFO 16th` to a 2-4 bar cycle, `LFO Amount` ~0.5) on a pad/chord track for an evolving sweep; Auto Pan for stereo movement.
+- Return sends: `set_mixer_property(property="send")` toward the default A-Reverb / B-Delay returns for depth.
+These are constant across the arrangement (no per-section automation). Checkpoint: play a section where the affected tracks sound together.
 
 ## Stage 5 - Mix
 
-- TAP GATE: check `list_taps` / `get_audio_tap_status`. If no taps are connected, OFFER to `deploy_taps`: if the user accepts, continue with real signal work; if they decline, proceed configuration-only and clearly mark the mix as un-metered (never fabricate levels).
+- TAP GATE: check `list_taps` / `get_audio_tap_status`. If no taps are connected, OFFER to `deploy_taps`: if the user accepts, continue with real signal work; if they decline, proceed configuration-only and clearly mark the mix as un-metered (never fabricate levels). Re-check `list_taps` after deploy: a slow Live-12 boot can FALSE-NEGATIVE a per-track load (reports failed though the tap connected) - trust the registry, retry only the truly-missing tracks.
 - `balance_mix` / `gain_stage_track` / `adjust_track_gain` toward the brief's targets. See `/ableton:analyze` for the metering rationale and the "Needs metering" framing.
+- Measure on the SESSION full-loop scene (`fire_scene`) where all parts sound at once - no single arrangement section contains every track, so a section window mis-measures balance. Per-track taps are PRE-FADER (see Honest limits): the measured LUFS is the instrument level and won't change when you move a fader, so use the measurement to set faders but don't expect a re-measure to confirm them; treat the `balance` finding as "this instrument is quiet," not "this fader is low."
 - Checkpoint: play the densest section (`set_song_position` to that section's start + `start_playback`).
 
 ## Stage 6 - Master
 
-- `analyze_set(focus="mastering", measure=<True if taps present>)`, then `apply_findings` for the deterministic master-bus corrections against the genre LUFS target. Report judgment-required findings; do not auto-apply them.
+- `analyze_set(focus="mastering", measure=<True if taps present>)`, then `apply_findings` for the deterministic master-bus corrections against the genre LUFS target. Report judgment-required findings; do not auto-apply them. NOTE: `apply_findings` has NO deterministic action for `mastering.limiter_present` - adding the limiter is judgment-required. The standard finishing move is a Limiter as the last master device (ceiling ~-1 dB, Mode=True Peak); add it explicitly via `load_instrument_or_effect(track_type="master")` + `set_device_parameter`.
+- Program loudness vs the LUFS target and `mastering.true_peak` are DEFERRED unless a MASTER tap is connected (per-track taps don't cover the master bus). Without one, state loudness as un-measured - do not fabricate it.
 - Checkpoint: final playback from the top + a closing summary (tracks, structure, measured vs target loudness, what was and wasn't auto-applied).
 
 ## Failure and cleanup
