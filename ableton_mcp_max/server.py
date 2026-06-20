@@ -117,6 +117,12 @@ from ableton_mcp_max.masking_utils import (
     build_mix_findings,
     enrich_names,
 )
+from ableton_mcp_max.sample_utils import (
+    classify_sample,
+    name_match,
+    icloud_placeholder_path,
+    refine_kind_by_length,
+)
 from ableton_mcp_max.tap_connection import AudioTapConnection
 from ableton_mcp_max.tap_registry import TapRegistry
 from ableton_mcp_max import composition_utils as comp
@@ -249,6 +255,7 @@ MUTATING_COMMANDS = frozenset({
     "set_selected_scene", "set_detail_clip", "set_highlighted_clip_slot",
     "set_track_fold", "capture_midi", "capture_and_insert_scene",
     "trigger_session_record", "stop_all_clips", "tap_tempo",
+    "select_drum_pad",
 })
 
 # Subset of MUTATING_COMMANDS whose Live write settles ASYNCHRONOUSLY, so a
@@ -4299,6 +4306,68 @@ def create_wavetable_preset(ctx: Context, name: str, table1: str,
     except Exception as e:
         logger.error(f"Error creating wavetable preset: {str(e)}")
         return _err(f"Error creating wavetable preset: {str(e)}")
+
+def _ensure_local(sample_path, timeout=30):
+    """Materialize an iCloud-dataless sample so its bytes are on disk.
+
+    1. If the file already exists locally, return its path.
+    2. Else if a '.<name>.icloud' placeholder stub exists, run `brctl download`
+       and poll (synchronously) up to `timeout` seconds for the real file.
+    3. On timeout, or if the path is simply missing, raise RuntimeError with
+       user-facing guidance.
+
+    Synchronous blocking poll by design -- this runs server-side, not in the
+    Remote Script. Must be called by every loader BEFORE any header read
+    (_read_audio_meta opens the file and would fail on a placeholder).
+    """
+    sample_path = os.path.expanduser(str(sample_path))
+    if os.path.exists(sample_path):
+        return sample_path
+
+    stub = icloud_placeholder_path(sample_path)
+    if stub is None:
+        raise RuntimeError(
+            "Sample not found and no iCloud placeholder present: %s" % sample_path)
+
+    try:
+        subprocess.run(["/usr/bin/brctl", "download", sample_path],
+                       timeout=timeout, check=False)
+    except Exception as e:
+        logger.warning("brctl download failed for %s: %s", sample_path, e)
+
+    deadline = time.monotonic() + max(1, timeout)
+    while time.monotonic() < deadline:
+        if os.path.exists(sample_path):
+            return sample_path
+        time.sleep(0.5)
+
+    raise RuntimeError(
+        "Sample is still an undownloaded iCloud placeholder after %ss: %s. "
+        "Download it in Finder (or right-click -> Download Now) and retry."
+        % (timeout, sample_path))
+
+
+def _resolve_sample_uri(sample_path, category="samples"):
+    """Resolve a sample file path to its Live browser URI via the Remote Script.
+
+    The LOM browser exposes a sample's name + uri but not its filesystem path,
+    so the loaders (which hold the path from a filesystem walk) resolve the uri
+    here by base name. Matches the first browser item with that name (a
+    duplicate name across packs resolves to the first match). Raises
+    RuntimeError if the sample is not indexed in the browser.
+    """
+    name = os.path.basename(sample_path)
+    ableton = get_ableton_connection()
+    res = ableton.send_command("find_sample_uri", {"name": name, "category": category})
+    uri = (res or {}).get("uri")
+    if not uri:
+        raise RuntimeError(
+            "Could not resolve '%s' to a browser item. Live may not have indexed "
+            "it yet (refresh the browser or relaunch Live), or it is in a category "
+            "other than '%s'." % (name, category))
+    return uri
+
+
 def _read_audio_meta(path):
     """Return (file_size_bytes, frames, sample_rate) for an audio file.
 
@@ -4385,6 +4454,286 @@ def create_simpler_instrument(ctx: Context, name: str, sample_path: str,
     except Exception as e:
         logger.error(f"Error creating simpler instrument: {str(e)}")
         return _err(f"Error creating simpler instrument: {str(e)}")
+
+# Audio sample file extensions enumerated by search_samples. Preset extensions
+# (.adv/.adg) are also enumerated so kits/instruments surface.
+_SAMPLE_EXTS = (".wav", ".aif", ".aiff", ".aifc", ".flac", ".mp3", ".ogg",
+                ".adv", ".adg")
+
+
+def _sample_search_roots(sources):
+    """Resolve (root_dir, source_label) pairs to walk for the given sources.
+
+    'user'   -> the configured User Library (iCloud-backed).
+    'factory'-> the running Live's Core Library Samples tree (per Task 1 spike).
+    Missing roots are skipped. Seam: monkeypatched in tests.
+    """
+    roots = []
+    if "user" in sources:
+        lib = _user_library_dir()
+        if lib and os.path.isdir(lib):
+            roots.append((lib, "user"))
+    if "factory" in sources:
+        core = _app_core()
+        if core:
+            fac = os.path.join(core, "Samples")
+            if os.path.isdir(fac):
+                roots.append((fac, "factory"))
+    return roots
+
+
+@mcp.tool()
+def search_samples(
+    ctx: Context,
+    query: str,
+    kinds: list = None,
+    limit: int = 40,
+    sources: list = None,
+) -> str:
+    """Search Live's sample library by name and return classified, ranked hits.
+
+    Filesystem-walks the User Library and/or factory Core Library sample trees,
+    matching `query` (space-separated terms, OR) against each file's name and
+    folder, classifying each hit (loop / one_shot / kit / instrument), and
+    returning the top `limit` by match score. READ-only: it never downloads --
+    it only FLAGS files that are undownloaded iCloud placeholders so a later
+    load knows to materialize them.
+
+    Parameters:
+    - query: space-separated search terms (OR). Empty string matches everything.
+    - kinds: restrict to these classifications (default all four:
+      ["loop","one_shot","kit","instrument"]).
+    - limit: max results to return (default 40).
+    - sources: which trees to walk: ["factory","user"] (default both).
+
+    Returns JSON {ok, data:{count, returned, truncated, items:[{name, path,
+    uri, kind, source, folder, is_icloud_placeholder}]}}. `count` is total
+    matches; `items` holds at most `limit`, highest score first. `uri` is None
+    (loaders take `sample_path`, not a browser URI).
+    """
+    try:
+        kinds = kinds or ["loop", "one_shot", "kit", "instrument"]
+        sources = sources or ["factory", "user"]
+        kind_set = set(kinds)
+
+        hits = []
+        for root, source in _sample_search_roots(sources):
+            for dirpath, _dirs, filenames in os.walk(root):
+                for fn in filenames:
+                    # iCloud stubs are hidden ".<name>.icloud" files; recover the
+                    # real sample name + path from the stub so placeholders surface.
+                    is_stub = fn.startswith(".") and fn.endswith(".icloud")
+                    if is_stub:
+                        real_name = fn[1:-len(".icloud")]
+                    else:
+                        real_name = fn
+                    ext = os.path.splitext(real_name)[1].lower()
+                    if ext not in _SAMPLE_EXTS:
+                        continue
+                    real_path = os.path.join(dirpath, real_name)
+                    rel_folder = os.path.relpath(dirpath, root)
+                    matched, score = name_match(query, real_name, rel_folder)
+                    if not matched:
+                        continue
+                    kind = classify_sample(real_name, os.path.join(rel_folder, real_name))
+                    if kind not in kind_set:
+                        continue
+                    hits.append({
+                        "name": real_name,
+                        "path": real_path,
+                        "uri": None,
+                        "kind": kind,
+                        "source": source,
+                        "folder": rel_folder,
+                        "is_icloud_placeholder": icloud_placeholder_path(real_path) is not None,
+                        "_score": score,
+                    })
+
+        hits.sort(key=lambda h: h["_score"], reverse=True)
+        total = len(hits)
+        shown = hits[:limit] if limit and limit > 0 else hits
+        for h in shown:
+            h.pop("_score", None)
+        for h in hits[len(shown):]:
+            h.pop("_score", None)
+        return _ok({
+            "count": total,
+            "returned": len(shown),
+            "truncated": len(shown) < total,
+            "items": shown,
+        })
+    except Exception as e:
+        logger.error("Error searching samples: %s", e)
+        return _err("Error searching samples: %s" % e)
+
+
+@mcp.tool()
+def load_audio_clip(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    sample_path: str,
+    track_type: str = "regular",
+) -> str:
+    """Load an audio sample (typically a loop) into an audio clip slot.
+
+    Materializes the file from iCloud if needed, resolves its browser URI, selects
+    the target slot, and loads it (Live creates an audio clip in that slot). Reads
+    the file header to report the clip's refined kind (a long one-shot is reported
+    as a loop).
+
+    Parameters:
+    - track_index: index of the audio track.
+    - clip_index: clip slot index on that track.
+    - sample_path: absolute path to the sample (as returned by search_samples).
+    - track_type: "regular" (default). Audio clips are a regular-track concept.
+
+    Returns JSON {ok, data:{track_index, clip_index, sample, uri, frames,
+    sample_rate, kind, loaded}}.
+    """
+    try:
+        local = _ensure_local(sample_path)
+        size, frames, rate = _read_audio_meta(local)
+        uri = _resolve_sample_uri(local, "samples")
+        ableton = get_ableton_connection()
+        tempo = 120.0
+        try:
+            tempo = float(ableton.send_command("get_transport").get("tempo", 120.0))
+        except Exception:
+            pass
+        ableton.send_command("set_highlighted_clip_slot",
+                             {"track_index": track_index, "scene_index": clip_index})
+        result = ableton.send_command("load_browser_item", {
+            "track_index": track_index,
+            "item_uri": uri,
+            "track_type": track_type,
+        })
+        loaded = bool(result.get("loaded", False))
+        if not loaded:
+            return _err("Failed to load audio clip from %s (load_browser_item did "
+                        "not confirm)." % os.path.basename(local))
+        kind = refine_kind_by_length(
+            classify_sample(os.path.basename(local), local), frames, rate, tempo)
+        return _ok({
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "sample": local,
+            "uri": uri,
+            "frames": frames,
+            "sample_rate": rate,
+            "kind": kind,
+            "loaded": True,
+        })
+    except RuntimeError as e:
+        return _err("Error: %s" % e)
+    except Exception as e:
+        logger.error("Error loading audio clip: %s", e)
+        return _err("Error loading audio clip: %s" % e)
+
+
+@mcp.tool()
+def load_sample_to_drum_pad(
+    ctx: Context,
+    track_index: int,
+    pad_note: int,
+    sample_path: str,
+) -> str:
+    """Load a one-shot sample onto a single Drum Rack pad.
+
+    Materializes the file from iCloud if needed, resolves its browser URI, selects
+    the pad for `pad_note` (MIDI note, e.g. 36 = C1) on the track's Drum Rack, and
+    loads the sample so it lands on that pad.
+
+    Parameters:
+    - track_index: index of the track holding the Drum Rack.
+    - pad_note: MIDI note number of the target pad.
+    - sample_path: absolute path to the one-shot (as returned by search_samples).
+
+    Returns JSON {ok, data:{track_index, pad_note, sample, uri, loaded}}.
+    """
+    try:
+        local = _ensure_local(sample_path)
+        uri = _resolve_sample_uri(local, "samples")
+        ableton = get_ableton_connection()
+        sel = ableton.send_command(
+            "select_drum_pad", {"track_index": track_index, "pad_note": pad_note})
+        if not (sel or {}).get("selected", False):
+            return _err("Could not select pad %s on track %s: %s"
+                        % (pad_note, track_index, (sel or {}).get("error", "unknown")))
+        result = ableton.send_command("load_browser_item", {
+            "track_index": track_index,
+            "item_uri": uri,
+        })
+        loaded = bool(result.get("loaded", False))
+        if not loaded:
+            return _err("Failed to load %s onto pad %s of track %s."
+                        % (os.path.basename(local), pad_note, track_index))
+        return _ok({
+            "track_index": track_index,
+            "pad_note": pad_note,
+            "sample": local,
+            "uri": uri,
+            "loaded": True,
+        })
+    except RuntimeError as e:
+        return _err("Error: %s" % e)
+    except Exception as e:
+        logger.error("Error loading sample to drum pad: %s", e)
+        return _err("Error loading sample to drum pad: %s" % e)
+
+
+@mcp.tool()
+def populate_drum_rack(
+    ctx: Context,
+    track_index: int,
+    mapping: list,
+) -> str:
+    """Load many one-shot samples onto many Drum Rack pads in one call.
+
+    Loops load_sample_to_drum_pad over `mapping`. Does NOT abort on the first
+    failure -- each entry's result is reported so partial failures are visible.
+
+    Parameters:
+    - track_index: index of the track holding the Drum Rack.
+    - mapping: list of {pad_note, sample_path}.
+
+    Returns JSON {ok, data:{track_index, loaded_count, results:[{pad_note,
+    sample_path, status:"loaded"|"error", error?}]}}.
+    """
+    try:
+        if not isinstance(mapping, list) or not mapping:
+            return _err("mapping must be a non-empty list of {pad_note, sample_path}.")
+        results = []
+        loaded_count = 0
+        for entry in mapping:
+            if not isinstance(entry, dict) or "pad_note" not in entry \
+                    or "sample_path" not in entry:
+                return _err("Each mapping entry needs 'pad_note' and 'sample_path'; "
+                            "got %r." % (entry,))
+            pad_note = entry["pad_note"]
+            sample_path = entry["sample_path"]
+            raw = load_sample_to_drum_pad(
+                ctx, track_index=track_index, pad_note=pad_note,
+                sample_path=sample_path)
+            res = json.loads(raw)
+            if res.get("ok"):
+                loaded_count += 1
+                results.append({"pad_note": pad_note, "sample_path": sample_path,
+                                "status": "loaded"})
+            else:
+                results.append({"pad_note": pad_note, "sample_path": sample_path,
+                                "status": "error",
+                                "error": res.get("error", "unknown error")})
+        return _ok({
+            "track_index": track_index,
+            "loaded_count": loaded_count,
+            "results": results,
+        })
+    except Exception as e:
+        logger.error("Error populating drum rack: %s", e)
+        return _err("Error populating drum rack: %s" % e)
+
+
 @mcp.tool()
 def inspect_rack_preset(ctx: Context, template: str) -> str:
     """

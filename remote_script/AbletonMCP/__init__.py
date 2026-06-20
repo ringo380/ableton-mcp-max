@@ -568,6 +568,10 @@ class AbletonMCP(ControlSurface):
                 params.get("quantized", True))
         elif command_type == "tap_tempo":
             result = self._tap_tempo()
+        elif command_type == "select_drum_pad":
+            result = self._select_drum_pad(
+                params.get("track_index", 0),
+                params.get("pad_note", 36))
         else:
             raise Exception("Unknown command type: " + command_type)
         return result
@@ -676,7 +680,7 @@ class AbletonMCP(ControlSurface):
                                  "set_track_fold",
                                  "capture_midi", "capture_and_insert_scene",
                                  "trigger_session_record", "stop_all_clips",
-                                 "tap_tempo"]:
+                                 "tap_tempo", "select_drum_pad"]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
                 
@@ -730,6 +734,10 @@ class AbletonMCP(ControlSurface):
                 path = params.get("path", "")
                 max_depth = params.get("max_depth", 6)
                 response["result"] = self.get_browser_presets(path, max_depth)
+            elif command_type == "find_sample_uri":
+                name = params.get("name", "")
+                category = params.get("category", "samples")
+                response["result"] = self.find_sample_uri(name, category)
             elif command_type == "get_device_parameters":
                 track_index = params.get("track_index", 0)
                 device_index = params.get("device_index", 0)
@@ -3707,4 +3715,73 @@ class AbletonMCP(ControlSurface):
         except Exception as e:
             self.log_message("Error getting browser presets: {0}".format(str(e)))
             self.log_message(traceback.format_exc())
+
+    def find_sample_uri(self, name, category="samples"):
+        """Resolve a sample base name to its browser URI by walking a category.
+
+        The LOM browser exposes a loadable item's name + uri but not its file
+        path, so the host (which has the path from a filesystem walk) resolves
+        the uri here by matching the base name. Returns
+        {"uri": <first match or None>, "matches": <count>}; matches exactly
+        first, then case-insensitively.
+        """
+        try:
+            app = self.application()
+            if not app or not hasattr(app, 'browser') or app.browser is None:
+                return {"uri": None, "matches": 0}
+            root = getattr(app.browser, category, None)
+            if root is None:
+                return {"uri": None, "matches": 0}
+            lower = name.lower()
+            exact = []
+            ci = []
+
+            def walk(node, depth):
+                if depth > 8 or not hasattr(node, 'children'):
+                    return
+                for child in node.children:
+                    cname = child.name if hasattr(child, 'name') else ""
+                    loadable = hasattr(child, 'is_loadable') and child.is_loadable
+                    if loadable and hasattr(child, 'uri'):
+                        if cname == name:
+                            exact.append(child.uri)
+                        elif cname.lower() == lower:
+                            ci.append(child.uri)
+                    if hasattr(child, 'children') and child.children:
+                        walk(child, depth + 1)
+
+            walk(root, 0)
+            if exact:
+                return {"uri": exact[0], "matches": len(exact)}
+            if ci:
+                return {"uri": ci[0], "matches": len(ci)}
+            return {"uri": None, "matches": 0}
+        except Exception as e:
+            self.log_message("Error in find_sample_uri: {0}".format(str(e)))
+            return {"uri": None, "matches": 0}
+
+    def _select_drum_pad(self, track_index, pad_note):
+        """Select the Drum Rack pad for a MIDI note so a following
+        load_browser_item lands the sample on that pad."""
+        try:
+            tracks = self._song.tracks
+            if track_index < 0 or track_index >= len(tracks):
+                return {"selected": False, "error": "track index out of range"}
+            track = tracks[track_index]
+            rack = None
+            for d in track.devices:
+                if hasattr(d, 'can_have_drum_pads') and d.can_have_drum_pads:
+                    rack = d
+                    break
+            if rack is None:
+                return {"selected": False, "error": "no drum rack on track"}
+            for pad in rack.drum_pads:
+                if pad.note == pad_note:
+                    rack.view.selected_drum_pad = pad
+                    return {"selected": True, "pad_note": pad_note}
+            return {"selected": False,
+                    "error": "no pad for note %d" % pad_note}
+        except Exception as e:
+            self.log_message("Error in select_drum_pad: " + str(e))
+            return {"selected": False, "error": str(e)}
             raise

@@ -1040,3 +1040,23 @@ Shared pure core: `ableton_mcp_max/preset_patch.py` (set_attr/set_manual/scope/g
     "Attack" (Live auto-labels a single-mapped unnamed macro with its target = proof the mapping bound).
     Scratch track + preset cleaned up. Addresses params that are DIRECT children of a (non-rack) device;
     nested rack-in-rack params + custom ranges = future. Shipped as plugin v0.3.0.
+
+## Sample sourcing (#4a) spike findings (2026-06-19, vs Live 12 Suite, AbletonDev)
+- Browser lists samples: top-level category "samples" (`query:Samples`), FLAT index of 10447 items, each `{name, uri:"query:Samples#FileId_N", is_loadable}` - NO folders, NO filesystem path exposed by the LOM browser.
+- load_audio_clip PRIMARY (A) CONFIRMED: load_browser_item with a sample URI onto an audio track creates a real AUDIO CLIP in the selected slot (is_audio_clip, length 16, looping, warped) - no device added. Slot used = the highlighted slot (default 0).
+- load_sample_to_drum_pad PRIMARY (A) CONFIRMED-ish: load_browser_item with a sample URI onto a track holding a Drum Rack adds the sample as a PAD/chain (chain_count 0->1, chain name = sample, contains a sample-player device) - no clip. OPEN: targeting a SPECIFIC pad note needs pad pre-selection (not yet exposed) -> new RS command, OR preset-patch .adg fallback (path-based).
+- Factory samples root: <Core Library>/Samples with subfolders Loops/, One Shots/, Multisamples/ (matches classify_sample tokens). User Library: <User Library>/Samples (iCloud).
+- KEY: loaders need the browser URI; the browser exposes no path; the FS-walk search returns paths, not URIs. Design RESOLVED by user = HYBRID: keep FS-walk search (paths+classification), add an RS command to resolve a sample name/path -> browser URI so loaders take paths and resolve internally; keep _ensure_local for the preset-patch fallback.
+
+### Task 4.5 live-verify (2026-06-19): RS find_sample_uri + select_drum_pad
+- `find_sample_uri` (socket probe, blank set): "3Q_AMD_Clap_21.wav" -> query:Samples#FileId_281815, "3Q_AMD_Full_Drum_Loop_08.wav" -> query:Samples#FileId_281788 (match the spike's browser URIs), nonexistent -> {uri:null, matches:0}. PASS.
+- `select_drum_pad`: note 36 + 38 both -> {selected:true}. Full hybrid flow verified: select_drum_pad(4,36) -> resolve clap uri -> load_browser_item landed the clap on PAD 36 (chain 0). PASS. (A back-to-back 2nd load via the raw probe socket hit the probe's recv timeout, leaving an empty pad-38 chain - not an RS defect; load_browser_item is pre-existing.) Scratch track deleted.
+
+### Task 9 live-verify (2026-06-19, Live 12 Suite): all 4 sample tools
+Verified end-to-end via subprocess import of the working-tree server (real tool code -> real 9877 connection -> Live):
+- search_samples: "kick"/one_shot 442 hits, "loop"/loop 882 hits (user+factory), empty 4625 total; correct source/kind/icloud flags.
+- load_audio_clip: "Hihat Closed Loop.aif" (factory) -> real AUDIO CLIP (is_audio_clip=True, kind=loop, loaded=True, uri resolved).
+- load_sample_to_drum_pad: "Kick 909 Tune1 g.wav" -> pad 36 (loaded=True).
+- populate_drum_rack: 2 one-shots -> pads 38/40, loaded_count=2; rack pads = [Kick 909, Kick Open Hat Combo, Rim Clap ER].
+- Scratch tracks self-cleaned (track_count back to baseline).
+- Incidental: a few User Library samples are 4-bit WAVs Live can't read; load_audio_clip surfaces that honestly as ok:false (correct, not a bug).
