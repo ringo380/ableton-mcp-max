@@ -17,6 +17,12 @@ or trimming heavy chains.
 Mutes and solos left engaged after editing are a common cause of "missing"
 parts on export. Standard mixdown checklist item.
 
+## health-clipping
+A channel or the master peaking at or above 0 dBFS clips digitally - the
+distortion is baked into the export and cannot be undone in mastering. Detected
+by peak-holding Live's post-fader output meters over a short playback pass (or
+the audio-tap peak when a tap is connected).
+
 ## mixing-gain-staging
 Keeping channel faders at or below unity preserves headroom into the master and
 matches Ableton's mixer/gain-staging guidance.

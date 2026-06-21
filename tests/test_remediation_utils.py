@@ -120,6 +120,48 @@ def test_generate_actions_unknown_entity_skipped():
     assert result[0].get("action") is None
 
 
+def test_generate_actions_no_clipping_track():
+    findings = [
+        {"id": "health.no_clipping", "status": "fail", "severity": "fail",
+         "entity": "Drums", "track_index": 3, "track_type": "regular",
+         "peak_dbfs": 2.0, "current_volume_db": 1.5,
+         "remediation": "Trim track gain."},
+    ]
+    result = generate_actions(findings, _SNAPSHOT)
+    action = result[0].get("action")
+    assert action is not None
+    assert action["tool"] == "set_mixer_property"
+    assert action["params"]["track_index"] == 3
+    assert action["params"]["track_type"] == "regular"
+    assert action["params"]["property"] == "volume"
+    # target peak -3 dBFS: drop fader by (2.0 - (-3.0)) = 5 dB, 1.5 -> -3.5 dB
+    from ableton_mcp_max.remediation_utils import db_to_live_volume
+    assert abs(action["params"]["value"] - db_to_live_volume(-3.5)) < 0.001
+
+
+def test_generate_actions_no_clipping_master():
+    findings = [
+        {"id": "health.no_clipping", "status": "fail", "severity": "fail",
+         "entity": "Master", "track_index": 0, "track_type": "master",
+         "peak_dbfs": 1.0, "current_volume_db": 0.0,
+         "remediation": "Trim master."},
+    ]
+    result = generate_actions(findings, _SNAPSHOT)
+    action = result[0].get("action")
+    assert action is not None
+    assert action["params"]["track_type"] == "master"
+    assert action["params"]["value"] < _UNITY
+
+
+def test_generate_actions_no_clipping_missing_data_skipped():
+    findings = [
+        {"id": "health.no_clipping", "status": "fail", "severity": "fail",
+         "entity": "Drums", "track_index": 3, "track_type": "regular"},
+    ]  # no peak_dbfs / current_volume_db
+    result = generate_actions(findings, _SNAPSHOT)
+    assert result[0].get("action") is None
+
+
 from ableton_mcp_max.remediation_utils import build_correction_plan
 
 _ACTION_SOLO = {

@@ -150,6 +150,12 @@ the API, so duplicates are avoided rather than cleaned up. To remove a
 groove, right-click it in Live's Groove Pool -> Remove; unsaved sets drop
 added grooves on close.
 
+About half of Ableton's factory grooves are stored in a proprietary BINARY
+.agr format this backdoor cannot load; those return a clear error (drag them
+in by hand). `search_grooves` flags each groove's `loadable` so you can pick
+one that works. User-Library and ~half the factory grooves are plain XML and
+load fine.
+
 Parameters:
 - name_or_path: groove name (case-insensitive, from `search_grooves`) or an
   absolute .agr path.
@@ -173,7 +179,9 @@ Parameters:
 - sources: which trees to walk: ["factory","user"] (default both).
 
 Returns JSON {ok, data:{count, returned, items:[{name, file, category,
-path, source}]}}.
+path, source, loadable}]}}. `loadable` is False for the ~half of factory
+grooves stored in a binary .agr format that `load_groove_to_pool` cannot
+add (drag those in by hand); True grooves load fine.
 
 ## set_midi_recording_quantization
 

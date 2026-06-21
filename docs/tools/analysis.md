@@ -57,3 +57,30 @@ deferred_rules, summary, [mix_signal]}:
 With measure=False this is read-only; it never mutates the set. The
 /ableton:analyze skill layers the report and per-track judgment on top.
 
+## check_clipping
+
+```python
+check_clipping(
+    window_s: float = 8.0,
+    ceiling_db: float = 0.0,
+    include_returns: bool = True,
+)
+```
+
+Play the set briefly and flag any track/return/master peaking past 0 dBFS.
+
+Peak-holds Live's post-fader output meters over a window_s playback pass (no
+audio tap / Max needed), converts the held linear peak to dBFS, and flags
+entities whose peak meets/exceeds ceiling_db (default 0.0 = full scale).
+
+Returns JSON {ok, data:{window_s, ceiling_db, played, entities, clipping,
+any_clipping}}:
+- entities: every track/return/master {name, index, track_type, peak_dbfs,
+  is_clipping, overshoot_db}.
+- clipping: just the offenders, worst (highest peak) first.
+- any_clipping: bool; played: False if the transport did not advance.
+
+Honest scope: the LOM output meter is a post-fader peak sampled ~10x/sec, so
+this catches obvious overs but not sub-sample inter-sample peaks - for true
+peak (dBTP) load the MCP Audio Tap and use measure_mix / read_track_meter.
+
