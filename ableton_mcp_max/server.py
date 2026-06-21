@@ -143,6 +143,17 @@ def _err(message):
     return json.dumps({"ok": False, "error": str(message)}, indent=2)
 
 
+def _vol_value(v):
+    """Coerce a get_mixer volume field to a float knob value.
+
+    The Remote Script's get_mixer returns volume as a {value, min, max} dict
+    (_param_dict), but the gain tools need the bare float to feed
+    live_volume_to_db. Tolerate both shapes (and None)."""
+    if isinstance(v, dict):
+        return v.get("value")
+    return v
+
+
 def _song_scale():
     """Best-effort read of the set's key/scale via the Remote Script. Returns a
     dict {scale_name, root_note, scale_intervals} or None on any failure."""
@@ -1190,7 +1201,7 @@ def adjust_track_gain(
         mixer = ableton.send_command(
             "get_mixer", {"track_index": track_index, "track_type": track_type}
         )
-        current_vol = mixer.get("volume")
+        current_vol = _vol_value(mixer.get("volume"))
         if current_vol is None:
             return _err("Volume not available for track %s (%s)" % (track_index, track_type))
         current_db = live_volume_to_db(current_vol)
@@ -1252,7 +1263,7 @@ def gain_stage_track(
         mixer_initial = ableton.send_command(
             "get_mixer", {"track_index": track_index, "track_type": track_type}
         )
-        volume_before = mixer_initial.get("volume")
+        volume_before = _vol_value(mixer_initial.get("volume"))
         if volume_before is None:
             return _err("Volume not available for track %s" % track_index)
 
@@ -1298,7 +1309,9 @@ def gain_stage_track(
         mixer_final = ableton.send_command(
             "get_mixer", {"track_index": track_index, "track_type": track_type}
         )
-        volume_after = mixer_final.get("volume", last_vol)
+        volume_after = _vol_value(mixer_final.get("volume"))
+        if volume_after is None:
+            volume_after = last_vol
 
         return _ok({
             "track_index": track_index,
@@ -1381,7 +1394,7 @@ def balance_mix(
             mixer = ableton.send_command(
                 "get_mixer", {"track_index": idx, "track_type": track_type}
             )
-            vol = mixer.get("volume")
+            vol = _vol_value(mixer.get("volume"))
             if vol is None:
                 adjustments.append({
                     "track_index": idx,

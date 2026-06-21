@@ -1,5 +1,39 @@
 # ableton-mcp-max — Progress
 
+## /ableton:produce command (#4b) - LIVE VERIFICATION DONE 2026-06-20
+Branch `feat/produce-command` (base `main` @01a8af6). Spec + plan committed under
+`docs/superpowers/`. Command authored (`commands/produce.md`); Tasks 1-2 done.
+**Task 3 (live verification) COMPLETE** - drove all stages end-to-end against Live
+12.4 building a House track (124 BPM, A minor, 6 tracks, 128 bars / 8 sections;
+saved as `tester8.als`). Stages run: Foundation -> Parts -> Arrangement -> FX ->
+Mix (metered) -> Master (limiter, ceiling ~-1 dB, True Peak mode).
+
+**Findings (filed as issues on Project #29 "ableton-mcp-max Roadmap"):**
+- #30 - no arrangement TIMELINE automation (FX/param envelopes bound to timeline
+  position); feasible substitute = self-animating LFO devices + static sends.
+- #31 - per-track MCP taps are PRE-FADER: `measure_mix`/`balance_mix`/
+  `gain_stage_track` per-track LUFS reflect instrument level, NOT the fader. You
+  cannot verify a fader balance by re-measuring per-track taps; true mix/loudness
+  verification needs a MASTER tap (only post-fader point). `measure_loudness` +
+  `analyze_set` master loudness already require a master tap (none auto-deployed).
+- #32 - **shipped BUG (v0.12.0/v0.13.0): gain tools crash** `'<=' not supported
+  between dict and float` - `get_mixer` returns `volume` as `{value,min,max}` but
+  `adjust_track_gain`/`gain_stage_track`/`balance_mix` fed it to
+  `live_volume_to_db`. **FIXED** @6067365 (`_vol_value` coercion + regression
+  test; old test fakes returned a bare float, masking it). 699 -> 700 tests.
+- #27 groove/swing playback automation, #28 clipping/peak detection in
+  analyze_set, #29 set_song_scale/set_key (filed in the prior session).
+- Command-doc gaps (candidate edits to `commands/produce.md`, NOT yet applied):
+  Stage-2 Foundation auto-fire is silent (no notes yet -> summarize, don't fire);
+  sampled "chord/stab" presets trigger whole chords per note (bad for mono leads
+  -> note); Session-vs-Arrangement view (say "press Tab" at Arrangement
+  checkpoint); the command has NO FX/automation stage (FX was an ad-hoc step);
+  `get_track_info` has no `track_type` (returns/master need get_mixer/get_device_info).
+
+**Remaining:** apply the command-doc fixes above (judgment); Task 4 = ship the
+produce command + the #32 fix together (v0.13.0 -> v0.14.0: bump
+pyproject/plugin.json + `uv lock`, release, marketplace `ableton` ref bump).
+
 ## Closed-loop remediation (roadmap #3) - SHIPPED 2026-06-19 as v0.12.0
 Spec: `docs/superpowers/specs/2026-06-18-closed-loop-remediation-design.md`
 Plan: `docs/superpowers/plans/2026-06-18-closed-loop-remediation.md`

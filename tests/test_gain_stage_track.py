@@ -26,7 +26,8 @@ class _FakeConn:
 
     def send_command(self, cmd, params=None):
         if cmd == "get_mixer":
-            return {"volume": self._vol}
+            # Mirror the real Remote Script: volume is a {value,min,max} dict.
+            return {"volume": {"value": self._vol, "min": 0.0, "max": 1.0}}
         if cmd == "set_mixer_property":
             self.set_calls.append(params)
             # simulate the volume update

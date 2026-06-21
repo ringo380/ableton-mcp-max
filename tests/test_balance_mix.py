@@ -11,7 +11,7 @@ def test_balance_mix_applies_corrections(monkeypatch):
             if cmd == "set_mixer_property":
                 set_calls.append(params)
             if cmd == "get_mixer":
-                return {"volume": 0.75}
+                return {"volume": {"value": 0.75, "min": 0.0, "max": 1.0}}
             return {}
 
     TRACKS_OUT = [
@@ -74,7 +74,7 @@ def test_balance_mix_custom_offsets(monkeypatch):
             if cmd == "set_mixer_property":
                 set_calls.append(params)
             if cmd == "get_mixer":
-                return {"volume": 0.85}
+                return {"volume": {"value": 0.85, "min": 0.0, "max": 1.0}}
             return {}
 
     SIGS = [
