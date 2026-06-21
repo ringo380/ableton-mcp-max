@@ -49,7 +49,7 @@ def swing_notes(notes, step, fraction, tolerance=None):
     A note at start_time t is on grid step k = round(t/step). If it sits within
     `tolerance` of that step and k is odd (an off-beat), it is delayed; all other
     notes pass through unchanged. `tolerance` defaults to step*0.5 (snap every
-    note — the predictable default for on-grid generated parts).
+    note - the predictable default for on-grid generated parts).
     """
     if tolerance is None:
         tolerance = step * 0.5
