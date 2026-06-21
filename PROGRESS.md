@@ -19,9 +19,15 @@ Branch `feat/groove-swing` (base `main` @6def31e). Spec/plan under `docs/superpo
     population is a follow-up (Max path or browser-hotswap research).
   - Aside: this dev machine's Live 12 default template auto-applies "Swing 16ths 66" to every new clip
     (template-specific, not general).
-  - **Next:** Phase 2 = real `assign_groove_to_clip` tool on the pure-Python path (separate spec/plan).
-    Remove the temporary `probe_groove` tool + `_groove_probe` handler before/with shipping this branch.
-  - **Task 4** (docs) still pending; Phase 3 docs must now say groove ASSIGNMENT is feasible (not a limitation).
+  - **Phase 2 SHIPPED on this branch (d800b8b):** `assign_groove_to_clip` (by pool index or name) +
+    `get_groove_pool`, pure-Python path. Replaced the temporary probe. RS handlers live-verified via raw
+    socket on Live 12 (list/assign-by-index/assign-by-name OK; bad index/name -> clean errors).
+    `normalize_groove_selector` unit-tested; MUTATING_COMMANDS synced; 712 tests pass.
+  - **Task 4 docs DONE (7e2597c):** best-practices "Groove & swing" section, produce Stage-3 feel note,
+    spec verdict, tool index/docs regenerated -> **139 tools / 20 categories**.
+  - **Remaining:** MCP-level live check of the 2 new tools (needs a Claude Code restart - server.py
+    changed); ship (version bump + release + marketplace ref); final review + PR. Follow-up issue:
+    Groove-Pool population (load `.agr` - grooves absent from the LOM browser).
 
 ## /ableton:produce command (#4b) - LIVE VERIFICATION DONE 2026-06-20
 Branch `feat/produce-command` (base `main` @01a8af6). Spec + plan committed under
