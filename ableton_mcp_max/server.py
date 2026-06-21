@@ -126,6 +126,7 @@ from ableton_mcp_max.sample_utils import (
 from ableton_mcp_max.tap_connection import AudioTapConnection
 from ableton_mcp_max.tap_registry import TapRegistry
 from ableton_mcp_max import composition_utils as comp
+from ableton_mcp_max import groove_utils as groove
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -2623,6 +2624,36 @@ def humanize_clip(
     except Exception as e:
         logger.error("Error humanizing clip: %s", e)
         return _err("Error humanizing clip: %s" % e)
+
+
+@mcp.tool()
+def swing_clip(
+    ctx: Context, track_index: int, clip_index: int,
+    amount: Union[float, int, str], grid: str = "1/16",
+) -> str:
+    """Apply swing (shuffle) to a clip by delaying off-beat notes. Bakes a real,
+    non-faked swung feel into already-generated notes; reversible with `undo`.
+
+    Parameters:
+    - track_index / clip_index: locate the clip
+    - amount: swing strength. A fraction 0.0-1.0 (0 = straight, 1 = max), OR an
+      MPC-style percent (50 = straight, 66 ~ triplet, 75 = max) passed as a
+      number > 1 or a string like "66%".
+    - grid: swing grid, "1/8" or "1/16" (default "1/16"). Off-beat steps on this
+      grid are delayed; on-beats are left in place.
+
+    Works best on grid-quantized parts (generated basslines, drums, melodies).
+    """
+    try:
+        fraction = groove.resolve_swing(amount)
+        step = groove.grid_to_step(grid)
+        count = _transform_clip(
+            track_index, clip_index,
+            lambda ns: groove.swing_notes(ns, step, fraction))
+        return _ok({"notes": count, "grid": grid, "swing_fraction": fraction})
+    except Exception as e:
+        logger.error("Error swinging clip: %s", e)
+        return _err("Error swinging clip: %s" % e)
 
 
 @mcp.tool()
