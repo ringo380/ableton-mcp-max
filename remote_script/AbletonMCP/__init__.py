@@ -522,6 +522,8 @@ class AbletonMCP(ControlSurface):
             result = self._redo()
         elif command_type == "set_groove_amount":
             result = self._set_groove_amount(params.get("value", 0.0))
+        elif command_type == "assign_groove_to_clip":
+            result = self._assign_groove_to_clip(params)
         elif command_type == "set_swing_amount":
             result = self._set_swing_amount(params.get("value", 0.0))
         elif command_type == "set_clip_trigger_quantization":
@@ -680,7 +682,8 @@ class AbletonMCP(ControlSurface):
                                  "set_track_fold",
                                  "capture_midi", "capture_and_insert_scene",
                                  "trigger_session_record", "stop_all_clips",
-                                 "tap_tempo", "select_drum_pad"]:
+                                 "tap_tempo", "select_drum_pad",
+                                 "assign_groove_to_clip"]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
                 
@@ -792,6 +795,8 @@ class AbletonMCP(ControlSurface):
                 response["result"] = self._get_view_selection()
             elif command_type == "get_cue_points":
                 response["result"] = self._get_cue_points()
+            elif command_type == "get_groove_pool":
+                response["result"] = self._get_groove_pool(params)
             elif command_type == "get_arrangement_clips":
                 response["result"] = self._get_arrangement_clips(
                     params.get("track_index", 0))
@@ -2663,6 +2668,57 @@ class AbletonMCP(ControlSurface):
         except Exception as e:
             self.log_message("Error setting groove amount: " + str(e))
             raise
+
+    def _get_groove_pool(self, params):
+        """List the grooves in Live's Groove Pool (index + name)."""
+        grooves = list(self._song.groove_pool.grooves)
+        return {
+            "count": len(grooves),
+            "grooves": [{"index": i, "name": g.name}
+                        for i, g in enumerate(grooves)],
+        }
+
+    def _assign_groove_to_clip(self, params):
+        """Assign a Groove-Pool groove to a clip. The selector is resolved
+        server-side to {by:'index'|'name', value:...}; the pool lives here in
+        Live's process so the final lookup happens here. Read-back lags, so we
+        report the intended groove name (the mutation itself is reliable)."""
+        track_index = params.get("track_index", 0)
+        clip_index = params.get("clip_index", 0)
+        by = params.get("by", "index")
+        value = params.get("value")
+        song = self._song
+        grooves = list(song.groove_pool.grooves)
+        if not grooves:
+            raise Exception("Groove Pool is empty - drag a groove into the "
+                            "Groove Pool in Live first")
+        tracks = song.tracks
+        if track_index < 0 or track_index >= len(tracks):
+            raise Exception("track_index %d out of range" % track_index)
+        track = tracks[track_index]
+        if clip_index < 0 or clip_index >= len(track.clip_slots):
+            raise Exception("clip_index %d out of range" % clip_index)
+        clip = track.clip_slots[clip_index].clip
+        if clip is None:
+            raise Exception("no clip at track %d slot %d" % (track_index, clip_index))
+        if by == "name":
+            matches = [g for g in grooves if g.name == value]
+            if not matches:
+                raise Exception("no groove named %r in pool (have: %s)"
+                                % (value, [g.name for g in grooves]))
+            target = matches[0]
+        else:
+            if not isinstance(value, int) or value < 0 or value >= len(grooves):
+                raise Exception("groove index %r out of range (pool has %d)"
+                                % (value, len(grooves)))
+            target = grooves[value]
+        clip.groove = target
+        return {
+            "assigned": target.name,
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "pool_count": len(grooves),
+        }
 
     def _set_swing_amount(self, value):
         """Set the global swing amount (0.0-1.0). Read-back may lag."""

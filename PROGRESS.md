@@ -1,5 +1,28 @@
 # ableton-mcp-max — Progress
 
+## Groove & swing (#27) - Phase 0 SPIKE VERDICT 2026-06-21
+Branch `feat/groove-swing` (base `main` @6def31e). Spec/plan under `docs/superpowers/`.
+- **Task 1** groove_utils pure swing math: DONE (6e5cf8a..310d659).
+- **Task 2** `swing_clip` tool: DONE (4a59695), live-verified on Live 12.
+- **Task 3** Phase 0 groove-assignment spike: **DONE - VERDICT: Python LOM assignment WORKS** (Live 12.4).
+  - `clip.groove = song.groove_pool.grooves[i]` does NOT raise AND genuinely changes the clip's
+    groove. Proven by a reversible A->B->A round-trip ("Swing 16ths 66" <-> "Swing 8ths 54"), each
+    change confirmed on a SEPARATE read (same-task read-back lags per the song-property-write rule).
+  - `clip.groove = None` RAISES `ArgumentError` (C++ sig `None(TPyHandle<AClip>, TPyHandle<AAbstractGroove>)`)
+    -> cannot CLEAR a groove by assigning None; the setter is a real type-validated C++ binding (not a no-op
+    stub), which is itself strong evidence the assignment is genuine. Clearing needs another path (TBD).
+  - `clip.groove` / `clip.has_groove` READ fine. The Live 11 LOM doc marking `Clip.groove` get-only is
+    INACCURATE for Live 12's embedded Python. **No Max device / no `.alc` backdoor needed for assignment.**
+  - **Open sub-problem (sub-probe A, pool population):** grooves are NOT in the LOM `app.browser`
+    categories (no "grooves" category) -> cannot load a factory `.agr` into the Groove Pool via MCP yet.
+    Assignment works only on grooves ALREADY in the pool (user-dragged or template default). Pool
+    population is a follow-up (Max path or browser-hotswap research).
+  - Aside: this dev machine's Live 12 default template auto-applies "Swing 16ths 66" to every new clip
+    (template-specific, not general).
+  - **Next:** Phase 2 = real `assign_groove_to_clip` tool on the pure-Python path (separate spec/plan).
+    Remove the temporary `probe_groove` tool + `_groove_probe` handler before/with shipping this branch.
+  - **Task 4** (docs) still pending; Phase 3 docs must now say groove ASSIGNMENT is feasible (not a limitation).
+
 ## /ableton:produce command (#4b) - LIVE VERIFICATION DONE 2026-06-20
 Branch `feat/produce-command` (base `main` @01a8af6). Spec + plan committed under
 `docs/superpowers/`. Command authored (`commands/produce.md`); Tasks 1-2 done.

@@ -43,6 +43,30 @@ def grid_to_step(grid):
         raise ValueError("grid must be one of %s, got %r" % (sorted(_GRID_STEPS), grid))
 
 
+def normalize_groove_selector(groove):
+    """Classify a groove selector as a pool index or a groove name.
+
+    - int (not bool) >= 0     -> {"by": "index", "value": <int>}.
+    - non-blank string        -> {"by": "name", "value": <stripped str>}.
+    The actual pool lookup happens in the Remote Script (the Groove Pool lives
+    in Live's process); this only validates/normalizes the user-facing argument.
+    A purely numeric string is treated as a NAME, not an index. Raises
+    ValueError on anything else.
+    """
+    if isinstance(groove, bool):
+        raise ValueError("groove selector must be a pool index or name, got bool %r" % groove)
+    if isinstance(groove, int):
+        if groove < 0:
+            raise ValueError("groove index must be >= 0, got %d" % groove)
+        return {"by": "index", "value": groove}
+    if isinstance(groove, str):
+        name = groove.strip()
+        if not name:
+            raise ValueError("groove name must be non-empty")
+        return {"by": "name", "value": name}
+    raise ValueError("groove selector must be a pool index (int) or name (str), got %r" % (groove,))
+
+
 def swing_notes(notes, step, fraction, tolerance=None):
     """Delay off-beat notes by `fraction * step/2`. Pure: returns new dicts.
 

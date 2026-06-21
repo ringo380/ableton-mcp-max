@@ -69,3 +69,30 @@ def test_swing_notes_zero_fraction_is_identity():
     notes = [{"pitch": 60, "start_time": 0.25, "duration": 0.25, "velocity": 100}]
     out = g.swing_notes(notes, step=0.25, fraction=0.0)
     assert out[0]["start_time"] == 0.25
+
+
+def test_normalize_groove_selector_index():
+    assert g.normalize_groove_selector(0) == {"by": "index", "value": 0}
+    assert g.normalize_groove_selector(3) == {"by": "index", "value": 3}
+    # bool is an int subclass but must not be accepted as an index
+    with pytest.raises(ValueError):
+        g.normalize_groove_selector(True)
+
+
+def test_normalize_groove_selector_name():
+    assert g.normalize_groove_selector("Swing 8ths 54") == {
+        "by": "name", "value": "Swing 8ths 54"}
+    # surrounding whitespace trimmed
+    assert g.normalize_groove_selector("  MPC 8-Swing 62  ") == {
+        "by": "name", "value": "MPC 8-Swing 62"}
+
+
+def test_normalize_groove_selector_rejects_bad():
+    with pytest.raises(ValueError):
+        g.normalize_groove_selector(-1)        # negative index
+    with pytest.raises(ValueError):
+        g.normalize_groove_selector("   ")     # empty/blank name
+    with pytest.raises(ValueError):
+        g.normalize_groove_selector(None)
+    with pytest.raises(ValueError):
+        g.normalize_groove_selector(1.5)       # non-integer number

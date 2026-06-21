@@ -127,6 +127,7 @@ from ableton_mcp_max.tap_connection import AudioTapConnection
 from ableton_mcp_max.tap_registry import TapRegistry
 from ableton_mcp_max import composition_utils as comp
 from ableton_mcp_max import groove_utils as groove
+from ableton_mcp_max.groove_utils import normalize_groove_selector
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -267,7 +268,7 @@ MUTATING_COMMANDS = frozenset({
     "set_selected_scene", "set_detail_clip", "set_highlighted_clip_slot",
     "set_track_fold", "capture_midi", "capture_and_insert_scene",
     "trigger_session_record", "stop_all_clips", "tap_tempo",
-    "select_drum_pad",
+    "select_drum_pad", "assign_groove_to_clip",
 })
 
 # Subset of MUTATING_COMMANDS whose Live write settles ASYNCHRONOUSLY, so a
@@ -3337,6 +3338,53 @@ def set_groove_amount(ctx: Context, amount: Union[float, int, str]) -> str:
     except Exception as e:
         logger.error(f"Error setting groove amount: {str(e)}")
         return _err(f"Error setting groove amount: {str(e)}")
+@mcp.tool()
+def get_groove_pool(ctx: Context) -> str:
+    """List the grooves currently in Live's Groove Pool.
+
+    Returns each groove's pool index + name. Use an index or name with
+    `assign_groove_to_clip`. The pool is populated by dragging grooves (or a
+    .agr file) into the Groove Pool in Live; there is no LOM/MCP path to load a
+    factory groove into the pool, so an empty pool means none have been added.
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_groove_pool", {})
+        return _ok(result)
+    except Exception as e:
+        logger.error(f"Error getting groove pool: {str(e)}")
+        return _err(f"Error getting groove pool: {str(e)}")
+@mcp.tool()
+def assign_groove_to_clip(
+    ctx: Context, track_index: int, clip_index: int,
+    groove: Union[int, str],
+) -> str:
+    """Assign a groove from the Groove Pool to a clip (swings/shuffles playback).
+
+    Unlike `swing_clip` (which bakes timing into the notes), this binds a Live
+    groove to the clip so its feel is applied non-destructively at playback;
+    `set_groove_amount` then scales how strongly it is applied.
+
+    Parameters:
+    - track_index / clip_index: locate the clip (regular tracks; MIDI or audio).
+    - groove: which Groove-Pool groove to assign - a pool index (int, from
+      `get_groove_pool`) or an exact groove name (str). A numeric string is
+      treated as a name, not an index.
+
+    The groove must already be in the Groove Pool (see `get_groove_pool`); drag
+    one in first if the pool is empty. Reversible with `undo`. Clearing a clip's
+    groove via this tool is not supported (Live's API rejects a null groove).
+    """
+    try:
+        sel = normalize_groove_selector(groove)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("assign_groove_to_clip", {
+            "track_index": track_index, "clip_index": clip_index,
+            "by": sel["by"], "value": sel["value"]})
+        return _ok(result)
+    except Exception as e:
+        logger.error(f"Error assigning groove to clip: {str(e)}")
+        return _err(f"Error assigning groove to clip: {str(e)}")
 @mcp.tool()
 def set_swing_amount(ctx: Context, amount: Union[float, int, str]) -> str:
     """
