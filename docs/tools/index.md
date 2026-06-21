@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **141 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **142 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -103,7 +103,7 @@ Gracefully quit and relaunch Ableton Live (no crash-recovery prompt) for an auto
 
 Inspect the open set against best-practice rulesets and surface findings by domain.
 
-`analyze_set`
+`analyze_set`, `check_clipping`
 
 ## [Metering (Audio Tap)](./metering.html)
 

@@ -37,5 +37,17 @@
     "rationale": "A stray solo silences the rest of the mix on playback/export.",
     "remediation": "Clear the solo before mixing down.",
     "source": "sources.md#health-leftover-states"
+  },
+  {
+    "id": "health.no_clipping",
+    "domain": "health",
+    "title": "No track or master clipping (peak below 0 dBFS)",
+    "severity": "fail",
+    "mode": "deferred",
+    "signal_kind": "meter",
+    "params": { "ceiling_db": 0.0 },
+    "rationale": "A track or the master peaking at/above 0 dBFS clips digitally, adding harsh distortion that survives into the export and eats master headroom.",
+    "remediation": "Trim the offending track's gain so its peak leaves headroom below 0 dBFS.",
+    "source": "sources.md#health-clipping"
   }
 ]

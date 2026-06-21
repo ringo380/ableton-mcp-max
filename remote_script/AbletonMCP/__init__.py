@@ -598,6 +598,8 @@ class AbletonMCP(ControlSurface):
                 response["result"] = self._get_track_info(track_index)
             elif command_type == "get_analysis_snapshot":
                 response["result"] = self._get_analysis_snapshot()
+            elif command_type == "get_output_meters":
+                response["result"] = self._get_output_meters()
             elif command_type == "get_application_version":
                 response["result"] = self._get_application_version()
             elif command_type == "get_song_scale":
@@ -1084,6 +1086,31 @@ class AbletonMCP(ControlSurface):
         except Exception as e:
             self.log_message("Error building analysis snapshot: " + str(e))
             raise
+
+    def _meter_peak(self, track):
+        """Instantaneous output-meter peak for a track: max(L, R) in [0..1].
+
+        Live's output meters are post-fader/post-pan and only meaningful while
+        the transport plays; the server polls this repeatedly and holds the max
+        (peak-hold) over a window. Returns 0.0 if the track exposes no meter."""
+        try:
+            return max(track.output_meter_left, track.output_meter_right)
+        except Exception:
+            return 0.0
+
+    def _get_output_meters(self):
+        """One-shot read of every track/return/master output-meter peak.
+
+        Returns {tracks:[{index, name, peak}], returns:[...], master:{peak}}
+        where peak is the instantaneous linear max(L,R). A read-only snapshot;
+        the server drives the peak-hold loop during a playback pass."""
+        song = self._song
+        tracks = [{"index": i, "name": t.name, "peak": self._meter_peak(t)}
+                  for i, t in enumerate(song.tracks)]
+        returns = [{"index": i, "name": t.name, "peak": self._meter_peak(t)}
+                   for i, t in enumerate(song.return_tracks)]
+        master = {"peak": self._meter_peak(song.master_track)}
+        return {"tracks": tracks, "returns": returns, "master": master}
 
     def _resolve_track(self, track_index, track_type):
         """Return the Live track object for a (track_index, track_type)."""

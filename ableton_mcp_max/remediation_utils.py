@@ -84,6 +84,26 @@ def generate_actions(findings: list, snapshot: dict) -> list:
                 "reason": "%s fader -> %.1f dB" % (entity, _HEADROOM_TARGET_DB),
             }
 
+        elif fid == "health.no_clipping":
+            # Clipping finding carries its own index/type/peak/current volume
+            # (analyze_set embeds them from the peak-hold pass). Lower the fader
+            # so the peak lands at _HEADROOM_TARGET_DB below 0 dBFS.
+            peak_dbfs = f.get("peak_dbfs")
+            cur_db = f.get("current_volume_db")
+            idx = f.get("track_index")
+            if peak_dbfs is None or cur_db is None or idx is None:
+                continue
+            ttype = f.get("track_type", "regular")
+            new_db = cur_db - (peak_dbfs - _HEADROOM_TARGET_DB)
+            new_vol = db_to_live_volume(new_db)
+            f["action"] = {
+                "tool": "set_mixer_property",
+                "params": {"track_index": idx, "property": "volume",
+                           "value": new_vol, "track_type": ttype},
+                "reason": "%s peak %.1f dBFS -> trim to %.1f dB" % (
+                    entity, peak_dbfs, _HEADROOM_TARGET_DB),
+            }
+
         elif fid == "mastering.true_peak":
             tp = master_signal.get("true_peak_dbtp")
             if tp is None:

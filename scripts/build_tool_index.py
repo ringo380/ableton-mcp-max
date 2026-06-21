@@ -88,6 +88,7 @@ GROUPS = [
     ]),
     ("Analysis", [
         "analyze_set",
+        "check_clipping",
     ]),
     ("Metering (Audio Tap)", [
         "get_audio_tap_status",

@@ -106,6 +106,7 @@ from ableton_mcp_max.remediation_utils import (
     build_correction_plan,
     compute_balance_deltas,
 )
+from ableton_mcp_max.clipping_utils import annotate_meters, clipping_flags
 from ableton_mcp_max.ruleset_utils import load_rulesets
 from ableton_mcp_max.loudness_utils import compute_metrics
 from ableton_mcp_max.spectrum_utils import integrate_bands, stereo_metrics
@@ -771,24 +772,54 @@ def analyze_set(ctx: Context, focus: str = "all", measure: bool = False,
             logger.info("audio tap unavailable for analysis: %s", e)
         result = evaluate_rules(rules, snapshot)
         result["snapshot"] = snapshot
-        if measure and _tap_registry.state.tracks():
+        if measure:
+            promoted = set()
+            clip_rule = next((r for r in rules if r["id"] == "health.no_clipping"), None)
+            ceiling = (clip_rule.get("params") or {}).get("ceiling_db", 0.0) if clip_rule else 0.0
             try:
-                name_by_index = {t["index"]: t["name"] for t in snapshot["tracks"]
-                                 if t.get("index") is not None}
-                name_by_index[-1] = "Master"
-                tracks_out, sigs = _measure_pass(
-                    measure_window_s, name_by_index=name_by_index)
-                mix_findings = build_mix_findings(sigs, rules)
-                result["mix_signal"] = {"window_s": measure_window_s,
-                                        "tracks": tracks_out,
-                                        "findings": mix_findings}
-                built = {f["id"] for f in mix_findings}
-                result["deferred_rules"] = [d for d in result["deferred_rules"]
-                                            if d["id"] not in built]
-                # keep the summary tally in step with the promoted-out rules
-                result["summary"]["deferred"] = len(result["deferred_rules"])
+                if _tap_registry.state.tracks():
+                    # Tap path: one measure pass feeds both mix_signal and clipping.
+                    name_by_index = {t["index"]: t["name"] for t in snapshot["tracks"]
+                                     if t.get("index") is not None}
+                    name_by_index[-1] = "Master"
+                    tracks_out, sigs = _measure_pass(
+                        measure_window_s, name_by_index=name_by_index)
+                    mix_findings = build_mix_findings(sigs, rules)
+                    result["mix_signal"] = {"window_s": measure_window_s,
+                                            "tracks": tracks_out,
+                                            "findings": mix_findings}
+                    promoted |= {f["id"] for f in mix_findings}
+                    if clip_rule is not None:
+                        meters = [{"name": s.get("name"), "index": s.get("index"),
+                                   "track_type": "master" if s.get("index", 0) == -1 else "regular",
+                                   "peak": s.get("peak")} for s in sigs]
+                        clip_items = clipping_flags(meters, ceiling_db=ceiling)
+                        result["findings"].extend(_build_clipping_findings(clip_items, snapshot))
+                        promoted.add("health.no_clipping")
+                elif clip_rule is not None:
+                    # No-tap path: peak-hold pass over Live's output meters.
+                    held = _peak_hold_pass(measure_window_s)
+                    meters = _meters_from_held(held)
+                    clip_items = clipping_flags(meters, ceiling_db=ceiling)
+                    result["findings"].extend(_build_clipping_findings(clip_items, snapshot))
+                    promoted.add("health.no_clipping")
             except Exception as e:
                 logger.info("measure pass for analyze_set failed: %s", e)
+            # A checked-but-clean clipping rule reports a single pass finding.
+            if "health.no_clipping" in promoted and not any(
+                    f["id"] == "health.no_clipping" for f in result["findings"]):
+                result["findings"].append({
+                    "id": "health.no_clipping", "domain": "health",
+                    "status": "pass", "severity": "fail",
+                    "evidence": "no track or master clipping detected",
+                    "remediation": ""})
+            result["deferred_rules"] = [d for d in result["deferred_rules"]
+                                        if d["id"] not in promoted]
+            result["summary"]["deferred"] = len(result["deferred_rules"])
+            # Re-tally status counts now that clipping findings have been added.
+            for k in ("pass", "fail", "warn", "info"):
+                result["summary"][k] = sum(1 for f in result["findings"]
+                                           if f.get("status") == k)
         result["findings"] = generate_actions(result["findings"], snapshot)
         return _ok(result)
     except Exception as e:
@@ -865,6 +896,7 @@ def _integrate_buffer(buf, sample_rate):
         "short_term_lufs": metrics["short_term_lufs"],
         "true_peak_dbtp": metrics["true_peak_dbtp"],
         "peak": peak,
+        "peak_dbfs": metrics["peak_dbfs"],
         "rms": rms,
         "crest": crest,
         "bands": integrate_bands(buf),
@@ -932,6 +964,130 @@ def _run_measure_playback(seconds, region=None):
     except Exception:
         end_t = start_t
     return end_t > start_t
+
+
+def _peak_hold_pass(window_s, interval_s=0.1):
+    """Play the set and peak-hold every output meter (the no-tap clipping path).
+
+    Polls get_output_meters every interval_s for window_s seconds, holding the
+    max linear peak per track/return/master, then stops playback. Returns
+    {tracks:{idx:peak}, returns:{idx:peak}, master:peak, names:{(type,idx):name},
+    played}. Isolated as a seam so tests can stub it without Live.
+    """
+    ableton = get_ableton_connection()
+    held_tracks, held_returns, names = {}, {}, {}
+    held_master = 0.0
+    try:
+        start_t = ableton.send_command("get_transport").get("current_song_time", 0.0)
+    except Exception:
+        start_t = 0.0
+    ableton.send_command("start_playback")
+    deadline = time.time() + (window_s if window_s else 8.0)
+    while time.time() < deadline:
+        try:
+            m = ableton.send_command("get_output_meters")
+        except Exception as e:
+            logger.info("output meter read failed: %s", e)
+            break
+        for t in m.get("tracks", []):
+            i = t.get("index")
+            held_tracks[i] = max(held_tracks.get(i, 0.0), t.get("peak", 0.0) or 0.0)
+            names[("regular", i)] = t.get("name")
+        for t in m.get("returns", []):
+            i = t.get("index")
+            held_returns[i] = max(held_returns.get(i, 0.0), t.get("peak", 0.0) or 0.0)
+            names[("return", i)] = t.get("name")
+        held_master = max(held_master, (m.get("master") or {}).get("peak", 0.0) or 0.0)
+        time.sleep(interval_s)
+    ableton.send_command("stop_playback")
+    try:
+        end_t = ableton.send_command("get_transport").get("current_song_time", start_t)
+    except Exception:
+        end_t = start_t
+    return {"tracks": held_tracks, "returns": held_returns, "master": held_master,
+            "names": names, "played": end_t > start_t}
+
+
+def _meters_from_held(held, include_returns=True):
+    """Flatten a _peak_hold_pass result into the meter list clipping_utils reads."""
+    meters = []
+    for i, peak in held.get("tracks", {}).items():
+        meters.append({"name": held.get("names", {}).get(("regular", i)),
+                       "index": i, "track_type": "regular", "peak": peak})
+    if include_returns:
+        for i, peak in held.get("returns", {}).items():
+            meters.append({"name": held.get("names", {}).get(("return", i)),
+                           "index": i, "track_type": "return", "peak": peak})
+    meters.append({"name": "Master", "index": 0, "track_type": "master",
+                   "peak": held.get("master", 0.0)})
+    return meters
+
+
+def _build_clipping_findings(clip_items, snapshot):
+    """Expand clipping items into per-entity health.no_clipping fail findings.
+
+    Each finding carries the index/type/peak/current-volume that
+    generate_actions needs to compute a deterministic fader trim. A master tap's
+    index -1 is mapped to the (master, 0) the mixer tools expect.
+    """
+    vol_by = {}
+    for t in snapshot.get("tracks", []):
+        vol_by[("regular", t.get("index"))] = (t.get("mixer") or {}).get("volume_db", 0.0)
+    for r in snapshot.get("returns", []):
+        vol_by[("return", r.get("index"))] = (r.get("mixer") or {}).get("volume_db", 0.0)
+    master_vol = (snapshot.get("master") or {}).get("volume_db", 0.0)
+    out = []
+    for it in clip_items:
+        ttype, idx = it.get("track_type", "regular"), it.get("index")
+        if ttype == "master" or idx == -1:
+            ttype, idx, cur, entity = "master", 0, master_vol, "Master"
+        else:
+            cur = vol_by.get((ttype, idx), 0.0)
+            entity = it.get("name") or ("track %s" % idx)
+        out.append({
+            "id": "health.no_clipping", "domain": "health",
+            "status": "fail", "severity": "fail", "entity": entity,
+            "track_index": idx, "track_type": ttype,
+            "peak_dbfs": it.get("peak_dbfs"), "overshoot_db": it.get("overshoot_db"),
+            "current_volume_db": cur,
+            "evidence": "%s peak %.1f dBFS (%.1f dB over)" % (
+                entity, it.get("peak_dbfs"), it.get("overshoot_db")),
+            "remediation": "Trim the track gain so its peak leaves headroom below 0 dBFS.",
+        })
+    return out
+
+
+@mcp.tool()
+def check_clipping(ctx: Context, window_s: float = 8.0, ceiling_db: float = 0.0,
+                   include_returns: bool = True) -> str:
+    """Play the set briefly and flag any track/return/master peaking past 0 dBFS.
+
+    Peak-holds Live's post-fader output meters over a window_s playback pass (no
+    audio tap / Max needed), converts the held linear peak to dBFS, and flags
+    entities whose peak meets/exceeds ceiling_db (default 0.0 = full scale).
+
+    Returns JSON {ok, data:{window_s, ceiling_db, played, entities, clipping,
+    any_clipping}}:
+    - entities: every track/return/master {name, index, track_type, peak_dbfs,
+      is_clipping, overshoot_db}.
+    - clipping: just the offenders, worst (highest peak) first.
+    - any_clipping: bool; played: False if the transport did not advance.
+
+    Honest scope: the LOM output meter is a post-fader peak sampled ~10x/sec, so
+    this catches obvious overs but not sub-sample inter-sample peaks - for true
+    peak (dBTP) load the MCP Audio Tap and use measure_mix / read_track_meter.
+    """
+    try:
+        held = _peak_hold_pass(window_s)
+    except Exception as e:
+        logger.error("Error during clipping pass: %s", e)
+        return _err("Error during clipping pass: %s" % e)
+    meters = _meters_from_held(held, include_returns=include_returns)
+    entities = annotate_meters(meters, ceiling_db=ceiling_db)
+    clipping = clipping_flags(meters, ceiling_db=ceiling_db)
+    return _ok({"window_s": window_s, "ceiling_db": ceiling_db,
+                "played": held.get("played", False), "entities": entities,
+                "clipping": clipping, "any_clipping": len(clipping) > 0})
 
 
 @mcp.tool()
