@@ -48,7 +48,8 @@ CATEGORIES = [
     ]),
     ("transport", "Transport & Playback", "Tempo, groove, metronome, recording, punch, and the playhead.", [
         "set_tempo", "start_playback", "stop_playback", "continue_playback", "get_transport",
-        "set_groove_amount", "set_swing_amount", "set_midi_recording_quantization", "set_nudge",
+        "set_groove_amount", "set_swing_amount", "get_groove_pool", "assign_groove_to_clip",
+        "set_midi_recording_quantization", "set_nudge",
         "capture_midi", "trigger_session_record", "stop_all_clips", "tap_tempo", "set_metronome",
         "set_arrangement_record", "set_session_record", "set_punch", "set_song_position", "jump_by",
     ]),
@@ -91,12 +92,13 @@ CATEGORIES = [
         "deploy_taps",
         "remove_taps",
     ]),
-    ("composition", "Composition", "Generate musical material into clip slots (chords, bass, melody, drums) and transform existing clips (humanize, quantize-to-scale, arpeggiate, harmonize). Key/scale read from the set when not given.", [
+    ("composition", "Composition", "Generate musical material into clip slots (chords, bass, melody, drums) and transform existing clips (humanize, swing, quantize-to-scale, arpeggiate, harmonize). Key/scale read from the set when not given.", [
         "generate_chord_progression",
         "generate_bassline",
         "generate_melody",
         "generate_drum_pattern",
         "humanize_clip",
+        "swing_clip",
         "quantize_clip_to_scale",
         "arpeggiate_clip",
         "harmonize_clip",

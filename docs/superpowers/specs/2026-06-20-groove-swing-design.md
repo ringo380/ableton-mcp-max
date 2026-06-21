@@ -1,8 +1,20 @@
 # Groove & Swing for Generated Clips — Design
 
 **Created**: 2026-06-20
-**Status**: In Progress
+**Status**: Phase 0 resolved (groove assignment FEASIBLE via Python); Phases 1-2 implemented
 **Issue**: #27 (Groove/swing automation: assign groove-pool swing to clips for playback)
+
+## Outcome (2026-06-21)
+
+The Phase 0 spike **overturned the get-only assumption**: Live 12's embedded Python honors
+`Clip.groove = pool.grooves[i]` - it does not raise and genuinely changes the clip's groove
+(proven by a reversible A->B->A round-trip on a scratch clip, each change confirmed on a separate
+read). `clip.groove = None` raises an `ArgumentError` whose C++ signature requires a real groove
+handle, which both blocks clearing-via-None and confirms the setter is a genuine type-validated
+binding (not a no-op). So Phase 2 ships on the pure-Python path - **no Max device, no `.alc`
+backdoor**. Shipped tools: `swing_clip` (Phase 1), `assign_groove_to_clip` + `get_groove_pool`
+(Phase 2). Remaining open item: populating the Groove Pool from a factory `.agr` via MCP - grooves
+are not exposed in the LOM browser, so assignment works only on grooves already in the pool.
 
 ## Overview
 

@@ -8,7 +8,7 @@ nav_order: 18
 # Composition
 {: .no_toc }
 
-Generate musical material into clip slots (chords, bass, melody, drums) and transform existing clips (humanize, quantize-to-scale, arpeggiate, harmonize). Key/scale read from the set when not given.
+Generate musical material into clip slots (chords, bass, melody, drums) and transform existing clips (humanize, swing, quantize-to-scale, arpeggiate, harmonize). Key/scale read from the set when not given.
 
 <details open markdown="block">
   <summary>Tools on this page</summary>
@@ -148,6 +148,30 @@ Parameters:
 - timing: max onset jitter in beats (default 0.02)
 - velocity: max velocity jitter (default 8)
 - seed: optional int for reproducible jitter
+
+## swing_clip
+
+```python
+swing_clip(
+    track_index: int,
+    clip_index: int,
+    amount: Union[float, int, str],
+    grid: str = '1/16',
+)
+```
+
+Apply swing (shuffle) to a clip by delaying off-beat notes. Bakes a real,
+non-faked swung feel into already-generated notes; reversible with `undo`.
+
+Parameters:
+- track_index / clip_index: locate the clip
+- amount: swing strength. A fraction 0.0-1.0 (0 = straight, 1 = max), OR an
+  MPC-style percent (50 = straight, 66 ~ triplet, 75 = max) passed as a
+  number > 1 or a string like "66%".
+- grid: swing grid, "1/8" or "1/16" (default "1/16"). Off-beat steps on this
+  grid are delayed; on-beats are left in place.
+
+Works best on grid-quantized parts (generated basslines, drums, melodies).
 
 ## quantize_clip_to_scale
 

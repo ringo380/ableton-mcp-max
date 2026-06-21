@@ -30,6 +30,14 @@ Song-level property writes apply **asynchronously inside Live**, even within one
 
 Use `add_notes_to_clip`, `replace_clip_notes`, `modify_clip_notes`, `remove_clip_notes`. **Never** legacy set_notes/remove_notes — they trigger a blocking modal in Live that stalls the Remote Script main thread and times out the socket ("No data received"), even though the edit may have applied. Edit notes in place by `note_id` (`modify_clip_notes`) rather than remove + re-add. `quantize_clip` is safe (no modal).
 
+## Groove & swing: two distinct paths
+
+Three different things, do not confuse them:
+
+- `set_swing_amount` / `set_groove_amount` are GLOBAL settings. `set_swing_amount` only affects FUTURE quantize/add operations - it does not retroactively swing notes already in a clip. `set_groove_amount` scales how strongly an ASSIGNED clip groove is applied.
+- `swing_clip` BAKES swing into the notes of an existing clip (shifts off-beat note start-times). Destructive but reversible with `undo`; works best on grid-quantized parts. Accepts a 0-1 fraction or an MPC-style percent ("66%").
+- `assign_groove_to_clip` binds a Groove-Pool groove to a clip so its feel is applied non-destructively at playback (then `set_groove_amount` scales it). Pick the groove by pool index or exact name; list the pool with `get_groove_pool`. The groove must ALREADY be in the Groove Pool - there is no MCP path to load a factory `.agr` into the pool, so drag one in first if `get_groove_pool` returns empty. Clearing a clip's groove via MCP is not supported (Live's API rejects a null groove).
+
 ## Loading devices HOT-SWAPS
 
 `load_instrument_or_effect` / `load_preset` / `load_drum_kit` REPLACE the existing instrument on a track — they don't append. For experiments, load onto an EMPTY regular track and `delete_device`/`delete_track` after; never onto a patch you care about.

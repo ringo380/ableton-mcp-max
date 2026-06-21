@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_136 tools._
+_139 tools._
 
 ## Session & view
 
@@ -119,6 +119,8 @@ _136 tools._
 - **`set_metronome`** - Turn the metronome on or off.
 - **`set_groove_amount`** - Set the global groove amount (how strongly clip grooves are applied).
 - **`set_swing_amount`** - Set the global swing amount applied when adding/quantizing notes.
+- **`get_groove_pool`** - List the grooves currently in Live's Groove Pool.
+- **`assign_groove_to_clip`** - Assign a groove from the Groove Pool to a clip (swings/shuffles playback).
 - **`set_clip_trigger_quantization`** - Set the global Session clip-launch quantization.
 - **`set_midi_recording_quantization`** - Set the global MIDI-recording quantization.
 - **`set_nudge`** - Hold or release a tempo-nudge button (temporarily speeds up / slows down to
@@ -210,6 +212,7 @@ _136 tools._
 - **`generate_melody`** - Generate an in-scale monophonic melody into a session clip slot.
 - **`generate_drum_pattern`** - Generate a drum pattern (GM drum map) into a session clip slot. Intended
 - **`humanize_clip`** - Humanize a clip: jitter note onsets (+/- timing beats) and velocities
+- **`swing_clip`** - Apply swing (shuffle) to a clip by delaying off-beat notes. Bakes a real,
 - **`quantize_clip_to_scale`** - Snap every note in a clip to the nearest in-scale pitch.
 - **`arpeggiate_clip`** - Arpeggiate a clip: expand simultaneous notes (chords) into sequential
 - **`harmonize_clip`** - Add a harmony voice to each note in a clip. Provide exactly ONE of
