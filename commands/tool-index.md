@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_139 tools._
+_141 tools._
 
 ## Session & view
 
@@ -121,6 +121,8 @@ _139 tools._
 - **`set_swing_amount`** - Set the global swing amount applied when adding/quantizing notes.
 - **`get_groove_pool`** - List the grooves currently in Live's Groove Pool.
 - **`assign_groove_to_clip`** - Assign a groove from the Groove Pool to a clip (swings/shuffles playback).
+- **`load_groove_to_pool`** - Add a factory or User-Library groove (.agr) to Live's Groove Pool.
+- **`search_grooves`** - Search Live's groove library (.agr files) by name and category.
 - **`set_clip_trigger_quantization`** - Set the global Session clip-launch quantization.
 - **`set_midi_recording_quantization`** - Set the global MIDI-recording quantization.
 - **`set_nudge`** - Hold or release a tempo-nudge button (temporarily speeds up / slows down to

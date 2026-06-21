@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **139 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **141 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -55,7 +55,7 @@ Create, launch, rename, and capture scenes in the Session view.
 
 Tempo, groove, metronome, recording, punch, and the playhead.
 
-`set_tempo`, `start_playback`, `stop_playback`, `continue_playback`, `get_transport`, `set_groove_amount`, `set_swing_amount`, `get_groove_pool`, `assign_groove_to_clip`, `set_midi_recording_quantization`, `set_nudge`, `capture_midi`, `trigger_session_record`, `stop_all_clips`, `tap_tempo`, `set_metronome`, `set_arrangement_record`, `set_session_record`, `set_punch`, `set_song_position`, `jump_by`
+`set_tempo`, `start_playback`, `stop_playback`, `continue_playback`, `get_transport`, `set_groove_amount`, `set_swing_amount`, `get_groove_pool`, `assign_groove_to_clip`, `load_groove_to_pool`, `search_grooves`, `set_midi_recording_quantization`, `set_nudge`, `capture_midi`, `trigger_session_record`, `stop_all_clips`, `tap_tempo`, `set_metronome`, `set_arrangement_record`, `set_session_record`, `set_punch`, `set_song_position`, `jump_by`
 
 ## [Arrangement & Cues](./arrangement.html)
 

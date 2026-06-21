@@ -130,6 +130,51 @@ The groove must already be in the Groove Pool (see `get_groove_pool`); drag
 one in first if the pool is empty. Reversible with `undo`. Clearing a clip's
 groove via this tool is not supported (Live's API rejects a null groove).
 
+## load_groove_to_pool
+
+```python
+load_groove_to_pool(name_or_path: str)
+```
+
+Add a factory or User-Library groove (.agr) to Live's Groove Pool.
+
+Resolves `name_or_path` (a groove name from `search_grooves`, or a full
+.agr path), then loads it into the pool via a temporary carrier clip so
+`assign_groove_to_clip` has something to bind. Returns the groove's POOL
+name + index (the pool name is the .agr's internal name, which may differ
+from the filename).
+
+If a groove with that pool name is already present, this is a no-op
+(`already_present: true`) - Live offers no way to REMOVE a pool groove via
+the API, so duplicates are avoided rather than cleaned up. To remove a
+groove, right-click it in Live's Groove Pool -> Remove; unsaved sets drop
+added grooves on close.
+
+Parameters:
+- name_or_path: groove name (case-insensitive, from `search_grooves`) or an
+  absolute .agr path.
+
+## search_grooves
+
+```python
+search_grooves(query: str = '', limit: int = 50, sources: list = None)
+```
+
+Search Live's groove library (.agr files) by name and category.
+
+There is no LOM/browser path to LIST grooves, so this filesystem-walks the
+running Live's factory Core Library/Grooves and/or the User Library. Use a
+returned `name` with `load_groove_to_pool` to add it to the Groove Pool.
+
+Parameters:
+- query: space-separated terms (OR) matched against name + folder. Empty
+  string matches everything.
+- limit: max results (default 50).
+- sources: which trees to walk: ["factory","user"] (default both).
+
+Returns JSON {ok, data:{count, returned, items:[{name, file, category,
+path, source}]}}.
+
 ## set_midi_recording_quantization
 
 ```python

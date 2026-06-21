@@ -128,6 +128,7 @@ from ableton_mcp_max.tap_registry import TapRegistry
 from ableton_mcp_max import composition_utils as comp
 from ableton_mcp_max import groove_utils as groove
 from ableton_mcp_max.groove_utils import normalize_groove_selector
+from ableton_mcp_max import groove_preset_utils as groovep
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -3354,6 +3355,185 @@ def get_groove_pool(ctx: Context) -> str:
     except Exception as e:
         logger.error(f"Error getting groove pool: {str(e)}")
         return _err(f"Error getting groove pool: {str(e)}")
+
+
+def _groove_search_roots(sources):
+    """(root, label) pairs to walk for .agr grooves. 'factory' = running Live's
+    Core Library/Grooves; 'user' = the configured User Library. Missing skipped."""
+    roots = []
+    if "factory" in sources:
+        core = _app_core()
+        if core:
+            fac = os.path.join(core, "Grooves")
+            if os.path.isdir(fac):
+                roots.append((fac, "factory"))
+    if "user" in sources:
+        lib = _user_library_dir()
+        if lib and os.path.isdir(lib):
+            roots.append((lib, "user"))
+    return roots
+
+
+@mcp.tool()
+def search_grooves(ctx: Context, query: str = "", limit: int = 50,
+                   sources: list = None) -> str:
+    """Search Live's groove library (.agr files) by name and category.
+
+    There is no LOM/browser path to LIST grooves, so this filesystem-walks the
+    running Live's factory Core Library/Grooves and/or the User Library. Use a
+    returned `name` with `load_groove_to_pool` to add it to the Groove Pool.
+
+    Parameters:
+    - query: space-separated terms (OR) matched against name + folder. Empty
+      string matches everything.
+    - limit: max results (default 50).
+    - sources: which trees to walk: ["factory","user"] (default both).
+
+    Returns JSON {ok, data:{count, returned, items:[{name, file, category,
+    path, source, loadable}]}}. `loadable` is False for the ~half of factory
+    grooves stored in a binary .agr format that `load_groove_to_pool` cannot
+    add (drag those in by hand); True grooves load fine.
+    """
+    try:
+        sources = sources or ["factory", "user"]
+        roots = _groove_search_roots(sources)
+        rows = groovep.list_grooves(roots, query=query, limit=limit)
+        return _ok({"count": len(rows), "returned": len(rows), "items": rows})
+    except Exception as e:
+        logger.error(f"Error searching grooves: {str(e)}")
+        return _err(f"Error searching grooves: {str(e)}")
+
+
+def _factory_clip_wrapper():
+    """A factory .alc (running Live's bundle) to use as a carrier wrapper. Its
+    header MinorVersion already matches the running Live, so no version munging
+    is needed. Returns decompressed XML or raises."""
+    core = _app_core()
+    hits = sorted(glob.glob("%s/MIDI Clips/**/*.alc" % core, recursive=True)) if core else []
+    if not hits:
+        raise RuntimeError("no factory .alc wrapper found under %s/MIDI Clips" % core)
+    with gzip.open(hits[0], "rt") as f:
+        return f.read()
+
+
+def _carrier_uri(clip_name, retries=12, delay=1.0):
+    """The browser item uri for a just-written User Library clip, or None.
+
+    Live's content index takes a few seconds (~5s observed) to pick up a
+    newly-written file, so poll get_browser_items_at_path until the carrier
+    appears or `retries` elapse (the carrier is deleted after each call, so a
+    fresh write re-incurs this lag every time)."""
+    target = "%s.alc" % clip_name
+    for attempt in range(retries):
+        res = get_ableton_connection().send_command(
+            "get_browser_items_at_path", {"path": "user_library/Clips"})
+        items = res.get("items", []) if isinstance(res, dict) else []
+        for it in items:
+            if it.get("name") == target:
+                return it.get("uri")
+        if attempt < retries - 1:
+            time.sleep(delay)
+    return None
+
+
+@mcp.tool()
+def load_groove_to_pool(ctx: Context, name_or_path: str) -> str:
+    """Add a factory or User-Library groove (.agr) to Live's Groove Pool.
+
+    Resolves `name_or_path` (a groove name from `search_grooves`, or a full
+    .agr path), then loads it into the pool via a temporary carrier clip so
+    `assign_groove_to_clip` has something to bind. Returns the groove's POOL
+    name + index (the pool name is the .agr's internal name, which may differ
+    from the filename).
+
+    If a groove with that pool name is already present, this is a no-op
+    (`already_present: true`) - Live offers no way to REMOVE a pool groove via
+    the API, so duplicates are avoided rather than cleaned up. To remove a
+    groove, right-click it in Live's Groove Pool -> Remove; unsaved sets drop
+    added grooves on close.
+
+    About half of Ableton's factory grooves are stored in a proprietary BINARY
+    .agr format this backdoor cannot load; those return a clear error (drag them
+    in by hand). `search_grooves` flags each groove's `loadable` so you can pick
+    one that works. User-Library and ~half the factory grooves are plain XML and
+    load fine.
+
+    Parameters:
+    - name_or_path: groove name (case-insensitive, from `search_grooves`) or an
+      absolute .agr path.
+    """
+    dest = None
+    before_count = None
+    try:
+        roots = _groove_search_roots(["factory", "user"])
+        agr_path = groovep.resolve_groove_source(name_or_path, roots)
+        agr_xml = groovep.read_groove_xml(agr_path)
+        pool_name = groovep.groove_pool_name(agr_xml)
+
+        ableton = get_ableton_connection()
+        pool = ableton.send_command("get_groove_pool", {}).get("grooves", [])
+        existing = groovep.pool_has_name(pool, pool_name)
+        if existing is not None:
+            return _ok({"already_present": True, "groove_name": pool_name,
+                        "pool_index": existing, "pool_count": len(pool),
+                        "source": agr_path})
+
+        entry = groovep.agr_to_pool_groove(agr_xml, groove_id=0)
+        carrier = groovep.build_carrier_alc(_factory_clip_wrapper(), entry, 0)
+        clip_name = "_mcp_groove_load"
+        dest = _write_user_clip(carrier, clip_name)
+
+        uri = _carrier_uri(clip_name)
+        if not uri:
+            return _err("Carrier clip written but Live hasn't indexed it yet. "
+                        "Refresh the browser (right-click User Library -> "
+                        "Refresh) or relaunch Live, then retry.")
+
+        # Loading the carrier .alc makes Live merge its embedded groove into the
+        # project pool. The carrier is a full-track clip, so the load APPENDS its
+        # own track (it ignores the target track_index); we delete exactly the
+        # appended track(s) afterward. No scratch track is created.
+        si = ableton.send_command("get_session_info", {})
+        before_count = si.get("track_count", 0)
+        load = ableton.send_command(
+            "load_browser_item",
+            {"track_index": max(0, before_count - 1), "item_uri": uri})
+        if not load.get("loaded", False):
+            return _err("load_browser_item did not confirm: %s"
+                        % load.get("message", ""))
+
+        pool2 = ableton.send_command("get_groove_pool", {}).get("grooves", [])
+        idx = groovep.pool_has_name(pool2, pool_name)
+        if idx is None:
+            return _err("Carrier loaded but the groove did not appear in the "
+                        "pool. Try again, or drag the .agr into the Groove Pool "
+                        "by hand.")
+        return _ok({"already_present": False, "groove_name": pool_name,
+                    "pool_index": idx, "pool_count": len(pool2),
+                    "source": agr_path})
+    except Exception as e:
+        logger.error(f"Error loading groove to pool: {str(e)}")
+        return _err(f"Error loading groove to pool: {str(e)}")
+    finally:
+        # Delete the track(s) the carrier load appended, highest index first so
+        # earlier indices don't shift. The user's original tracks (indices
+        # 0..before_count-1) are never touched.
+        try:
+            if before_count is not None:
+                after = get_ableton_connection().send_command(
+                    "get_session_info", {}).get("track_count", before_count)
+                for i in range(after - 1, before_count - 1, -1):
+                    get_ableton_connection().send_command(
+                        "delete_track", {"index": i})
+        except Exception:
+            pass
+        try:
+            if dest and os.path.exists(dest):
+                os.remove(dest)
+        except Exception:
+            pass
+
+
 @mcp.tool()
 def assign_groove_to_clip(
     ctx: Context, track_index: int, clip_index: int,
@@ -4191,6 +4371,18 @@ def _write_user_preset(xml, name, device_folder, category="Instruments",
         f.write(xml)
     browser_path = "user_library/Presets/%s/%s" % (category, device_folder)
     return dest, browser_path
+
+
+def _write_user_clip(xml, name):
+    """Gzip-write a carrier .alc to <UserLib>/Clips/<name>.alc. Returns the
+    dest path. The browser indexes it under user_library/Clips."""
+    lib = _user_library_dir()
+    dest_dir = os.path.join(lib, "Clips")
+    os.makedirs(dest_dir, exist_ok=True)
+    dest = os.path.join(dest_dir, "%s.alc" % name)
+    with gzip.open(dest, "wt") as f:
+        f.write(xml)
+    return dest
 
 
 def _load_user_preset(track_index, browser_path, name, ext="adv"):

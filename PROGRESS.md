@@ -1,5 +1,39 @@
 # ableton-mcp-max — Progress
 
+## Groove Pool loading (#36) - v0.16.0, 141 tools (2026-06-21)
+Branch `feat/groove-pool-loading` (base `main` @ed32446). Spec + plan under `docs/superpowers/`.
+Follow-up to #27: there was no MCP path to ADD a groove to the Groove Pool (assignment only worked
+on grooves already in it). SOLVED via the `.alc` clip-embed backdoor, spiked + PROVEN live on Live 12.4
+(pool grew 1->2, groove assignable).
+- **Mechanism:** a factory `.agr` `<Groove>` is injected into a device-less factory `.alc` wrapper's
+  `<GroovePool><Grooves>`, the clip's `<GrooveSettings><GrooveId>` points at it; the carrier is written
+  to `<UserLib>/Clips/`, loaded onto a scratch MIDI track via `load_browser_item` (Live MERGES the groove
+  into the project pool), then the scratch track + temp `.alc` are deleted (groove persists). Live-11 `.agr`
+  cosmetic nodes (`ScaleInformation`/`IsInKey`/`NoteSpellingPreference`/`PreferFlatRootNote`/`NoteEditorFold*`)
+  are stripped so a Live-12 LiveSet accepts them.
+- **Tools (2):** `load_groove_to_pool(name_or_path)` (skip-on-duplicate; returns pool name+index) and
+  `search_grooves(query, limit, sources)` (discovery - factory `Core Library/Grooves` + User Library).
+  Pure logic in new `groove_preset_utils.py` (unit-tested); NO Remote Script change.
+- **REMOVAL is runtime-confirmed INFEASIBLE** (probed Live 12.4): `GroovePool.grooves` is a read-only
+  `Vector` (`del grooves[i]` -> "Cannot modify read only container"); no `delete_groove`/`Groove.delete`.
+  Handled by skip-on-duplicate + docs (manual right-click Remove is the only true removal). `Groove`
+  feel params (timing/random/velocity/quantization/base/name) ARE settable -> a "neutralise to 0"
+  soft-delete is possible (deferred, not v1).
+- **Status:** Tasks 1-6 implemented + reviewed (all clean); docs/version bumped to v0.16.0 / 141 tools.
+  729 offline tests pass. **LIVE-VERIFIED end-to-end on Live 12.4** (the actual server tool fns vs the
+  running set): search_grooves loadable flags correct; load_groove_to_pool adds XML grooves (Rock Fatback,
+  Disco, Cha-Cha-Cha, Jazz 50s), dup-skip works, binary `.agr` -> clean error, set left byte-identical
+  (4 tracks -> 4 tracks), loaded groove ASSIGNABLE by index AND name.
+- **Robustness fixes from live verification** (offline gates couldn't catch): (1) create/delete-track wire
+  key is `index` not `track_index` (else deletes user track 0); (2) browser indexes a new carrier ~4.6s
+  after write -> poll; (3) keep wrapper `<Devices>` intact (flat-regex emptying corrupts nested rack chains);
+  (4) the carrier load APPENDS its own track -> delete the appended track(s) by count-delta (no scratch
+  track); (5) strip Live-11 `<OriginalFileRef>` provenance + detect the proprietary BINARY `.agr` format
+  (~half of factory grooves) -> clean error + `loadable` flag.
+- **Coverage caveat:** ~116/219 factory grooves are plain-XML (loadable); 103 are a binary format the
+  backdoor can't read (flagged `loadable:false`). All User-Library XML grooves load.
+- **NEXT:** ship - PR, squash-merge, release v0.16.0, bump marketplace `ableton` ref + build-readme.
+
 ## Groove & swing (#27) - Phase 0 SPIKE VERDICT 2026-06-21
 Branch `feat/groove-swing` (base `main` @6def31e). Spec/plan under `docs/superpowers/`.
 - **Task 1** groove_utils pure swing math: DONE (6e5cf8a..310d659).
