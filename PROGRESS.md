@@ -25,9 +25,11 @@ Branch `feat/groove-swing` (base `main` @6def31e). Spec/plan under `docs/superpo
     `normalize_groove_selector` unit-tested; MUTATING_COMMANDS synced; 712 tests pass.
   - **Task 4 docs DONE (7e2597c):** best-practices "Groove & swing" section, produce Stage-3 feel note,
     spec verdict, tool index/docs regenerated -> **139 tools / 20 categories**.
-  - **Remaining:** MCP-level live check of the 2 new tools (needs a Claude Code restart - server.py
-    changed); ship (version bump + release + marketplace ref); final review + PR. Follow-up issue:
-    Groove-Pool population (load `.agr` - grooves absent from the LOM browser).
+  - **SHIPPED v0.15.0 (2026-06-21):** merged via PR #35 (squash @9dbff4c), released v0.15.0,
+    marketplace `ableton` ref bumped to v0.15.0 + pushed. MCP-level live check passed post-restart
+    (get_groove_pool + assign_groove_to_clip by index/name; negatives clean). Issue #27 CLOSED.
+    Follow-up #36 filed: Groove-Pool population (load `.agr` - grooves absent from the LOM browser;
+    investigate Max LiveAPI / `.alc` backdoor).
 
 ## /ableton:produce command (#4b) - LIVE VERIFICATION DONE 2026-06-20
 Branch `feat/produce-command` (base `main` @01a8af6). Spec + plan committed under
