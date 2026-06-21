@@ -95,6 +95,41 @@ Parameters:
 
 Note: confirm via get_transport (song-property-write lag).
 
+## get_groove_pool
+
+```python
+get_groove_pool()
+```
+
+List the grooves currently in Live's Groove Pool.
+
+Returns each groove's pool index + name. Use an index or name with
+`assign_groove_to_clip`. The pool is populated by dragging grooves (or a
+.agr file) into the Groove Pool in Live; there is no LOM/MCP path to load a
+factory groove into the pool, so an empty pool means none have been added.
+
+## assign_groove_to_clip
+
+```python
+assign_groove_to_clip(track_index: int, clip_index: int, groove: Union[int, str])
+```
+
+Assign a groove from the Groove Pool to a clip (swings/shuffles playback).
+
+Unlike `swing_clip` (which bakes timing into the notes), this binds a Live
+groove to the clip so its feel is applied non-destructively at playback;
+`set_groove_amount` then scales how strongly it is applied.
+
+Parameters:
+- track_index / clip_index: locate the clip (regular tracks; MIDI or audio).
+- groove: which Groove-Pool groove to assign - a pool index (int, from
+  `get_groove_pool`) or an exact groove name (str). A numeric string is
+  treated as a name, not an index.
+
+The groove must already be in the Groove Pool (see `get_groove_pool`); drag
+one in first if the pool is empty. Reversible with `undo`. Clearing a clip's
+groove via this tool is not supported (Live's API rejects a null groove).
+
 ## set_midi_recording_quantization
 
 ```python

@@ -65,6 +65,7 @@ Fill any brief gap from this table; for a genre not listed, derive sensible valu
 
 - Generate clips per track, keyed to the brief's key/scale: `generate_chord_progression`, `generate_bassline`, `generate_melody`, `generate_drum_pattern`. These use the safe extended-note API (never legacy set_notes - see `/ableton:best-practices`).
 - Ensure a scene exists for the loop row (`create_scene` if needed).
+- Generated parts are rhythmically straight. For a swung/shuffled feel, either `swing_clip` to bake swing into a clip's notes (e.g. `amount="66%"`, `grid="1/16"`), or `assign_groove_to_clip` to bind a Groove-Pool groove (list it with `get_groove_pool`; the pool must already contain a groove - see `/ableton:best-practices`). `humanize_clip` adds subtle timing/velocity variation.
 - Checkpoint: `fire_scene` on the full loop.
 
 ## Stage 4 - Arrangement

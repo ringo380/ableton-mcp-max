@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **136 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **139 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -55,7 +55,7 @@ Create, launch, rename, and capture scenes in the Session view.
 
 Tempo, groove, metronome, recording, punch, and the playhead.
 
-`set_tempo`, `start_playback`, `stop_playback`, `continue_playback`, `get_transport`, `set_groove_amount`, `set_swing_amount`, `set_midi_recording_quantization`, `set_nudge`, `capture_midi`, `trigger_session_record`, `stop_all_clips`, `tap_tempo`, `set_metronome`, `set_arrangement_record`, `set_session_record`, `set_punch`, `set_song_position`, `jump_by`
+`set_tempo`, `start_playback`, `stop_playback`, `continue_playback`, `get_transport`, `set_groove_amount`, `set_swing_amount`, `get_groove_pool`, `assign_groove_to_clip`, `set_midi_recording_quantization`, `set_nudge`, `capture_midi`, `trigger_session_record`, `stop_all_clips`, `tap_tempo`, `set_metronome`, `set_arrangement_record`, `set_session_record`, `set_punch`, `set_song_position`, `jump_by`
 
 ## [Arrangement & Cues](./arrangement.html)
 
@@ -113,9 +113,9 @@ Per-track and master loudness/true-peak/spectrum/stereo from the MCP Tap Max-for
 
 ## [Composition](./composition.html)
 
-Generate musical material into clip slots (chords, bass, melody, drums) and transform existing clips (humanize, quantize-to-scale, arpeggiate, harmonize). Key/scale read from the set when not given.
+Generate musical material into clip slots (chords, bass, melody, drums) and transform existing clips (humanize, swing, quantize-to-scale, arpeggiate, harmonize). Key/scale read from the set when not given.
 
-`generate_chord_progression`, `generate_bassline`, `generate_melody`, `generate_drum_pattern`, `humanize_clip`, `quantize_clip_to_scale`, `arpeggiate_clip`, `harmonize_clip`
+`generate_chord_progression`, `generate_bassline`, `generate_melody`, `generate_drum_pattern`, `humanize_clip`, `swing_clip`, `quantize_clip_to_scale`, `arpeggiate_clip`, `harmonize_clip`
 
 ## [Remediation](./remediation.html)
 
