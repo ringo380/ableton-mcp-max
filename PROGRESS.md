@@ -1,5 +1,26 @@
 # ableton-mcp-max — Progress
 
+## Clipping detection (#28) - SHIPPED v0.17.0, 142 tools (2026-06-21)
+Flag any track/return/master peaking at/above 0 dBFS. PR #37 squash-merged (@08c3dfd), release v0.17.0
+published, marketplace `ableton` ref bumped v0.16.0->v0.17.0 + pushed. Release chain verified
+(local=origin=tag=08c3dfd). Issue #28 closed.
+- **check_clipping(window_s, ceiling_db, include_returns):** peak-holds Live's post-fader output meters
+  over a short playback pass (NO Max tap needed) -> per-entity {peak_dbfs, is_clipping, overshoot_db} +
+  offenders worst-first. New Remote Script handler `get_output_meters` (instantaneous output_meter_left/right).
+- **analyze_set:** new `health.no_clipping` Fail rule. `measure=True` derives clipping from per-track tap
+  peaks when taps present, else runs the no-tap peak-hold pass; promotes out of deferred; pass finding when clean.
+- **apply_findings:** `generate_actions` emits a deterministic fader-trim action (land peak ~-3 dBFS) for
+  tracks/returns/master. Pure logic in new `clipping_utils.py` (peak_to_dbfs/annotate_meters/clipping_flags).
+- **LIVE-VERIFIED on Live 12** (full loop): built an 808-kit scratch track + Utility boost -> check_clipping
+  flagged track+Master at 0.0 dBFS; analyze_set(measure,health) -> 2 health.no_clipping fails w/ actions;
+  apply_findings dry-run -> apply (applied_count 2); re-check -> any_clipping false (track -0.9, Master -1.6).
+- **KEY LIMITATION (confirmed live):** Live's `output_meter_left/right` CLAMPS at 0 dBFS (1.0 linear), so the
+  no-tap path reads `peak_dbfs` max 0.0 and `overshoot_db` always 0.0 on a hard over - it detects THAT a
+  track clips but not HOW FAR. The auto-fix trims a fixed amount from the clamped reading (one pass cleared a
+  small over in testing; a severe over may need a 2nd pass). The tap path (`true_peak_dbtp`) reports the real
+  overshoot. Small follow-up: note the 0-dBFS clamp in the check_clipping docstring (not yet done).
+- 749 offline tests pass.
+
 ## Groove Pool loading (#36) - v0.16.0, 141 tools (2026-06-21)
 Branch `feat/groove-pool-loading` (base `main` @ed32446). Spec + plan under `docs/superpowers/`.
 Follow-up to #27: there was no MCP path to ADD a groove to the Groove Pool (assignment only worked
