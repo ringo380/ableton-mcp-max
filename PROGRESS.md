@@ -1,5 +1,26 @@
 # ableton-mcp-max — Progress
 
+## Arrangement automation (#30) - CODE COMPLETE, LIVE-VERIFY PENDING (2026-06-22)
+Branch `feat/arrangement-automation`. New tool `set_arrangement_automation` (Composition,
+146 tools) writes Arrangement-timeline breakpoint envelopes via the `.als` probe backdoor.
+**Offline-complete + committed** (8e4494e impl+tests, 6c908a2 docs); 823 offline tests pass,
+server imports. **NOT yet live-verified** (needs a Claude Code restart to load the new
+working-tree tool, then run it against the open set via the AbletonDev server).
+- **Mechanism:** per lane, set the target param to a unique sentinel via the LOM, read back
+  the stored value, `save_set`, then `find_target_after_manual(xml, value)` locates the single
+  matching `<Manual>` -> next `<AutomationTarget Id>` = PointeeId. Inject `<AutomationEnvelope>`
+  into the owning track's `<Envelopes>`, patch the probed `<Manual>` back to the first point,
+  `write_als`, reload in place (Cmd-N + `open`, settle/retry the stale-song race). Quantized
+  params unsupported in v1.
+- **Path auto-resolve:** parse Live's `Log.txt` last `Loading document "<x>.als"` (handles /tmp +
+  arbitrary dirs; sidesteps the iCloud stale-copy trap). `_current_set_path()` in server.py.
+- Pure XML logic trimmed to probe-based targeting in `als_automation_utils.py` (deleted the
+  name/ordinal navigator). Helpers `_reload_set`/`_arr_auto_impl` behind seams, unit-tested.
+- **NEXT (live-verify):** restart Claude Code -> AbletonDev `set_arrangement_automation` on a
+  scratch device param across several beats on the open `/tmp/autospike_reload.als` fixture ->
+  confirm in-place reload + the envelope reads back (re-save + grep PointeeId). Then ship v0.20.0
+  (bump pyproject+plugin.json+uv.lock, PR, release, marketplace ref + build-readme).
+
 ## Save tools (#34) - v0.18.0, 144 tools (2026-06-21)
 Save the Live set from the MCP (the LOM has NO save API - `Song` exposes no
 file_path/save/is_modified). Driven through Live's File menu via System Events.
