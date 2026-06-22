@@ -135,6 +135,7 @@ from ableton_mcp_max.save_utils import (
     clean_set_name,
     set_name_from_path,
 )
+from ableton_mcp_max import als_automation_utils as als
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -2055,6 +2056,329 @@ def save_set_as(ctx: Context, name: str) -> str:
     except Exception as e:
         logger.error("save_set_as error: %s", e)
         return _err("save_set_as error: %s" % e)
+
+
+# === Arrangement-timeline automation (#30) ============================== #
+# The LOM cannot write arrangement automation, so set_arrangement_automation
+# patches the saved .als and reloads Live in place. Targeting is by value PROBE
+# (set the param to a unique sentinel, read it back, locate the matching
+# <Manual> in the XML -> its AutomationTarget Id). See als_automation_utils.
+
+def _live_log_path():
+    """Path to the running Live version's Log.txt (best-effort: latest version
+    directory under ~/Library/Preferences/Ableton)."""
+    base = os.path.expanduser("~/Library/Preferences/Ableton")
+    dirs = sorted(glob.glob(os.path.join(base, "Live *")))
+    for d in reversed(dirs):
+        cand = os.path.join(d, "Log.txt")
+        if os.path.exists(cand):
+            return cand
+    return ""
+
+
+def _current_set_path(title=None):
+    """Resolve the absolute .als path of the currently-open set by parsing the
+    last `Loading document "<...>.als"` line in Live's Log.txt that exists on
+    disk and isn't a factory default (under the .app bundle). When `title` is
+    given, require the file's basename to match it. '' if unresolved.
+
+    This is more reliable than guessing from common save folders (handles /tmp
+    and arbitrary directories) and reads the path Live actually loaded (so it
+    sidesteps the iCloud stale-copy trap)."""
+    log = _live_log_path()
+    if not log:
+        return ""
+    try:
+        with open(log, "r", errors="replace") as f:
+            data = f.read()
+    except OSError:
+        return ""
+    best = ""
+    for m in re.finditer(r'Loading document "([^"]+\.als)"', data):
+        p = m.group(1)
+        if "/Applications/" in p:        # factory default set
+            continue
+        if title and set_name_from_path(p) != title:
+            continue
+        if os.path.exists(p):
+            best = p                     # later (more recent) matches win
+    return best
+
+
+def _open_file(path):
+    """Open a file with its default app (Live for .als). Seam for tests."""
+    subprocess.run(["/usr/bin/open", path], check=False)
+
+
+def _new_set_keystroke():
+    """Cmd+N — start a new (empty) Live set, closing the current one. Seam."""
+    _osa('tell application "System Events" to keystroke "n" using {command down}')
+
+
+def _reload_set(path, set_name, settle=0.6, timeout=30.0, sleep=time.sleep,
+                probe=None):
+    """Reload `path` in place: Cmd+N (new set, closes the current) then
+    `open <path>`. Waits until the front window title == set_name and an optional
+    probe read succeeds (absorbing the one `None.None(Song)` stale-handle error
+    the reload causes). No app quit. Returns {reloaded, title}.
+
+    Dialog handling: the caller saves the set first, so it's clean -> Cmd+N pops
+    only Live's "this action will stop audio, proceed?" confirmation (the audio
+    engine is active), whose default (Return) PROCEEDS. We must NOT press Cmd+D
+    here (that's the SAVE dialog's Don't-Save, which won't appear on a clean set;
+    and Return on a save dialog would mean Save, overwriting our patched .als).
+    After Cmd+N proceeds, Live sits on a silent blank set, so the subsequent
+    `open` loads with no stop-audio prompt."""
+    app, pid = _live_app_and_pid()
+    if not app:
+        raise RuntimeError("No running Ableton Live found on port %d." % LIVE_PORT)
+    name = _app_name(app)
+    _osa('tell application "%s" to activate' % name)
+    sleep(0.4)
+    baseline = _live_window_count()
+    _new_set_keystroke()
+    sleep(settle)
+    # Proceed through the stop-audio confirmation (Return = default = proceed).
+    for _ in range(3):
+        if _live_window_count() <= baseline:
+            break
+        _osa('tell application "%s" to activate' % name)
+        _press_return()
+        sleep(settle)
+    _open_file(path)
+
+    def _ready():
+        if _live_window_title() != set_name:
+            return False
+        if probe is None:
+            return True
+        try:
+            probe()
+            return True
+        except Exception:
+            return False
+
+    ok = _wait_until(_ready, timeout=timeout, interval=1.0, sleep=sleep)
+    return {"reloaded": bool(ok), "title": _live_window_title()}
+
+
+# A distinctive irrational-ish base fraction per lane, very unlikely to collide
+# with a real default <Manual> value (which tend to be round or factory presets).
+_PROBE_BASE = 0.6376168291
+_PROBE_STEP = 0.0173962041
+
+
+def _probe_fraction(i):
+    """A unique fraction in (0, 1) for lane i."""
+    f = (_PROBE_BASE + i * _PROBE_STEP) % 1.0
+    # keep clear of the exact 0/1 edges
+    return min(0.999, max(0.001, f))
+
+
+def _arr_auto_impl(ableton, lanes, reload, save_impl, reload_impl,
+                   read_als=als.read_als, write_als=als.write_als):
+    """Core of set_arrangement_automation, factored behind seams (save_impl,
+    reload_impl, read/write) so it is unit-testable without Live. Mutates the
+    on-disk .als; returns the result dict."""
+    title = _live_window_title()
+    if is_untitled_title(title):
+        raise ValueError("Set is untitled — save it first via save_set_as, then "
+                         "retry (arrangement automation patches the .als on disk).")
+    # Resolve from Live's log (handles arbitrary dirs); fall back to a common-root
+    # search for a set that was Save-As'd this session (no "Loading document" line).
+    path = _current_set_path(title) or _find_saved_set(title)
+    if not path:
+        raise RuntimeError(
+            "Could not resolve the current set's .als path from Live's log or the "
+            "common save folders. Open/save the set so it's a real file on disk.")
+    set_name = set_name_from_path(path)
+
+    results = []
+    probes = []   # (lane_idx, readback_value, first_value, vmin, vmax, points, replace)
+    for i, lane in enumerate(lanes):
+        r = {"track_index": lane.get("track_index"),
+             "device_index": lane.get("device_index", 0),
+             "parameter": lane.get("parameter"),
+             "ok": False}
+        try:
+            ti = int(lane["track_index"])
+            di = int(lane.get("device_index", 0))
+            param = lane["parameter"]
+            points = lane["points"]
+            if not points:
+                raise ValueError("lane has no points")
+            tt = lane.get("track_type", "regular")
+            info = ableton.send_command(
+                "get_device_parameters",
+                {"track_index": ti, "device_index": di, "track_type": tt})
+            params = info.get("parameters", [])
+            pidx = resolve_parameter_index(params, param)
+            pinfo = params[pidx]
+            if pinfo.get("is_quantized"):
+                raise ValueError("parameter %r is quantized — not supported in v1 "
+                                 "(continuous params and macros only)" % param)
+            vmin = pinfo.get("min")
+            vmax = pinfo.get("max")
+            if vmin is None or vmax is None or vmin == vmax:
+                raise ValueError("parameter %r has no usable [min,max] range" % param)
+            sentinel = vmin + _probe_fraction(i) * (vmax - vmin)
+            ableton.send_command(
+                "set_device_parameter",
+                {"track_index": ti, "device_index": di, "parameter_index": pidx,
+                 "value": sentinel, "track_type": tt})
+            # Read back the value Live actually stored (it may round).
+            info2 = ableton.send_command(
+                "get_device_parameters",
+                {"track_index": ti, "device_index": di, "track_type": tt})
+            readback = info2.get("parameters", [])[pidx].get("value")
+            first_value = float(points[0]["value"])
+            probes.append({"lane": i, "track_index": ti, "device_index": di,
+                           "param_index": pidx, "track_type": tt,
+                           "readback": readback, "first_value": first_value,
+                           "vmin": vmin, "vmax": vmax, "points": points,
+                           "replace": bool(lane.get("replace", True)),
+                           "result": r})
+            r["param_index"] = pidx
+        except Exception as e:
+            r["error"] = str(e)
+        results.append(r)
+
+    if not probes:
+        return {"set_path": path, "reloaded": False, "lanes": results,
+                "error": "no resolvable lanes"}
+
+    # ONE save flushes every probed sentinel to disk; then resolve all targets.
+    save_res = save_impl()
+    if not save_res.get("saved"):
+        return {"set_path": path, "reloaded": False, "lanes": results,
+                "error": "save_set failed: %s" % save_res.get("error", save_res)}
+
+    xml = read_als(path)
+    to_inject = []
+    for pr in probes:
+        r = pr["result"]
+        try:
+            tgt = read_target_after_manual_safe(xml, pr["readback"])
+            pr["pointee_id"] = tgt["pointee_id"]
+            pr["manual_literal"] = tgt["manual_literal"]
+            r["pointee_id"] = tgt["pointee_id"]
+            to_inject.append(pr)
+        except Exception as e:
+            r["error"] = "target resolve failed: %s" % e
+
+    if not to_inject:
+        return {"set_path": path, "reloaded": False, "lanes": results,
+                "error": "no targets resolved"}
+
+    # Apply all envelope injections + Manual patch-backs to the XML. FloatEvent
+    # Ids are allocated from Live's global <NextPointeeId> pool (Live 12 rejects
+    # the set as corrupt if any FloatEvent lacks an Id); the counter is bumped at
+    # the end so Live won't reuse them.
+    next_id = als.next_pointee_id(xml)
+    for pr in to_inject:
+        r = pr["result"]
+        pid = pr["pointee_id"]
+        pts = pr["points"]
+        vmin, vmax = pr["vmin"], pr["vmax"]
+        first_event_id = next_id
+        next_id += len(pts) + 1            # +1 for the leading sentinel event
+        xml = als.inject_envelope(
+            xml, pr["track_index"], pid,
+            lambda eid, pts=pts, pid=pid, vmin=vmin, vmax=vmax, feid=first_event_id:
+                als.build_envelope_xml(pid, pts, eid, feid,
+                                       value_min=vmin, value_max=vmax),
+            replace=pr["replace"])
+        xml = als.patch_manual(xml, pr["manual_literal"], pr["first_value"],
+                               value_min=vmin, value_max=vmax)
+        r["ok"] = True
+        r["points_written"] = len(pts)
+
+    xml = als.set_next_pointee_id(xml, next_id)
+    write_als(path, xml)
+
+    reloaded = False
+    if reload:
+        rr = reload_impl(path, set_name)
+        reloaded = rr.get("reloaded", False)
+    else:
+        # Leave Live's in-memory knobs at the first-point value (not the probe
+        # sentinel) so the set looks right until the user reloads. The envelope
+        # itself is only on disk until then.
+        for pr in to_inject:
+            try:
+                ableton.send_command(
+                    "set_device_parameter",
+                    {"track_index": pr["track_index"], "device_index": pr["device_index"],
+                     "parameter_index": pr["param_index"], "value": pr["first_value"],
+                     "track_type": pr["track_type"]})
+            except Exception:
+                pass
+
+    return {"set_path": path, "reloaded": reloaded, "lanes": results}
+
+
+def read_target_after_manual_safe(xml, value):
+    """Thin wrapper so the impl can be monkeypatched in tests."""
+    return als.find_target_after_manual(xml, value)
+
+
+@mcp.tool()
+def set_arrangement_automation(
+    ctx: Context,
+    lanes: List[Dict[str, Any]],
+    reload: bool = True,
+) -> str:
+    """Write Arrangement-timeline automation (device-parameter / rack-macro
+    breakpoint envelopes bound to song position) by patching the set's .als file
+    and reloading Live in place. This is the ONLY way to author arrangement
+    automation — the LOM cannot (clip envelopes are session-only).
+
+    The set MUST be saved to a real file first (an Untitled set errors — use
+    save_set_as). Live is briefly focused (System Events) for the in-place
+    reload, and the open set is reloaded from disk (~5s); one MCP call right
+    after may transiently fail and self-heal.
+
+    lanes: list of automation lanes, each a dict:
+      - track_index (int): the OWNING track (regular Midi/Audio, document order).
+      - device_index (int, default 0): device on that track.
+      - parameter (int|str): parameter index or name (case-insensitive). Macros
+        are addressed by their parameter name ("Macro 1", etc.).
+      - track_type (str, default 'regular'): 'regular' | 'return' | 'master'.
+      - points (list[{time, value}]): breakpoints. time in BEATS; value in the
+        parameter's NATIVE units (clamped to its range). >=1 required; sorted
+        automatically; duplicate times = a vertical step.
+      - replace (bool, default True): replace any existing arrangement envelope
+        for this parameter (idempotent rewrites).
+    reload: reload the set in place when done (default True). False leaves the
+      patched envelope on disk only (reload Live yourself to see it).
+
+    Targeting uses a VALUE PROBE: each param is briefly set to a unique sentinel,
+    the set is saved, and the matching value in the .als locates the parameter —
+    so it works for macros, native params, nested-in-rack params, and AU/VST
+    plugins alike. Quantized (stepped) params are NOT supported in v1.
+
+    Returns JSON {ok, data:{set_path, reloaded, lanes:[{track_index,
+    device_index, parameter, pointee_id?, points_written?, ok, error?}]}}.
+    A lane that can't be resolved is reported ok:false and skipped; siblings
+    still apply.
+    """
+    try:
+        if not lanes:
+            return _err("lanes must be a non-empty list")
+        ableton = get_ableton_connection()
+        data = _arr_auto_impl(
+            ableton, lanes, reload,
+            save_impl=lambda: _save_set_impl(name=""),
+            reload_impl=lambda p, n: _reload_set(
+                p, n, probe=lambda: get_ableton_connection().send_command(
+                    "get_session_info")),
+        )
+        return _ok(data)
+    except (ValueError, RuntimeError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("set_arrangement_automation error: %s", e)
+        return _err("set_arrangement_automation error: %s" % e)
 
 
 @mcp.tool()
