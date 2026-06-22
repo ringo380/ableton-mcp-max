@@ -76,8 +76,10 @@ CATEGORIES = [
     ("batch", "Batch & Transactions", "Collapse several mutations into a single atomic Live task / socket round-trip.", [
         "batch",
     ]),
-    ("host", "Host Lifecycle", "Gracefully quit and relaunch Ableton Live (no crash-recovery prompt) for an automated bounce after a Remote Script change.", [
+    ("host", "Host Lifecycle", "Save the set and gracefully quit/relaunch Ableton Live (no crash-recovery prompt) for an automated bounce after a Remote Script change.", [
         "restart_live",
+        "save_set",
+        "save_set_as",
     ]),
     ("analysis", "Analysis", "Inspect the open set against best-practice rulesets and surface findings by domain.", [
         "analyze_set",

@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_142 tools._
+_144 tools._
 
 ## Session & view
 
@@ -43,6 +43,8 @@ _142 tools._
 ## Host lifecycle
 
 - **`restart_live`** - Gracefully quit and relaunch the running Ableton Live (no crash-recovery
+- **`save_set`** - Save the current Live set to disk (there is no LOM save API — this drives
+- **`save_set_as`** - Save the current Live set under a new NAME (File > Save Live Set As). Use
 
 ## Tracks (lifecycle)
 

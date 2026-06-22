@@ -130,6 +130,11 @@ from ableton_mcp_max import composition_utils as comp
 from ableton_mcp_max import groove_utils as groove
 from ableton_mcp_max.groove_utils import normalize_groove_selector
 from ableton_mcp_max import groove_preset_utils as groovep
+from ableton_mcp_max.save_utils import (
+    is_untitled_title,
+    clean_set_name,
+    set_name_from_path,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -1693,6 +1698,47 @@ def _osa_async(script):
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+def _osa_get(script):
+    """Run an AppleScript and RETURN its stripped stdout ('' on error). Seam for
+    tests; used to read UI state (window title, sheet presence)."""
+    try:
+        out = subprocess.check_output(["/usr/bin/osascript", "-e", script],
+                                      stderr=subprocess.DEVNULL, timeout=20)
+        return out.decode("utf-8", "replace").strip()
+    except Exception:
+        return ""
+
+
+# System Events targets the Live process by its (version-stable) executable name.
+_LIVE_PROC = "Live"
+
+
+def _as_literal(s):
+    r"""Escape a string for embedding inside an AppleScript "..." literal."""
+    return str(s).replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _live_window_title(proc=_LIVE_PROC):
+    """Front window title of the Live process ('' if unreadable). 'Untitled' for
+    a set with no file on disk (see save_utils.is_untitled_title)."""
+    return _osa_get(
+        'tell application "System Events" to tell process "%s" '
+        'to get name of window 1' % proc)
+
+
+def _live_window_count(proc=_LIVE_PROC):
+    """Number of windows on the Live process (0 if unreadable / screen locked).
+    Live's Save-As path panel appears as an EXTRA standard window (not an
+    AXSheet), so a count above the 1-window baseline signals a dialog is open."""
+    out = _osa_get(
+        'tell application "System Events" to tell process "%s" '
+        'to get (count of windows)' % proc)
+    try:
+        return int(out)
+    except ValueError:
+        return 0
+
+
 def _live_app_and_pid(port=LIVE_PORT):
     """(.app path, pid int) of the Live process listening on `port`, or
     (None, None). This is authoritatively the Live the MCP talks to."""
@@ -1748,6 +1794,126 @@ def _wait_until(predicate, timeout, interval=1.0, sleep=time.sleep):
     return predicate()
 
 
+def _keystroke(s):
+    _osa('tell application "System Events" to keystroke "%s"' % _as_literal(s))
+
+
+def _press_return():
+    _osa('tell application "System Events" to keystroke return')
+
+
+def _live_press_escape():
+    """Press Escape (key code 53; 'keystroke escape' is not valid AppleScript)."""
+    _osa('tell application "System Events" to key code 53')
+
+
+def _click_file_menu(item, proc=_LIVE_PROC):
+    """Click a Live File-menu item by name. Clicking the menu is focus-independent
+    (unlike a Cmd-key keystroke), so opening the save panel is reliable even if
+    Live isn't frontmost the instant we fire."""
+    _osa('tell application "System Events" to tell process "%s" to click '
+         'menu item "%s" of menu 1 of menu bar item "File" of menu bar 1'
+         % (proc, _as_literal(item)))
+
+
+# Roots Ableton may drop a "<name> Project" folder into. The Save panel saves to
+# its LAST-USED location, which isn't introspectable, so we look here best-effort
+# to report the resolved path — but never fail the save if it's not found.
+_SAVE_SEARCH_ROOTS = ("~/Desktop", "~/Music", "~/Documents",
+                      "~/Music/Ableton", "~/Documents/Ableton")
+
+
+def _find_saved_set(basename):
+    """Best-effort absolute path of a just-saved set, or '' if not located.
+    Ableton wraps a saved set as '<basename> Project/<basename>.als'."""
+    best, best_mtime = "", -1.0
+    for root in _SAVE_SEARCH_ROOTS:
+        cand = os.path.join(os.path.expanduser(root),
+                            "%s Project" % basename, "%s.als" % basename)
+        try:
+            m = os.path.getmtime(cand)
+        except OSError:
+            continue
+        if m > best_mtime:
+            best, best_mtime = cand, m
+    return best
+
+
+def _save_as_impl(name, sleep=time.sleep):
+    """Save the current set under `name` via Live's Save-As panel (File menu).
+    Controls the NAME only — Ableton's panel saves to its last-used location and
+    wraps the set in a '<name> Project' folder; arbitrary-directory navigation
+    through the panel is not reliably scriptable. Returns a status dict; raises
+    ValueError on a bad name / RuntimeError if no running Live is found."""
+    basename = clean_set_name(name)                # raises ValueError if bad
+    app, pid = _live_app_and_pid()
+    if not app:
+        raise RuntimeError("No running Ableton Live found on port %d." % LIVE_PORT)
+    appname = _app_name(app)
+    result = {"app": app, "name": basename}
+
+    _osa('tell application "%s" to activate' % appname)
+    sleep(0.4)
+    baseline = _live_window_count()
+    _click_file_menu("Save Live Set As...")
+    if not _wait_until(lambda: _live_window_count() > baseline,
+                       timeout=5.0, interval=0.4, sleep=sleep):
+        result["saved"] = False
+        result["error"] = ("Save-As panel did not appear (System Events may lack "
+                            "Accessibility permission, or the screen is locked).")
+        return result
+    # The name field is focused on open — replace its default, then Save (Return).
+    _osa('tell application "System Events" to keystroke "a" using {command down}')
+    sleep(0.2)
+    _keystroke(basename)
+    sleep(0.3)
+    for _ in range(4):
+        _press_return()
+        if _wait_until(lambda: _live_window_count() == baseline
+                       and _live_window_title() == basename,
+                       timeout=2.0, interval=0.4, sleep=sleep):
+            result["saved"] = True
+            path = _find_saved_set(basename)
+            if path:
+                result["path"] = path
+            return result
+    result["saved"] = False
+    result["error"] = ("Save-As name entered but the title did not settle to %r — "
+                       "Live may not have been frontmost; verify in Live." % basename)
+    return result
+
+
+def _save_set_impl(name="", sleep=time.sleep):
+    """Save the current set. Empty `name` saves a TITLED set in place (File > Save
+    Live Set); an Untitled set needs a name (routes to Save-As). A non-empty
+    `name` always Saves-As under that name. Returns a status dict; raises
+    ValueError/RuntimeError as _save_as_impl does."""
+    app, pid = _live_app_and_pid()
+    if not app:
+        raise RuntimeError("No running Ableton Live found on port %d." % LIVE_PORT)
+    appname = _app_name(app)
+    title = _live_window_title()
+    if name:
+        return _save_as_impl(name, sleep=sleep)
+    if is_untitled_title(title):
+        return {"app": app, "saved": False, "untitled": True, "title": title,
+                "error": ("Set is untitled (no file on disk). Pass a name "
+                          "(save_set(name=...) or save_set_as) to save it.")}
+    # Titled set: save in place via the menu (focus-independent, no Cmd+S needed).
+    _osa('tell application "%s" to activate' % appname)
+    sleep(0.4)
+    baseline = _live_window_count()
+    _click_file_menu("Save Live Set")
+    sleep(0.6)
+    # An unexpected panel means the title read mis-classified an untitled set.
+    if _live_window_count() > baseline:
+        _live_press_escape()
+        return {"app": app, "saved": False, "title": title,
+                "error": ("A save panel appeared on Save — the set looks untitled. "
+                          "Use save_set(name=...) to give it a name.")}
+    return {"app": app, "saved": True, "title": title}
+
+
 def _restart_live_impl(save="discard", relaunch=True, wait_timeout=90.0,
                        dirty_after=5.0, sleep=time.sleep):
     """Gracefully quit (and optionally relaunch) the running Live. Returns a
@@ -1776,8 +1942,10 @@ def _restart_live_impl(save="discard", relaunch=True, wait_timeout=90.0,
         _osa('tell application "%s" to activate' % name)
         sleep(0.4)
         if save == "save":
-            # Return = Save (overwrites a set that already has a file; an
-            # Untitled set then pops a Save-As path dialog we can't fill).
+            # Return = Save (overwrites a set that already has a file). An
+            # Untitled set instead pops a Save-As path panel this can't fill, so
+            # the quit is reported failed — name/save such a set by hand first,
+            # or use save_set/save_set_as before restarting.
             _osa('tell application "System Events" to keystroke return')
         else:
             # Cmd+D = Don't Save in Ableton's save dialog (NOT Cmd+Delete —
@@ -1791,8 +1959,8 @@ def _restart_live_impl(save="discard", relaunch=True, wait_timeout=90.0,
         result["quit"] = False
         result["error"] = (
             "Live did not quit. With save='save' on an Untitled set the Save-As "
-            "dialog needs a file path (save the set manually first), or System "
-            "Events lacks Accessibility permission to answer the dialog.")
+            "panel needs a name (save it first via save_set_as), or System Events "
+            "lacks Accessibility permission to answer the dialog.")
         return result
     result["quit"] = True
 
@@ -1813,8 +1981,8 @@ def restart_live(ctx: Context, save: str = "discard", relaunch: bool = True,
 
     save: how to handle UNSAVED changes if Live prompts on quit —
       'discard' (default; lose unsaved edits) or 'save' (overwrite; only works
-      for a set that already has a file — an Untitled set has no path and the
-      quit is reported as failed so you can save it by hand first).
+      for a set that already has a file — an Untitled set has no name and the
+      quit is reported as failed, so save it first via save_set_as).
     relaunch: reopen Live after it quits (default True), then wait up to
       wait_timeout seconds for the control surface to rebind port 9877.
 
@@ -1835,6 +2003,58 @@ def restart_live(ctx: Context, save: str = "discard", relaunch: bool = True,
     except Exception as e:
         logger.error("restart_live error: %s", e)
         return _err("restart_live error: %s" % e)
+
+
+@mcp.tool()
+def save_set(ctx: Context, name: str = "") -> str:
+    """Save the current Live set to disk (there is no LOM save API — this drives
+    Live's save UI via System Events, so Live must have Accessibility permission;
+    it briefly brings Live to the front).
+
+    name: leave empty to save a TITLED set in place (File > Save Live Set; a
+      no-op if clean). For an UNTITLED set you MUST pass a name (an empty call
+      returns an error). A non-empty name always Saves-As under that name.
+    The set is saved to Live's last-used save location (Ableton wraps it in a
+    '<name> Project' folder); the tool controls the NAME, not the directory —
+    arbitrary-directory save-as isn't reliably scriptable through Live's panel.
+    A name may not contain '/' or ':'.
+
+    Returns JSON {ok, data:{saved, title|name, path?, untitled?, error?}}.
+    'path' is a best-effort location of the saved file (it searches common save
+    folders). Confirmation is by the window title; verify on disk if it matters.
+    """
+    try:
+        data = _save_set_impl(name=name or "")
+        return _ok(data)
+    except (ValueError, RuntimeError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("save_set error: %s", e)
+        return _err("save_set error: %s" % e)
+
+
+@mcp.tool()
+def save_set_as(ctx: Context, name: str) -> str:
+    """Save the current Live set under a new NAME (File > Save Live Set As). Use
+    for an Untitled set, or to save a copy under a new name. Drives Live's save
+    UI via System Events (needs Accessibility permission; briefly focuses Live).
+
+    name: the set name (not a path). Saved to Live's last-used save location,
+      wrapped in a '<name> Project' folder — the tool controls the name, not the
+      directory (arbitrary-directory navigation through Live's panel isn't
+      reliably scriptable). A name may not contain '/' or ':'.
+
+    Returns JSON {ok, data:{saved, name, path?, error?}}. 'path' is a best-effort
+    location of the saved file; confirmation is by the window title.
+    """
+    try:
+        data = _save_as_impl(name)
+        return _ok(data)
+    except (ValueError, RuntimeError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("save_set_as error: %s", e)
+        return _err("save_set_as error: %s" % e)
 
 
 @mcp.tool()
