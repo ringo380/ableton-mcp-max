@@ -5732,10 +5732,11 @@ def _lay_stem_on_track(ableton, track_index, stem_name, uri, sample_path):
     if not loaded:
         return {"name": stem_name, "track_index": track_index,
                 "path": sample_path, "loaded": False}
-    # Warp OFF + name on the SESSION clip; the arrangement copy inherits both.
-    ableton.send_command("set_clip_property", {
-        "track_index": track_index, "clip_index": 0,
-        "property": "warping", "value": 0})
+    # Name on the SESSION clip; the arrangement copy inherits it. Do NOT unwarp
+    # the session clip here - leaving it warped lets the arrangement-clip
+    # normalize below (warp off, fresh) extend end_marker to the full sample.
+    # Pre-unwarping the session clip puts it in a state the normalize can't
+    # extend (the placed clip stays truncated to the warp-derived beat count).
     ableton.send_command("set_clip_name", {
         "track_index": track_index, "clip_index": 0, "name": stem_name})
     ableton.send_command("set_track_name", {
