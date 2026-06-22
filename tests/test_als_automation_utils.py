@@ -13,6 +13,8 @@ from ableton_mcp_max.als_automation_utils import (
     patch_manual,
     find_track_span,
     next_envelope_id,
+    next_pointee_id,
+    set_next_pointee_id,
     inject_envelope,
 )
 
@@ -69,7 +71,8 @@ def test_points_to_events_empty_raises():
 
 def test_build_envelope_xml_wellformed_with_pointee_and_events():
     block = build_envelope_xml("777", [{"time": 0, "value": 0.25},
-                                       {"time": 16, "value": 0.75}], env_id=3)
+                                       {"time": 16, "value": 0.75}],
+                               env_id=3, first_event_id=5000)
     el = ET.fromstring(block)
     assert el.tag == "AutomationEnvelope"
     assert el.attrib["Id"] == "3"
@@ -78,13 +81,39 @@ def test_build_envelope_xml_wellformed_with_pointee_and_events():
     floats = el.findall("./Automation/Events/FloatEvent")
     assert len(floats) == 3  # sentinel + 2 points
     assert floats[0].attrib["Time"] == str(SENTINEL_TIME)
-    # No Id attr is written on FloatEvents (Live regenerates them).
-    assert "Id" not in floats[0].attrib
+
+
+def test_build_envelope_xml_floatevents_have_unique_sequential_ids():
+    # Live 12 rejects the set as corrupt unless every FloatEvent has an Id.
+    block = build_envelope_xml("1", [{"time": 0, "value": 0.1},
+                                     {"time": 4, "value": 0.2},
+                                     {"time": 8, "value": 0.3}],
+                               env_id=0, first_event_id=25987)
+    floats = ET.fromstring(block).findall("./Automation/Events/FloatEvent")
+    ids = [int(f.attrib["Id"]) for f in floats]      # raises KeyError if missing
+    assert ids == [25987, 25988, 25989, 25990]        # sentinel + 3 points
+    assert len(set(ids)) == len(ids)
 
 
 def test_build_envelope_xml_no_scientific_notation():
-    block = build_envelope_xml("1", [{"time": 0, "value": 0.0003162277571}], env_id=0)
+    block = build_envelope_xml("1", [{"time": 0, "value": 0.0003162277571}],
+                               env_id=0, first_event_id=1)
     assert "e-" not in block.lower()
+
+
+def test_next_pointee_id_reads_and_bumps():
+    xml = '<LiveSet><NextPointeeId Value="25987" /></LiveSet>'
+    assert next_pointee_id(xml) == 25987
+    out = set_next_pointee_id(xml, 25991)
+    assert '<NextPointeeId Value="25991" />' in out
+    assert next_pointee_id(out) == 25991
+
+
+def test_next_pointee_id_fallback_to_max_id():
+    xml = '<a><AutomationTarget Id="42" /><Foo Id="7" /></a>'
+    assert next_pointee_id(xml) == 43
+    # no element -> set is a no-op
+    assert set_next_pointee_id(xml, 99) == xml
 
 
 # --------------------------------------------------------------------------- #
@@ -178,7 +207,7 @@ def test_inject_into_self_closing_envelopes():
     xml = _two_track_xml()
     out = inject_envelope(
         xml, 0, "555",
-        lambda eid: build_envelope_xml("555", [{"time": 0, "value": 0.5}], eid))
+        lambda eid: build_envelope_xml("555", [{"time": 0, "value": 0.5}], eid, first_event_id=1))
     s, e = find_track_span(out, 0)
     assert '<PointeeId Value="555" />' in out[s:e]
     # second track untouched
@@ -190,7 +219,7 @@ def test_inject_targets_correct_track():
     xml = _two_track_xml()
     out = inject_envelope(
         xml, 1, "999",
-        lambda eid: build_envelope_xml("999", [{"time": 0, "value": 0.5}], eid))
+        lambda eid: build_envelope_xml("999", [{"time": 0, "value": 0.5}], eid, first_event_id=1))
     s0, e0 = find_track_span(out, 0)
     assert "999" not in out[s0:e0]
     s1, e1 = find_track_span(out, 1)
@@ -201,10 +230,10 @@ def test_inject_second_pointee_appends_with_next_id():
     xml = _two_track_xml()
     out = inject_envelope(
         xml, 0, "111",
-        lambda eid: build_envelope_xml("111", [{"time": 0, "value": 0.1}], eid))
+        lambda eid: build_envelope_xml("111", [{"time": 0, "value": 0.1}], eid, first_event_id=1))
     out = inject_envelope(
         out, 0, "222",
-        lambda eid: build_envelope_xml("222", [{"time": 0, "value": 0.2}], eid))
+        lambda eid: build_envelope_xml("222", [{"time": 0, "value": 0.2}], eid, first_event_id=1))
     s, e = find_track_span(out, 0)
     seg = out[s:e]
     assert '<AutomationEnvelope Id="0">' in seg
@@ -216,11 +245,11 @@ def test_inject_replace_swaps_existing_pointee():
     xml = _two_track_xml()
     out = inject_envelope(
         xml, 0, "111",
-        lambda eid: build_envelope_xml("111", [{"time": 0, "value": 0.1}], eid))
+        lambda eid: build_envelope_xml("111", [{"time": 0, "value": 0.1}], eid, first_event_id=1))
     out = inject_envelope(
         out, 0, "111",
         lambda eid: build_envelope_xml("111", [{"time": 0, "value": 0.9},
-                                               {"time": 4, "value": 0.3}], eid),
+                                               {"time": 4, "value": 0.3}], eid, first_event_id=1),
         replace=True)
     s, e = find_track_span(out, 0)
     seg = out[s:e]
@@ -235,7 +264,7 @@ def test_injected_region_reparses():
     out = inject_envelope(
         xml, 0, "123",
         lambda eid: build_envelope_xml("123", [{"time": 0, "value": 0.5},
-                                               {"time": 16, "value": 1.0}], eid))
+                                               {"time": 16, "value": 1.0}], eid, first_event_id=1))
     s, e = find_track_span(out, 0)
     ET.fromstring(out[s:e])  # must be well-formed
 
@@ -253,7 +282,7 @@ def test_real_file_resolve_inject_roundtrip(tmp_path):
         lambda eid: build_envelope_xml("22754",
                                        [{"time": 0, "value": 10},
                                         {"time": 8, "value": 90},
-                                        {"time": 16, "value": 50}], eid),
+                                        {"time": 16, "value": 50}], eid, first_event_id=1),
         replace=True)
     p = str(tmp_path / "rt.als")
     write_als(p, out)

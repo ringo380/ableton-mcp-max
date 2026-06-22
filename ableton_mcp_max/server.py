@@ -2117,11 +2117,18 @@ def _new_set_keystroke():
 
 def _reload_set(path, set_name, settle=0.6, timeout=30.0, sleep=time.sleep,
                 probe=None):
-    """Reload `path` in place: Cmd+N (new set, closes the current — defensively
-    answers a save dialog with Cmd+D since a just-saved set is clean) then
+    """Reload `path` in place: Cmd+N (new set, closes the current) then
     `open <path>`. Waits until the front window title == set_name and an optional
     probe read succeeds (absorbing the one `None.None(Song)` stale-handle error
-    the reload causes). No app quit. Returns {reloaded, title}."""
+    the reload causes). No app quit. Returns {reloaded, title}.
+
+    Dialog handling: the caller saves the set first, so it's clean -> Cmd+N pops
+    only Live's "this action will stop audio, proceed?" confirmation (the audio
+    engine is active), whose default (Return) PROCEEDS. We must NOT press Cmd+D
+    here (that's the SAVE dialog's Don't-Save, which won't appear on a clean set;
+    and Return on a save dialog would mean Save, overwriting our patched .als).
+    After Cmd+N proceeds, Live sits on a silent blank set, so the subsequent
+    `open` loads with no stop-audio prompt."""
     app, pid = _live_app_and_pid()
     if not app:
         raise RuntimeError("No running Ableton Live found on port %d." % LIVE_PORT)
@@ -2131,8 +2138,12 @@ def _reload_set(path, set_name, settle=0.6, timeout=30.0, sleep=time.sleep,
     baseline = _live_window_count()
     _new_set_keystroke()
     sleep(settle)
-    if _live_window_count() > baseline:   # a save dialog appeared -> Don't Save
-        _osa('tell application "System Events" to keystroke "d" using {command down}')
+    # Proceed through the stop-audio confirmation (Return = default = proceed).
+    for _ in range(3):
+        if _live_window_count() <= baseline:
+            break
+        _osa('tell application "%s" to activate' % name)
+        _press_return()
         sleep(settle)
     _open_file(path)
 
@@ -2173,11 +2184,13 @@ def _arr_auto_impl(ableton, lanes, reload, save_impl, reload_impl,
     if is_untitled_title(title):
         raise ValueError("Set is untitled — save it first via save_set_as, then "
                          "retry (arrangement automation patches the .als on disk).")
-    path = _current_set_path(title)
+    # Resolve from Live's log (handles arbitrary dirs); fall back to a common-root
+    # search for a set that was Save-As'd this session (no "Loading document" line).
+    path = _current_set_path(title) or _find_saved_set(title)
     if not path:
         raise RuntimeError(
-            "Could not resolve the current set's .als path from Live's log. Save "
-            "the set (save_set) and ensure it's a real file on disk.")
+            "Could not resolve the current set's .als path from Live's log or the "
+            "common save folders. Open/save the set so it's a real file on disk.")
     set_name = set_name_from_path(path)
 
     results = []
@@ -2257,22 +2270,30 @@ def _arr_auto_impl(ableton, lanes, reload, save_impl, reload_impl,
         return {"set_path": path, "reloaded": False, "lanes": results,
                 "error": "no targets resolved"}
 
-    # Apply all envelope injections + Manual patch-backs to the XML.
+    # Apply all envelope injections + Manual patch-backs to the XML. FloatEvent
+    # Ids are allocated from Live's global <NextPointeeId> pool (Live 12 rejects
+    # the set as corrupt if any FloatEvent lacks an Id); the counter is bumped at
+    # the end so Live won't reuse them.
+    next_id = als.next_pointee_id(xml)
     for pr in to_inject:
         r = pr["result"]
         pid = pr["pointee_id"]
         pts = pr["points"]
         vmin, vmax = pr["vmin"], pr["vmax"]
+        first_event_id = next_id
+        next_id += len(pts) + 1            # +1 for the leading sentinel event
         xml = als.inject_envelope(
             xml, pr["track_index"], pid,
-            lambda eid, pts=pts, pid=pid, vmin=vmin, vmax=vmax: als.build_envelope_xml(
-                pid, pts, eid, value_min=vmin, value_max=vmax),
+            lambda eid, pts=pts, pid=pid, vmin=vmin, vmax=vmax, feid=first_event_id:
+                als.build_envelope_xml(pid, pts, eid, feid,
+                                       value_min=vmin, value_max=vmax),
             replace=pr["replace"])
         xml = als.patch_manual(xml, pr["manual_literal"], pr["first_value"],
                                value_min=vmin, value_max=vmax)
         r["ok"] = True
         r["points_written"] = len(pts)
 
+    xml = als.set_next_pointee_id(xml, next_id)
     write_als(path, xml)
 
     reloaded = False

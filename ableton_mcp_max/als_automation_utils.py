@@ -82,14 +82,21 @@ def points_to_events(points, value_min=None, value_max=None):
     return [(SENTINEL_TIME, first_value)] + norm
 
 
-def build_envelope_xml(pointee_id, points, env_id, value_min=None, value_max=None):
+def build_envelope_xml(pointee_id, points, env_id, first_event_id,
+                       value_min=None, value_max=None):
     """Render one <AutomationEnvelope> block for the given target param Id.
-    points: [{"time", "value"}]; times in beats, values native units."""
+    points: [{"time", "value"}]; times in beats, values native units.
+
+    Each <FloatEvent> is given a unique Id starting at first_event_id (Live 12
+    REJECTS the set as corrupt - "Not all list members have Ids" - if any
+    FloatEvent lacks an Id). Ids come from the document's <NextPointeeId> pool;
+    the caller must reserve len(points)+1 ids per envelope and bump the counter
+    (see next_pointee_id / set_next_pointee_id)."""
     events = points_to_events(points, value_min, value_max)
     ev_lines = "".join(
-        '\n\t\t\t\t\t\t\t\t\t<FloatEvent Time="%s" Value="%s" />'
-        % (_fmt(t), _fmt(v))
-        for t, v in events
+        '\n\t\t\t\t\t\t\t\t\t<FloatEvent Id="%d" Time="%s" Value="%s" />'
+        % (int(first_event_id) + i, _fmt(t), _fmt(v))
+        for i, (t, v) in enumerate(events)
     )
     return (
         '<AutomationEnvelope Id="%d">\n'
@@ -107,6 +114,30 @@ def build_envelope_xml(pointee_id, points, env_id, value_min=None, value_max=Non
         '\t\t\t\t\t\t</AutomationEnvelope>'
         % (int(env_id), str(pointee_id), ev_lines)
     )
+
+
+# --------------------------------------------------------------------------- #
+# global Id pool (<NextPointeeId>) - FloatEvent / target Ids draw from here
+# --------------------------------------------------------------------------- #
+_NEXT_POINTEE_RE = re.compile(r'(<NextPointeeId Value=")(\d+)("\s*/>)')
+
+
+def next_pointee_id(xml):
+    """Live's global next-id counter (<NextPointeeId>), the pool FloatEvent and
+    AutomationTarget Ids come from. Falls back to max document Id + 1 if the
+    header element is absent."""
+    m = _NEXT_POINTEE_RE.search(xml)
+    if m:
+        return int(m.group(2))
+    ids = [int(x) for x in re.findall(r'Id="(\d+)"', xml)]
+    return (max(ids) + 1) if ids else 1
+
+
+def set_next_pointee_id(xml, value):
+    """Write back the global next-id counter so Live won't later reuse an Id we
+    allocated. No-op (returns xml unchanged) if the element is absent."""
+    return _NEXT_POINTEE_RE.sub(
+        lambda m: "%s%d%s" % (m.group(1), int(value), m.group(3)), xml, count=1)
 
 
 # --------------------------------------------------------------------------- #

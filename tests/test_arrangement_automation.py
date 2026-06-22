@@ -63,7 +63,7 @@ def test_reload_set_new_then_open_then_ready(monkeypatch):
     assert any('keystroke "n"' in s for s in calls["osa"])
 
 
-def test_reload_set_answers_save_dialog(monkeypatch):
+def test_reload_set_proceeds_stop_audio_dialog(monkeypatch):
     calls = {"osa": []}
     state = {"wins": 1}
     monkeypatch.setattr(server, "_live_app_and_pid",
@@ -71,16 +71,19 @@ def test_reload_set_answers_save_dialog(monkeypatch):
     def _osa(s):
         calls["osa"].append(s)
         if 'keystroke "n"' in s:
-            state["wins"] = 2          # ⌘N popped a save dialog
-        if 'keystroke "d"' in s:
-            state["wins"] = 1
+            state["wins"] = 2          # ⌘N popped the stop-audio dialog
+        if "keystroke return" in s:
+            state["wins"] = 1          # Return = proceed -> dialog closes
     monkeypatch.setattr(server, "_osa", _osa)
     monkeypatch.setattr(server, "_live_window_count", lambda proc="Live": state["wins"])
     monkeypatch.setattr(server, "_open_file", lambda p: None)
     monkeypatch.setattr(server, "_live_window_title", lambda proc="Live": "s")
     res = server._reload_set("/tmp/s.als", "s", sleep=NOSLEEP, probe=lambda: True)
     assert res["reloaded"] is True
-    assert any('keystroke "d"' in s for s in calls["osa"])  # Don't Save
+    # the stop-audio dialog is proceeded with Return, NOT Cmd+D (which would
+    # mean Save on a save dialog and overwrite our patched .als).
+    assert any("keystroke return" in s for s in calls["osa"])
+    assert not any('keystroke "d"' in s for s in calls["osa"])
 
 
 def test_reload_set_times_out_when_title_never_matches(monkeypatch):
@@ -168,6 +171,10 @@ def test_arr_auto_impl_writes_envelope(monkeypatch):
     assert '<PointeeId Value="4242" />' in written["xml"]
     # the probed Manual is patched back to the first point value (0.2)
     assert '<Manual Value="0.2" />' in written["xml"]
+    # every FloatEvent must carry an Id (Live 12 rejects the set otherwise)
+    import re
+    fes = re.findall(r'<FloatEvent ([^>]*)/>', written["xml"])
+    assert fes and all('Id="' in attrs for attrs in fes)
 
 
 def test_arr_auto_impl_untitled_raises(monkeypatch):
