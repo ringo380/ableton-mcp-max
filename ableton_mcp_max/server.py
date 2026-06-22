@@ -10,8 +10,6 @@ import glob
 import math
 import time
 import subprocess
-import tempfile
-import shutil
 import platform
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
@@ -5699,14 +5697,33 @@ def _run_analysis(audio_path, timeout=120):
     return stem_utils.parse_analysis(proc.stdout.strip().splitlines()[-1])
 
 
-def _lay_stem_on_track(ableton, track_index, stem_name, sample_path):
-    """Load stem into session slot 0, warp off + name it, duplicate to
-    arrangement at bar 1, then delete the session staging clip.
+def _stem_uri(browser_folder, stem_filename, retries=12, delay=1.0):
+    """Browser uri for a just-written User Library stem file, or None.
+
+    Live's content index takes a few seconds to pick up a newly-written file,
+    so poll get_browser_items_at_path on the stem's SPECIFIC folder (fast, and
+    unambiguous - no deep name walk, no cross-song basename collision) until the
+    file appears or `retries` elapse. browser_folder is a get_browser_items_at_path
+    path like "user_library/Samples/Stems/htdemucs/<basename>".
+    """
+    for attempt in range(retries):
+        res = get_ableton_connection().send_command(
+            "get_browser_items_at_path", {"path": browser_folder})
+        items = res.get("items", []) if isinstance(res, dict) else []
+        for it in items:
+            if it.get("name") == stem_filename and it.get("uri"):
+                return it.get("uri")
+        if attempt < retries - 1:
+            time.sleep(delay)
+    return None
+
+
+def _lay_stem_on_track(ableton, track_index, stem_name, uri, sample_path):
+    """Load a resolved stem uri into session slot 0, warp off + name it,
+    duplicate to arrangement at bar 1, then delete the session staging clip.
 
     Returns dict {name, track_index, path, loaded}.
     """
-    local = _ensure_local(sample_path)
-    uri = _resolve_sample_uri(local, "samples")
     ableton.send_command("set_highlighted_clip_slot",
                          {"track_index": track_index, "scene_index": 0})
     res = ableton.send_command("load_browser_item", {
@@ -5714,7 +5731,7 @@ def _lay_stem_on_track(ableton, track_index, stem_name, sample_path):
     loaded = bool((res or {}).get("loaded", False))
     if not loaded:
         return {"name": stem_name, "track_index": track_index,
-                "path": local, "loaded": False}
+                "path": sample_path, "loaded": False}
     # Warp OFF + name on the SESSION clip; the arrangement copy inherits both.
     ableton.send_command("set_clip_property", {
         "track_index": track_index, "clip_index": 0,
@@ -5729,7 +5746,7 @@ def _lay_stem_on_track(ableton, track_index, stem_name, sample_path):
     ableton.send_command("delete_clip", {
         "track_index": track_index, "clip_index": 0})
     return {"name": stem_name, "track_index": track_index,
-            "path": local, "loaded": True}
+            "path": sample_path, "loaded": True}
 
 
 @mcp.tool()
@@ -5741,7 +5758,6 @@ def separate_stems_to_arrangement(
     detect_tempo: bool = True,
     detect_key: bool = True,
     device: str = "auto",
-    output_dir: str = None,
 ) -> str:
     """Split an audio file into stems and lay each onto its own Arrangement track.
 
@@ -5751,6 +5767,10 @@ def separate_stems_to_arrangement(
     stem at bar 1 of the Arrangement timeline (Warp OFF, so full-song stems stay
     phase-locked). Session view is used only as transient staging; the end state
     has empty session slots.
+
+    Stems are written under the Live User Library (Samples/Stems/<model>/<name>)
+    so Live's browser indexes them and they can be loaded; they persist there
+    (the Arrangement clips reference these files on disk).
 
     Prerequisites: the `demucs` CLI on PATH and (for tempo/key) librosa in brew
     Python. See the README "Stem separation" prerequisites; a clear error is
@@ -5764,7 +5784,6 @@ def separate_stems_to_arrangement(
       The CALLER must confirm with the user before passing fresh=True.
     - detect_tempo / detect_key: analyze the source and set tempo / song scale.
     - device: "auto" (mps on Apple Silicon, else cpu), "cpu", or "mps".
-    - output_dir: where Demucs writes stems (default: a temp dir).
 
     Returns JSON {ok, data:{audio, model, device, tempo, key, scale,
     tempo_detected, key_detected, fresh, stems:[{name, track_index, path,
@@ -5781,22 +5800,22 @@ def separate_stems_to_arrangement(
             return _err("Audio file not found: %s" % audio_path)
 
         resolved_device = stem_utils.resolve_device(device, platform.machine())
-        auto_out = output_dir is None
-        out_dir = output_dir or tempfile.mkdtemp(prefix="stems_")
+        # Write stems under the User Library so Live's browser indexes them.
+        out_dir = os.path.join(_user_library_dir(), "Samples", "Stems")
+        os.makedirs(out_dir, exist_ok=True)
 
         ok, msg = _run_demucs(local_src, model, out_dir, resolved_device)
         if not ok:
-            if auto_out:
-                shutil.rmtree(out_dir, ignore_errors=True)
             return _err(msg)
 
         basename = os.path.splitext(os.path.basename(local_src))[0]
         stem_paths = stem_utils.expected_stem_paths(out_dir, model, basename)
         missing = [p for _, p in stem_paths if not os.path.isfile(p)]
         if missing:
-            if auto_out:
-                shutil.rmtree(out_dir, ignore_errors=True)
             return _err("Demucs produced no output for: %s" % ", ".join(missing))
+
+        browser_folder = "user_library/Samples/Stems/%s/%s" % (
+            spec["demucs_model"], basename)
 
         tempo, key, scale = (None, None, None)
         if detect_tempo or detect_key:
@@ -5831,8 +5850,13 @@ def separate_stems_to_arrangement(
         stems_out = []
         for stem_name, path in stem_paths:
             ableton.send_command("create_audio_track", {"index": -1})
-            stems_out.append(
-                _lay_stem_on_track(ableton, next_index, stem_name, path))
+            uri = _stem_uri(browser_folder, os.path.basename(path))
+            if not uri:
+                stems_out.append({"name": stem_name, "track_index": next_index,
+                                  "path": path, "loaded": False})
+            else:
+                stems_out.append(
+                    _lay_stem_on_track(ableton, next_index, stem_name, uri, path))
             next_index += 1
 
         return _ok({
