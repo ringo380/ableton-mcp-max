@@ -1,11 +1,16 @@
 # ableton-mcp-max — Progress
 
-## Arrangement automation (#30) - CODE COMPLETE, LIVE-VERIFY PENDING (2026-06-22)
+## Arrangement automation (#30) - CORE LIVE-VERIFIED, fix landed (2026-06-22)
 Branch `feat/arrangement-automation`. New tool `set_arrangement_automation` (Composition,
 146 tools) writes Arrangement-timeline breakpoint envelopes via the `.als` probe backdoor.
-**Offline-complete + committed** (8e4494e impl+tests, 6c908a2 docs); 823 offline tests pass,
-server imports. **NOT yet live-verified** (needs a Claude Code restart to load the new
-working-tree tool, then run it against the open set via the AbletonDev server).
+**Core LIVE-VERIFIED on Live 12.4**: targeting works (macro pointee 22754, native Transpose
+22411), and Live loads + round-trips the injected envelope. **Critical bug found+fixed**:
+Live 12 rejects the set as corrupt unless every `<FloatEvent>` has an `Id` (allocated from
+`<NextPointeeId>`); the builder omitted them - offline well-formedness tests missed it. Also
+fixed `_reload_set` (answer the stop-audio dialog with Return, not Cmd+D) + path fallback.
+826 offline tests pass. Commits: 8e4494e impl, 6c908a2 docs, d15fff1 PROGRESS, + the fix.
+**REMAINING**: restart Claude Code -> run the FIXED tool reload=True (confirm reloaded:true),
+then ship v0.20.0. See [[issue30-arrangement-automation]] for full live findings.
 - **Mechanism:** per lane, set the target param to a unique sentinel via the LOM, read back
   the stored value, `save_set`, then `find_target_after_manual(xml, value)` locates the single
   matching `<Manual>` -> next `<AutomationTarget Id>` = PointeeId. Inject `<AutomationEnvelope>`
