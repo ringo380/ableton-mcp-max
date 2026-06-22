@@ -1,5 +1,25 @@
 # ableton-mcp-max — Progress
 
+## Save tools (#34) - v0.18.0, 144 tools (2026-06-21)
+Save the Live set from the MCP (the LOM has NO save API - `Song` exposes no
+file_path/save/is_modified). Driven through Live's File menu via System Events.
+Branch `feat/save-tools` (base `main` @07e6a24). PR/release pending.
+- **save_set(name=""):** empty name saves a TITLED set in place (File > Save Live Set;
+  no-op if clean); an Untitled set requires a name; a non-empty name Saves-As.
+- **save_set_as(name):** Save-As under a new name; reports a best-effort resolved `path`
+  by searching common save folders (`_SAVE_SEARCH_ROOTS`).
+- **Scope (deliberate):** the tools control the set NAME, not the directory. Ableton's
+  Save-As panel saves to its LAST-USED location wrapped in a `<name> Project/` folder.
+  Arbitrary-directory navigation is NOT exposed - the panel has no AX-pressable Save
+  button, typing `/` hijacks Go-to-Folder (it once saved a garbage-named set), and the
+  Go-to-Folder confirm is unreliable. Opening the panel uses a focus-independent File-menu
+  click; the save itself needs Live frontmost for ~2-3s (keystroke confirm).
+- **restart_live unchanged** (the Untitled save_path idea was dropped as unshippable).
+- Pure logic in `save_utils.py` (`clean_set_name` rejects `/`+`:`, `is_untitled_title`).
+- **LIVE-VERIFIED via the MCP tool on Live 12:** save_set_as("mcp_verify") -> saved + file
+  on disk + path; save_set() in-place -> saved, no panel; save_set_as("bad/name") -> clean
+  error. 782 offline tests pass.
+
 ## Clipping detection (#28) - SHIPPED v0.17.0, 142 tools (2026-06-21)
 Flag any track/return/master peaking at/above 0 dBFS. PR #37 squash-merged (@08c3dfd), release v0.17.0
 published, marketplace `ableton` ref bumped v0.16.0->v0.17.0 + pushed. Release chain verified

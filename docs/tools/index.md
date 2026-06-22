@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **142 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **144 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -95,9 +95,9 @@ Collapse several mutations into a single atomic Live task / socket round-trip.
 
 ## [Host Lifecycle](./host.html)
 
-Gracefully quit and relaunch Ableton Live (no crash-recovery prompt) for an automated bounce after a Remote Script change.
+Save the set and gracefully quit/relaunch Ableton Live (no crash-recovery prompt) for an automated bounce after a Remote Script change.
 
-`restart_live`
+`restart_live`, `save_set`, `save_set_as`
 
 ## [Analysis](./analysis.html)
 
