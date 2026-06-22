@@ -524,6 +524,10 @@ class AbletonMCP(ControlSurface):
             result = self._set_groove_amount(params.get("value", 0.0))
         elif command_type == "assign_groove_to_clip":
             result = self._assign_groove_to_clip(params)
+        elif command_type == "set_song_scale":
+            root_note = params.get("root_note", 0)
+            scale_name = params.get("scale_name", "Major")
+            result = self._set_song_scale(root_note, scale_name)
         elif command_type == "set_swing_amount":
             result = self._set_swing_amount(params.get("value", 0.0))
         elif command_type == "set_clip_trigger_quantization":
@@ -685,7 +689,7 @@ class AbletonMCP(ControlSurface):
                                  "capture_midi", "capture_and_insert_scene",
                                  "trigger_session_record", "stop_all_clips",
                                  "tap_tempo", "select_drum_pad",
-                                 "assign_groove_to_clip"]:
+                                 "assign_groove_to_clip", "set_song_scale"]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
                 
@@ -865,6 +869,19 @@ class AbletonMCP(ControlSurface):
         except Exception:
             pass
         return result
+
+    def _set_song_scale(self, root_note, scale_name):
+        """Set the set's global key/scale (the control-bar "Scale" display).
+        root_note is 0-11 (C=0..B=11); scale_name is a Live scale display name
+        (e.g. 'Major', 'Minor', 'Dorian'). scale_intervals is derived by Live
+        from the name and is read-only. The server resolves/validates both
+        values, so just assign. The write lags its own read-back, so the
+        returned dict echoes the requested values - verify with a follow-up
+        get_song_scale."""
+        song = self._song
+        song.root_note = int(root_note) % 12
+        song.scale_name = scale_name
+        return {"root_note": int(root_note) % 12, "scale_name": scale_name}
 
     def _get_session_info(self):
         """Get information about the current session"""

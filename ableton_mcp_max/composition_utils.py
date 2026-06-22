@@ -84,6 +84,62 @@ def resolve_key_scale(key=None, scale=None, song_scale=None):
     return root, intervals
 
 
+# Live's Song.scale_name vocabulary (the "Scale" display in the control bar).
+# These exact display strings are what Live accepts/recalls; scale_intervals is
+# derived from the name by Live and is read-only.
+LIVE_SCALE_NAMES = [
+    "Major", "Minor", "Dorian", "Mixolydian", "Lydian", "Phrygian", "Locrian",
+    "Whole Tone", "Half-whole Dim.", "Whole-half Dim.", "Minor Blues",
+    "Minor Pentatonic", "Major Pentatonic", "Harmonic Minor", "Harmonic Major",
+    "Dorian #4", "Phrygian Dominant", "Melodic Minor", "Lydian Augmented",
+    "Lydian Dominant", "Super Locrian", "Bhairav", "Hungarian Minor",
+    "8-Tone Spanish", "Hirajoshi", "In-Sen", "Iwato", "Kumoi",
+    "Pelog Selisir", "Pelog Tembung", "Messaien 3", "Messaien 4", "Messaien 5",
+    "Messaien 6", "Messaien 7",
+]
+
+
+def _norm_scale_key(s):
+    """Collapse a scale name to a comparison key: alphanumeric, lowercased."""
+    return re.sub(r"[^a-z0-9]", "", str(s).lower())
+
+
+# normalized form -> canonical Live display name. Seed with the display names
+# themselves, then add this project's composition aliases (the SCALE_INTERVALS
+# vocabulary and common synonyms) so set_song_scale accepts the same scale
+# words the generators use.
+_LIVE_SCALE_LOOKUP = {_norm_scale_key(n): n for n in LIVE_SCALE_NAMES}
+_LIVE_SCALE_LOOKUP.update({
+    _norm_scale_key(a): canon for a, canon in {
+        "min": "Minor", "aeolian": "Minor", "natural_minor": "Minor",
+        "maj": "Major", "ionian": "Major",
+        "blues": "Minor Blues",
+        "minor_pent": "Minor Pentatonic", "pent_minor": "Minor Pentatonic",
+        "major_pent": "Major Pentatonic", "pentatonic": "Major Pentatonic",
+        "harmonic_major": "Harmonic Major",
+    }.items()
+})
+
+
+def resolve_live_scale_name(scale):
+    """Map a scale name (Live display name or a composition alias) to Live's
+    exact Song.scale_name display string. Raises ValueError if unknown."""
+    key = _norm_scale_key(scale)
+    name = _LIVE_SCALE_LOOKUP.get(key)
+    if name is None:
+        raise ValueError(
+            "Unknown scale %r; use a Live scale name: %s"
+            % (scale, ", ".join(LIVE_SCALE_NAMES)))
+    return name
+
+
+def resolve_song_scale(key, scale):
+    """Resolve (root_note int 0-11, Live scale_name) for set_song_scale.
+    `key` is a note name (C, C#, Db, ... B); `scale` is a Live scale name or
+    composition alias."""
+    return parse_key(key), resolve_live_scale_name(scale)
+
+
 def _octave_base(octave):
     """MIDI pitch of C in the given Ableton-labelled octave (C3 = 60)."""
     return 12 * (int(octave) + 2)

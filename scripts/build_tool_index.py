@@ -111,6 +111,7 @@ GROUPS = [
         "quantize_clip_to_scale",
         "arpeggiate_clip",
         "harmonize_clip",
+        "set_song_scale",
     ]),
     ("Remediation", [
         "adjust_track_gain",

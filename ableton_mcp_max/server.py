@@ -275,7 +275,7 @@ MUTATING_COMMANDS = frozenset({
     "set_selected_scene", "set_detail_clip", "set_highlighted_clip_slot",
     "set_track_fold", "capture_midi", "capture_and_insert_scene",
     "trigger_session_record", "stop_all_clips", "tap_tempo",
-    "select_drum_pad", "assign_groove_to_clip",
+    "select_drum_pad", "assign_groove_to_clip", "set_song_scale",
 })
 
 # Subset of MUTATING_COMMANDS whose Live write settles ASYNCHRONOUSLY, so a
@@ -292,7 +292,7 @@ _SLOW_SETTLE_COMMANDS = frozenset({
     "undo", "redo", "create_midi_track", "create_audio_track",
     "create_return_track", "delete_track", "delete_return_track",
     "duplicate_track", "create_scene", "delete_scene", "duplicate_scene",
-    "capture_and_insert_scene",
+    "capture_and_insert_scene", "set_song_scale",
 })
 
 # Client read timeouts. The mutation timeout MUST stay strictly greater than the
@@ -3054,6 +3054,38 @@ def quantize_clip_to_scale(
     except Exception as e:
         logger.error("Error quantizing clip to scale: %s", e)
         return _err("Error quantizing clip to scale: %s" % e)
+
+
+@mcp.tool()
+def set_song_scale(ctx: Context, key: str, scale: str = "major") -> str:
+    """Set the song's global scale - the "Scale" indicator in Live's control
+    bar (root note + scale name). Aligns Live's scale-aware features (Scale
+    highlight, scale-snapping MIDI tools) to the intended key. This does NOT
+    move any existing notes - use quantize_clip_to_scale for that.
+
+    Parameters:
+    - key: root note name (C, C#, Db, D, ... B)
+    - scale: a Live scale name or alias (e.g. major, minor, Dorian, Minor Blues,
+      Harmonic Minor, Whole Tone); defaults to major
+
+    Note: Song.root_note/scale_name lag their own read-back, so the confirmation
+    is taken from a separate follow-up read of the song scale.
+    """
+    try:
+        root, scale_name = comp.resolve_song_scale(key, scale)
+        ableton = get_ableton_connection()
+        ableton.send_command(
+            "set_song_scale", {"root_note": root, "scale_name": scale_name})
+        # Song-property writes lag their own read-back; verify via a separate read.
+        confirmed = _song_scale() or {}
+        return _ok({
+            "root_note": confirmed.get("root_note", root),
+            "scale_name": confirmed.get("scale_name", scale_name),
+            "requested": {"root_note": root, "scale_name": scale_name},
+        })
+    except Exception as e:
+        logger.error("Error setting song scale: %s", e)
+        return _err("Error setting song scale: %s" % e)
 
 
 @mcp.tool()

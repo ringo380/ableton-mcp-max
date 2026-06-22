@@ -236,3 +236,22 @@ Parameters:
 - degrees: e.g. [2] adds a note two scale-steps up (a diatonic third)
 - key/scale: optional; if both omitted, the set's key/scale is read
 
+## set_song_scale
+
+```python
+set_song_scale(key: str, scale: str = 'major')
+```
+
+Set the song's global scale - the "Scale" indicator in Live's control
+bar (root note + scale name). Aligns Live's scale-aware features (Scale
+highlight, scale-snapping MIDI tools) to the intended key. This does NOT
+move any existing notes - use quantize_clip_to_scale for that.
+
+Parameters:
+- key: root note name (C, C#, Db, D, ... B)
+- scale: a Live scale name or alias (e.g. major, minor, Dorian, Minor Blues,
+  Harmonic Minor, Whole Tone); defaults to major
+
+Note: Song.root_note/scale_name lag their own read-back, so the confirmation
+is taken from a separate follow-up read of the song scale.
+

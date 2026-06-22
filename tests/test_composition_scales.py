@@ -2,6 +2,7 @@ import pytest
 from ableton_mcp_max.composition_utils import (
     parse_key, parse_scale, resolve_key_scale, scale_pitches,
     degree_to_pitch, snap_to_scale, SCALE_INTERVALS,
+    resolve_live_scale_name, resolve_song_scale, LIVE_SCALE_NAMES,
 )
 
 
@@ -102,3 +103,44 @@ def test_resolve_scale_only_defaults_root_c():
     root, intervals = resolve_key_scale(key=None, scale="dorian", song_scale=None)
     assert root == 0
     assert intervals == [0, 2, 3, 5, 7, 9, 10]
+
+
+def test_resolve_live_scale_name_display_names_pass_through():
+    assert resolve_live_scale_name("Major") == "Major"
+    assert resolve_live_scale_name("Minor Blues") == "Minor Blues"
+    assert resolve_live_scale_name("Harmonic Minor") == "Harmonic Minor"
+    assert resolve_live_scale_name("Dorian #4") == "Dorian #4"
+    assert resolve_live_scale_name("8-Tone Spanish") == "8-Tone Spanish"
+
+
+def test_resolve_live_scale_name_aliases_and_normalization():
+    # composition vocabulary + synonyms map to Live's display names
+    assert resolve_live_scale_name("minor") == "Minor"
+    assert resolve_live_scale_name("natural_minor") == "Minor"
+    assert resolve_live_scale_name("aeolian") == "Minor"
+    assert resolve_live_scale_name("ionian") == "Major"
+    assert resolve_live_scale_name("blues") == "Minor Blues"
+    assert resolve_live_scale_name("minor_pent") == "Minor Pentatonic"
+    assert resolve_live_scale_name("pentatonic") == "Major Pentatonic"
+    # punctuation / case / separators are ignored
+    assert resolve_live_scale_name("whole tone") == "Whole Tone"
+    assert resolve_live_scale_name("HALF-WHOLE DIM.") == "Half-whole Dim."
+
+
+def test_resolve_live_scale_name_unknown_raises():
+    with pytest.raises(ValueError):
+        resolve_live_scale_name("chromatic")  # no Live scale equivalent
+    with pytest.raises(ValueError):
+        resolve_live_scale_name("bogus")
+
+
+def test_resolve_song_scale_returns_root_and_live_name():
+    assert resolve_song_scale("A", "minor") == (9, "Minor")
+    assert resolve_song_scale("c#", "Dorian") == (1, "Dorian")
+    assert resolve_song_scale("Eb", "major") == (3, "Major")
+
+
+def test_live_scale_names_self_resolve():
+    # every advertised Live name must resolve back to itself
+    for n in LIVE_SCALE_NAMES:
+        assert resolve_live_scale_name(n) == n
