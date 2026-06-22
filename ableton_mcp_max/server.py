@@ -5800,7 +5800,13 @@ def separate_stems_to_arrangement(
 
         if fresh:
             try:
-                ableton.send_command("restart_live", {})
+                restart_result = _restart_live_impl(save="discard")
+                if not restart_result.get("quit"):
+                    return _err(
+                        "fresh=True could not bounce Live to a blank set: %s. "
+                        "Save / name the open set by hand first (save_set_as), "
+                        "then retry." % restart_result.get(
+                            "error", "Live did not quit cleanly"))
                 ableton = get_ableton_connection()
             except Exception as e:
                 return _err("fresh=True could not reach a blank set (%s). Save / "
