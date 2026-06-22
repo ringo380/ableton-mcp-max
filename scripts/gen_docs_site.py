@@ -107,6 +107,7 @@ CATEGORIES = [
         "arpeggiate_clip",
         "harmonize_clip",
         "set_song_scale",
+        "set_arrangement_automation",
     ]),
     ("remediation", "Remediation", "Translate analysis findings into applied mix corrections: shift faders by dB, auto-stage a track to a target LUFS via its MCP Tap, balance all tapped tracks in one coherent pass, and execute a structured correction plan from analyze_set findings.", [
         "adjust_track_gain",

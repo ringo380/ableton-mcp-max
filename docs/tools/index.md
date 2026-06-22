@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **145 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **146 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -115,7 +115,7 @@ Per-track and master loudness/true-peak/spectrum/stereo from the MCP Tap Max-for
 
 Generate musical material into clip slots (chords, bass, melody, drums) and transform existing clips (humanize, swing, quantize-to-scale, arpeggiate, harmonize). Key/scale read from the set when not given.
 
-`generate_chord_progression`, `generate_bassline`, `generate_melody`, `generate_drum_pattern`, `humanize_clip`, `swing_clip`, `quantize_clip_to_scale`, `arpeggiate_clip`, `harmonize_clip`, `set_song_scale`
+`generate_chord_progression`, `generate_bassline`, `generate_melody`, `generate_drum_pattern`, `humanize_clip`, `swing_clip`, `quantize_clip_to_scale`, `arpeggiate_clip`, `harmonize_clip`, `set_song_scale`, `set_arrangement_automation`
 
 ## [Remediation](./remediation.html)
 

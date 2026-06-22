@@ -112,6 +112,7 @@ GROUPS = [
         "arpeggiate_clip",
         "harmonize_clip",
         "set_song_scale",
+        "set_arrangement_automation",
     ]),
     ("Remediation", [
         "adjust_track_gain",

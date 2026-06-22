@@ -255,3 +255,43 @@ Parameters:
 Note: Song.root_note/scale_name lag their own read-back, so the confirmation
 is taken from a separate follow-up read of the song scale.
 
+## set_arrangement_automation
+
+```python
+set_arrangement_automation(lanes: List[Dict[str, Any]], reload: bool = True)
+```
+
+Write Arrangement-timeline automation (device-parameter / rack-macro
+breakpoint envelopes bound to song position) by patching the set's .als file
+and reloading Live in place. This is the ONLY way to author arrangement
+automation — the LOM cannot (clip envelopes are session-only).
+
+The set MUST be saved to a real file first (an Untitled set errors — use
+save_set_as). Live is briefly focused (System Events) for the in-place
+reload, and the open set is reloaded from disk (~5s); one MCP call right
+after may transiently fail and self-heal.
+
+lanes: list of automation lanes, each a dict:
+  - track_index (int): the OWNING track (regular Midi/Audio, document order).
+  - device_index (int, default 0): device on that track.
+  - parameter (int|str): parameter index or name (case-insensitive). Macros
+    are addressed by their parameter name ("Macro 1", etc.).
+  - track_type (str, default 'regular'): 'regular' | 'return' | 'master'.
+  - points (list[{time, value}]): breakpoints. time in BEATS; value in the
+    parameter's NATIVE units (clamped to its range). >=1 required; sorted
+    automatically; duplicate times = a vertical step.
+  - replace (bool, default True): replace any existing arrangement envelope
+    for this parameter (idempotent rewrites).
+reload: reload the set in place when done (default True). False leaves the
+  patched envelope on disk only (reload Live yourself to see it).
+
+Targeting uses a VALUE PROBE: each param is briefly set to a unique sentinel,
+the set is saved, and the matching value in the .als locates the parameter —
+so it works for macros, native params, nested-in-rack params, and AU/VST
+plugins alike. Quantized (stepped) params are NOT supported in v1.
+
+Returns JSON {ok, data:{set_path, reloaded, lanes:[{track_index,
+device_index, parameter, pointee_id?, points_written?, ok, error?}]}}.
+A lane that can't be resolved is reported ok:false and skipped; siblings
+still apply.
+
