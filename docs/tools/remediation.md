@@ -54,6 +54,15 @@ gain_stage_track(
 Play the set, measure the track's LUFS via its MCP Tap, and iteratively
 converge the fader to target_db.
 
+IMPORTANT - on a regular/return track the MCP Tap is PRE-FADER (it sits in the
+device chain, ahead of the mixer fader), so moving the fader does NOT change
+what the tap reads: the loop measures the instrument + device-chain level, not
+the post-fader output, and re-measuring will show the same value (it may report
+not-converged). Use this as an instrument-level gain-stage (the first-pass
+correction is still a valid trim toward target), or run it on the MASTER
+(track_type='master', the post-fader program output) for true loudness
+convergence.
+
 Requires an MCP Tap device deployed on the target track (via deploy_taps).
 Plays the arrangement for window_s seconds each iteration, integrates the
 buffered tap blocks into LUFS, computes the correction, and applies it via
@@ -88,6 +97,15 @@ then adjusts each track's fader so its integrated LUFS matches the
 reference track (plus any per-track offset_db you specify). Tracks within
 1 dB of their target are skipped. All corrections are applied individually
 (not batched) so each adjust_track_gain call validates its own target.
+
+IMPORTANT - per-track taps are PRE-FADER (instrument + device-chain level,
+ahead of the mixer fader). The correction math is still right for OUTPUT
+balance: it adds each track's pre-fader gap onto its fader so output =
+pre_fader + fader matches the reference - but ONLY if the reference track's
+fader is left as the anchor, and the result CANNOT be re-verified by
+re-measuring the same per-track taps (their readings are invariant to the
+fader). To confirm the balance landed, deploy a master tap and read the
+post-fader program output (measure_mix data.master).
 
 Parameters:
 - reference_track_index: track whose LUFS is the balance baseline

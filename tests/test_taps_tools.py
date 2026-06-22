@@ -159,6 +159,45 @@ def test_measure_mix_resets_stale_buffer_before_capture(monkeypatch):
     assert ck["signal"]["block_count"] == 1
 
 
+def test_measure_mix_separates_master_from_per_track(monkeypatch):
+    # The master tap (index -1) is post-fader: it must appear under data.master,
+    # NOT in data.tracks, and must NOT skew the cross-track findings.
+    reg = server._tap_registry
+    reg.state.reset()
+    reg.state._by_conn.clear()
+    reg.state._identity.clear()
+    reg.feed("ck", '{"type":"hello","track":{"uuid":"ck","name":"Kick","index":0,"kind":"regular"},"sample_rate":48000}\n')
+    reg.feed("ms", '{"type":"hello","track":{"uuid":"ms","name":"Master","index":-1,"kind":"master"},"sample_rate":48000}\n')
+    blk = lambda: '{"type":"block","data":{"ms_k_l":0.02,"ms_k_r":0.02,"peak":0.5,"rms":0.2,"bands":[1,0,0,0,0,0,0,0],"mid":1,"side":0}}\n'
+
+    def fake_play(*a, **k):
+        for _ in range(40):
+            reg.feed("ck", blk()); reg.feed("ms", blk())
+    monkeypatch.setattr(server, "_run_measure_playback", fake_play)
+
+    out = json.loads(server.measure_mix(None, window_s=0))
+    assert out["ok"] is True
+    track_indices = {t["index"] for t in out["data"]["tracks"]}
+    assert track_indices == {0}                       # master excluded from tracks
+    assert out["data"]["master"] is not None
+    assert out["data"]["master"]["index"] == -1
+    assert out["data"]["master"]["signal"]["block_count"] == 40
+    # balance compares per-track only -> a single instrument has no balance gap
+    assert out["data"]["findings"]["balance"] == []
+
+
+def test_measure_mix_master_null_when_no_master_tap(monkeypatch):
+    reg = server._tap_registry
+    reg.state.reset()
+    reg.state._by_conn.clear()
+    reg.state._identity.clear()
+    reg.feed("ck", '{"type":"hello","track":{"uuid":"ck","name":"Kick","index":0,"kind":"regular"},"sample_rate":48000}\n')
+    monkeypatch.setattr(server, "_run_measure_playback", lambda *a, **k: None)
+    out = json.loads(server.measure_mix(None, window_s=0))
+    assert out["ok"] is True
+    assert out["data"]["master"] is None
+
+
 def test_measure_mix_no_taps_is_ok_empty(monkeypatch):
     server._tap_registry.state.reset()
     monkeypatch.setattr(server, "_run_measure_playback", lambda *a, **k: None)
@@ -169,27 +208,51 @@ def test_measure_mix_no_taps_is_ok_empty(monkeypatch):
 
 # --- deploy_taps / remove_taps (Live calls stubbed via the named seams) ---
 
-def test_deploy_taps_targets_audio_and_instrument_tracks(monkeypatch):
+def test_deploy_taps_targets_audio_and_instrument_tracks_plus_master(monkeypatch):
+    # Auto-target now also drops a master tap by default (include_master=True).
     calls = []
-    monkeypatch.setattr(server, "_load_tap_on_track", lambda i: calls.append(i) or "MCP Tap")
+    monkeypatch.setattr(server, "_load_tap_on_track",
+                        lambda i, tt="regular": calls.append((i, tt)) or "MCP Tap")
     monkeypatch.setattr(server, "_audio_instrument_track_indices", lambda: [0, 2, 3])
     out = json.loads(server.deploy_taps(None))
     assert out["ok"] is True
-    assert calls == [0, 2, 3]
-    assert [d["track_index"] for d in out["data"]["deployed"]] == [0, 2, 3]
+    assert calls == [(0, "regular"), (2, "regular"), (3, "regular"), (-1, "master")]
+    assert [d["track_index"] for d in out["data"]["deployed"]] == [0, 2, 3, -1]
     assert out["data"]["failed"] == []
 
 
-def test_deploy_taps_explicit_indices(monkeypatch):
+def test_deploy_taps_include_master_false_skips_master(monkeypatch):
     calls = []
-    monkeypatch.setattr(server, "_load_tap_on_track", lambda i: calls.append(i) or "MCP Tap")
+    monkeypatch.setattr(server, "_load_tap_on_track",
+                        lambda i, tt="regular": calls.append((i, tt)) or "MCP Tap")
+    monkeypatch.setattr(server, "_audio_instrument_track_indices", lambda: [0, 2])
+    out = json.loads(server.deploy_taps(None, include_master=False))
+    assert out["ok"] is True
+    assert calls == [(0, "regular"), (2, "regular")]
+    assert -1 not in [d["track_index"] for d in out["data"]["deployed"]]
+
+
+def test_deploy_taps_master_only_via_explicit_minus_one(monkeypatch):
+    calls = []
+    monkeypatch.setattr(server, "_load_tap_on_track",
+                        lambda i, tt="regular": calls.append((i, tt)) or "MCP Tap")
+    out = json.loads(server.deploy_taps(None, track_indices=[-1]))
+    assert out["ok"] is True
+    assert calls == [(-1, "master")]
+
+
+def test_deploy_taps_explicit_indices_ignore_include_master(monkeypatch):
+    # Explicit track_indices is used verbatim; include_master does not append -1.
+    calls = []
+    monkeypatch.setattr(server, "_load_tap_on_track",
+                        lambda i, tt="regular": calls.append((i, tt)) or "MCP Tap")
     out = json.loads(server.deploy_taps(None, track_indices=[1]))
     assert out["ok"] is True
-    assert calls == [1]
+    assert calls == [(1, "regular")]
 
 
 def test_deploy_taps_falls_back_to_manual_when_all_fail(monkeypatch):
-    def boom(i):
+    def boom(i, tt="regular"):
         raise RuntimeError("not in browser")
     monkeypatch.setattr(server, "_load_tap_on_track", boom)
     out = json.loads(server.deploy_taps(None, track_indices=[0, 1]))
@@ -205,7 +268,7 @@ def test_deploy_taps_confirms_via_registry_on_lost_reply(monkeypatch):
     reg = server._tap_registry
     reg.state.reset()
 
-    def slow_boom(i):
+    def slow_boom(i, tt="regular"):
         reg.feed("late", '{"type":"hello","track":{"uuid":"u-late","name":"X","index":0,"kind":"midi"}}\n')
         raise Exception("Communication error with Ableton: No data received")
 
@@ -223,7 +286,7 @@ def test_deploy_taps_timeout_with_no_connection_still_fails(monkeypatch):
     server._tap_registry.state.reset()
     monkeypatch.setattr(server, "TAP_CONFIRM_ATTEMPTS", 1)  # don't sleep in tests
 
-    def boom(i):
+    def boom(i, tt="regular"):
         raise Exception("Communication error with Ableton: No data received")
 
     monkeypatch.setattr(server, "_load_tap_on_track", boom)
@@ -240,7 +303,7 @@ def test_deploy_taps_does_not_false_confirm_on_preexisting_tap(monkeypatch):
     reg.feed("old", '{"type":"hello","track":{"uuid":"u-old","name":"Old","index":0,"kind":"midi"}}\n')
     monkeypatch.setattr(server, "TAP_CONFIRM_ATTEMPTS", 1)
 
-    def boom(i):
+    def boom(i, tt="regular"):
         raise Exception("Communication error with Ableton: No data received")
 
     monkeypatch.setattr(server, "_load_tap_on_track", boom)
@@ -255,7 +318,7 @@ def test_deploy_taps_non_timeout_error_fails_fast_without_polling(monkeypatch):
     monkeypatch.setattr(server, "_confirm_tap_via_registry",
                         lambda *a, **k: polled.append(True))
 
-    def boom(i):
+    def boom(i, tt="regular"):
         raise RuntimeError("MCP Tap device has no loadable URI")
 
     monkeypatch.setattr(server, "_load_tap_on_track", boom)
@@ -265,15 +328,29 @@ def test_deploy_taps_non_timeout_error_fails_fast_without_polling(monkeypatch):
 
 
 def test_remove_taps_deletes_matched_devices(monkeypatch):
-    found = [(0, 1), (2, 0)]
+    found = [("regular", 0, 1), ("regular", 2, 0)]
     monkeypatch.setattr(server, "_find_taps", lambda: list(found))
     deleted = []
     monkeypatch.setattr(server, "_delete_device_raw",
-                        lambda ti, di: deleted.append((ti, di)))
+                        lambda tt, ti, di: deleted.append((tt, ti, di)))
     out = json.loads(server.remove_taps(None))
     assert out["ok"] is True
     assert set(deleted) == set(found)
     assert out["data"]["removed_count"] == 2
+
+
+def test_remove_taps_deletes_master_tap(monkeypatch):
+    # A tap on the master bus is found + deleted via track_type='master'.
+    found = [("regular", 0, 0), ("master", 0, 1)]
+    monkeypatch.setattr(server, "_find_taps", lambda: list(found))
+    deleted = []
+    monkeypatch.setattr(server, "_delete_device_raw",
+                        lambda tt, ti, di: deleted.append((tt, ti, di)))
+    out = json.loads(server.remove_taps(None))
+    assert out["ok"] is True
+    assert ("master", 0, 1) in deleted
+    types = {r["track_type"] for r in out["data"]["removed"]}
+    assert "master" in types
 
 
 def test_remove_taps_none_found_is_ok(monkeypatch):

@@ -1,5 +1,29 @@
 from ableton_mcp_max.masking_utils import (
-    masking_score, loudness_balance, headroom_flags, stereo_flags)
+    masking_score, loudness_balance, headroom_flags, stereo_flags,
+    partition_master)
+
+
+def test_partition_master_splits_index_minus_one():
+    sigs = [{"name": "Kick", "index": 0}, {"name": "Master", "index": -1},
+            {"name": "Bass", "index": 1}]
+    per_track, master = partition_master(sigs)
+    assert [s["index"] for s in per_track] == [0, 1]
+    assert master is not None and master["index"] == -1
+
+
+def test_partition_master_none_when_no_master():
+    sigs = [{"name": "Kick", "index": 0}, {"name": "Bass", "index": 1}]
+    per_track, master = partition_master(sigs)
+    assert len(per_track) == 2
+    assert master is None
+
+
+def test_partition_master_first_wins_when_duplicate():
+    sigs = [{"name": "M1", "index": -1}, {"name": "M2", "index": -1},
+            {"name": "Kick", "index": 0}]
+    per_track, master = partition_master(sigs)
+    assert master["name"] == "M1"
+    assert [s["index"] for s in per_track] == [0]
 
 def test_masking_high_when_two_tracks_share_a_loud_band():
     a = {"name":"Kick","bands":[1,0,0,0,0,0,0,0]}

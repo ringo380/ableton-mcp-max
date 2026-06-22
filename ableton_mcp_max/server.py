@@ -117,6 +117,7 @@ from ableton_mcp_max.masking_utils import (
     stereo_flags,
     build_mix_findings,
     enrich_names,
+    partition_master,
 )
 from ableton_mcp_max.sample_utils import (
     classify_sample,
@@ -790,9 +791,14 @@ def analyze_set(ctx: Context, focus: str = "all", measure: bool = False,
                     name_by_index[-1] = "Master"
                     tracks_out, sigs = _measure_pass(
                         measure_window_s, name_by_index=name_by_index)
-                    mix_findings = build_mix_findings(sigs, rules)
+                    # Per-track taps are pre-fader; the master tap is post-fader.
+                    # Cross-track mix findings compare instruments only (the
+                    # master would skew balance/masking); clipping still uses all.
+                    per_track, master_sig = partition_master(sigs)
+                    mix_findings = build_mix_findings(per_track, rules)
                     result["mix_signal"] = {"window_s": measure_window_s,
                                             "tracks": tracks_out,
+                                            "master": master_sig,
                                             "findings": mix_findings}
                     promoted |= {f["id"] for f in mix_findings}
                     if clip_rule is not None:
@@ -1132,26 +1138,42 @@ def measure_mix(ctx: Context, window_s: float = 15.0, region: str = None) -> str
     spectrum and stereo width/correlation). region is reserved for a future
     arrangement-window capture.
 
-    Returns JSON {ok, data:{window_s, tracks, findings}}:
-    - tracks: [{name, index, kind, signal:{...}}] one per connected tap.
-    - findings: cross-track analysis from masking_utils -
-      masking (pairwise spectral overlap), balance (tracks sitting too far below
-      the loudest), headroom (near-clip / over-compressed), stereo (mono-compat
-      risk). Each is a (possibly empty) list.
+    IMPORTANT - per-track taps are PRE-FADER: the MCP Tap is an audio-effect in
+    the track's device chain and Ableton's mixer fader sits AFTER the device
+    chain, so each per-track signal reflects the instrument + device-chain output,
+    NOT the post-fader level. A fader move does not change its track's reading.
+    The only post-fader measurement point is the master (or a return), so the
+    master tap's signal (data.master) is the authoritative balance/loudness
+    reference. Deploy one with deploy_taps (it auto-adds a master tap by default).
 
-    With no taps connected this still returns ok with empty tracks + empty
-    findings (not an error). Track names blank-reported by the device are
-    backfilled from the LOM track index.
+    Returns JSON {ok, data:{window_s, tracks, master, findings}}:
+    - tracks: [{name, index, kind, signal:{...}}] one per connected PER-TRACK tap
+      (the master tap is excluded here and reported under `master`).
+    - master: the master tap's {name, index, kind, signal} (post-fader program
+      output), or null when no master tap is connected.
+    - findings: cross-track analysis from masking_utils over the per-track signals
+      - masking (pairwise spectral overlap), balance (tracks sitting too far below
+      the loudest), headroom (near-clip / over-compressed), stereo (mono-compat
+      risk). Each is a (possibly empty) list. The master is NOT compared against
+      instruments here (it would skew balance/masking).
+
+    With no taps connected this still returns ok with empty tracks, null master,
+    and empty findings (not an error). Track names blank-reported by the device
+    are backfilled from the LOM track index.
     """
     name_by_index = _track_name_map()
     tracks_out, sigs = _measure_pass(window_s, region, name_by_index)
+    per_track, master_sig = partition_master(sigs)
+    master_entry = next((t for t in tracks_out if t.get("index") == -1), None)
+    per_track_out = [t for t in tracks_out if t.get("index") != -1]
     findings = {
-        "masking": masking_score(sigs),
-        "balance": loudness_balance(sigs),
-        "headroom": headroom_flags(sigs),
-        "stereo": stereo_flags(sigs),
+        "masking": masking_score(per_track),
+        "balance": loudness_balance(per_track),
+        "headroom": headroom_flags(per_track),
+        "stereo": stereo_flags(per_track),
     }
-    return _ok({"window_s": window_s, "tracks": tracks_out, "findings": findings})
+    return _ok({"window_s": window_s, "tracks": per_track_out,
+                "master": master_entry, "findings": findings})
 
 
 # Name the tap device carries when loaded in Live (the .amxd is "MCP Tap.amxd").
@@ -1180,12 +1202,14 @@ def _audio_instrument_track_indices():
     return out
 
 
-def _load_tap_on_track(track_index):
+def _load_tap_on_track(track_index, track_type="regular"):
     """Browser-load the User-Library MCP Tap device onto a track.
 
     Resolves the device in the browser via get_browser_presets +
-    match_recursive_preset, then load_browser_item. Raises on any failure so
-    deploy_taps can record it (and fall back to a manual-drag hint).
+    match_recursive_preset, then load_browser_item. track_type 'master' loads the
+    tap onto the master bus for a post-fader program measurement (track_index is
+    ignored by the handler for master). Raises on any failure so deploy_taps can
+    record it (and fall back to a manual-drag hint).
     """
     ableton = get_ableton_connection()
     presets_result = ableton.send_command("get_browser_presets",
@@ -1197,14 +1221,16 @@ def _load_tap_on_track(track_index):
     if not uri:
         raise RuntimeError("MCP Tap device has no loadable URI")
     res = ableton.send_command("load_browser_item",
-                               {"track_index": track_index, "item_uri": uri})
+                               {"track_index": track_index, "item_uri": uri,
+                                "track_type": track_type})
     if not res.get("loaded", False):
         raise RuntimeError("load_browser_item did not confirm")
     return chosen.get("relative_path") or chosen.get("name") or TAP_DEVICE_NAME
 
 
 def _find_taps():
-    """Return [(track_index, device_index)] for every loaded MCP Tap device."""
+    """Return [(track_type, track_index, device_index)] for every loaded MCP Tap
+    device, across regular tracks AND the master bus."""
     raw = get_ableton_connection().send_command("get_analysis_snapshot")
     out = []
     for t in raw.get("tracks", []):
@@ -1213,16 +1239,21 @@ def _find_taps():
             continue
         for d in t.get("devices", []):
             if d.get("name") == TAP_DEVICE_NAME and d.get("index") is not None:
-                out.append((ti, d.get("index")))
+                out.append(("regular", ti, d.get("index")))
+    master = raw.get("master") or {}
+    for d in master.get("devices", []):
+        if d.get("name") == TAP_DEVICE_NAME and d.get("index") is not None:
+            out.append(("master", 0, d.get("index")))
     return out
 
 
-def _delete_device_raw(track_index, device_index):
-    """Delete one device (regular track) over the wire. Raises on failure."""
+def _delete_device_raw(track_type, track_index, device_index):
+    """Delete one device over the wire (regular track or master). Raises on
+    failure."""
     get_ableton_connection().send_command(
         "delete_device",
         {"track_index": track_index, "device_index": device_index,
-         "track_type": "regular"})
+         "track_type": track_type})
 
 
 # A slow Max-for-Live / Node-for-Max boot (notably Live 12 / Max 8.6) can outlast
@@ -1260,13 +1291,23 @@ def _confirm_tap_via_registry(track_index, before_uuids, sleep=time.sleep):
 
 
 @mcp.tool()
-def deploy_taps(ctx: Context, track_indices: List[int] = None) -> str:
+def deploy_taps(ctx: Context, track_indices: List[int] = None,
+                include_master: bool = True) -> str:
     """Load the MCP Tap metering device onto tracks for per-track analysis.
 
     track_indices: omit to auto-target every regular audio track + every MIDI
-    track holding an instrument; or pass explicit track indices. The device must
-    be present in the User Library (copy m4l/'MCP Tap.amxd' there once); see
+    track holding an instrument; or pass explicit track indices. Use -1 for the
+    master bus (e.g. track_indices=[-1] taps the master only). The device must be
+    present in the User Library (copy m4l/'MCP Tap.amxd' there once); see
     m4l/README.md.
+
+    include_master (default True): in auto-target mode (track_indices omitted),
+    also drop a tap on the master bus. The master tap is the only POST-FADER
+    measurement point, so it is the authoritative balance/loudness reference -
+    per-track taps are pre-fader (instrument + device-chain output, ahead of the
+    fader) and do not reflect fader moves. Pass include_master=False to skip it.
+    When track_indices is given explicitly, include_master is ignored (add -1 to
+    the list yourself).
 
     Returns JSON {ok, data:{targets, deployed:[{track_index,device}],
     failed:[{track_index,error}]}}. If EVERY load fails (e.g. the device isn't in
@@ -1281,13 +1322,18 @@ def deploy_taps(ctx: Context, track_indices: List[int] = None) -> str:
     "confirmed_via": "registry" instead of failing.
     """
     try:
-        targets = (_audio_instrument_track_indices() if track_indices is None
-                   else list(track_indices))
+        if track_indices is None:
+            targets = _audio_instrument_track_indices()
+            if include_master and -1 not in targets:
+                targets.append(-1)
+        else:
+            targets = list(track_indices)
         deployed, failed = [], []
         for i in targets:
+            track_type = "master" if i == -1 else "regular"
             before = {t.get("uuid") for t in _tap_registry.state.tracks()}
             try:
-                label = _load_tap_on_track(i)
+                label = _load_tap_on_track(i, track_type)
                 deployed.append({"track_index": i, "device": label})
             except Exception as e:
                 # A slow M4L/Node boot (e.g. Live 12 / Max 8.6) can drop the
@@ -1317,23 +1363,25 @@ def deploy_taps(ctx: Context, track_indices: List[int] = None) -> str:
 def remove_taps(ctx: Context) -> str:
     """Remove every loaded MCP Tap device from the set (delete by name match).
 
-    Scans all regular tracks for devices named 'MCP Tap' and deletes them
-    (per-track, highest device index first so re-indexing is safe). Returns JSON
-    {ok, data:{removed_count, removed:[{track_index,device_index}], errors:[...]}}.
-    No-op (removed_count 0) when none are loaded.
+    Scans all regular tracks AND the master bus for devices named 'MCP Tap' and
+    deletes them (per-track, highest device index first so re-indexing is safe).
+    Returns JSON {ok, data:{removed_count,
+    removed:[{track_type,track_index,device_index}], errors:[...]}}. No-op
+    (removed_count 0) when none are loaded.
     """
     try:
         found = _find_taps()
         # delete highest device_index first within each track so re-indexing
         # never shifts a still-pending target on the same track.
-        ordered = sorted(found, key=lambda p: (p[0], -p[1]))
+        ordered = sorted(found, key=lambda p: (p[0], p[1], -p[2]))
         removed, errors = [], []
-        for ti, di in ordered:
+        for tt, ti, di in ordered:
             try:
-                _delete_device_raw(ti, di)
-                removed.append({"track_index": ti, "device_index": di})
+                _delete_device_raw(tt, ti, di)
+                removed.append({"track_type": tt, "track_index": ti, "device_index": di})
             except Exception as e:
-                errors.append({"track_index": ti, "device_index": di, "error": str(e)})
+                errors.append({"track_type": tt, "track_index": ti,
+                               "device_index": di, "error": str(e)})
         return _ok({"removed_count": len(removed), "removed": removed, "errors": errors})
     except Exception as e:
         logger.error("Error removing taps: %s", e)
@@ -1402,6 +1450,15 @@ def gain_stage_track(
 ) -> str:
     """Play the set, measure the track's LUFS via its MCP Tap, and iteratively
     converge the fader to target_db.
+
+    IMPORTANT - on a regular/return track the MCP Tap is PRE-FADER (it sits in the
+    device chain, ahead of the mixer fader), so moving the fader does NOT change
+    what the tap reads: the loop measures the instrument + device-chain level, not
+    the post-fader output, and re-measuring will show the same value (it may report
+    not-converged). Use this as an instrument-level gain-stage (the first-pass
+    correction is still a valid trim toward target), or run it on the MASTER
+    (track_type='master', the post-fader program output) for true loudness
+    convergence.
 
     Requires an MCP Tap device deployed on the target track (via deploy_taps).
     Plays the arrangement for window_s seconds each iteration, integrates the
@@ -1510,6 +1567,15 @@ def balance_mix(
     reference track (plus any per-track offset_db you specify). Tracks within
     1 dB of their target are skipped. All corrections are applied individually
     (not batched) so each adjust_track_gain call validates its own target.
+
+    IMPORTANT - per-track taps are PRE-FADER (instrument + device-chain level,
+    ahead of the mixer fader). The correction math is still right for OUTPUT
+    balance: it adds each track's pre-fader gap onto its fader so output =
+    pre_fader + fader matches the reference - but ONLY if the reference track's
+    fader is left as the anchor, and the result CANNOT be re-verified by
+    re-measuring the same per-track taps (their readings are invariant to the
+    fader). To confirm the balance landed, deploy a master tap and read the
+    post-fader program output (measure_mix data.master).
 
     Parameters:
     - reference_track_index: track whose LUFS is the balance baseline
