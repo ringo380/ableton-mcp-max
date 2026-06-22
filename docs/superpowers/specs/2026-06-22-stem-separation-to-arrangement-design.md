@@ -63,7 +63,9 @@ helper module; the tool orchestrates; the Remote Script is untouched.
 Import-light — no torch, no librosa. Pure functions only:
 
 - `validate_model(model) -> dict` — canonical Demucs model name, expected stem
-  filenames, and per-stem track display name + color + layout order.
+  filenames, and per-stem track display name + layout order. (Track color is not
+  set: there is no LOM/Remote-Script color setter and this design adds no Remote
+  Script code. Naming only.)
 - `build_demucs_cmd(audio_path, model, out_dir, device) -> list[str]` — argv for
   the Demucs subprocess (including `--two-stems=vocals` when the two-stem model
   is requested).
@@ -124,11 +126,14 @@ def separate_stems_to_arrangement(
    scale)`. Verified via a follow-up read (song-property writes lag their own
    read-back — never trust the returned dict).
 6. **Lay out stems** — for each stem, in layout order:
-   - `create_audio_track` (named + colored per `stem_utils`),
+   - `create_audio_track` (appended at end; new track index is deterministic),
    - `load_audio_clip` into that track's session slot 0 (staging),
+   - set Warp OFF and the stem name on the **session** staging clip (the
+     arrangement copy inherits both — `set_clip_property`/`set_clip_name` address
+     session slots only, so this must happen before duplicating),
+   - `set_track_name` to the stem name,
    - `duplicate_clip_to_arrangement(track, slot=0, time=0.0)`,
-   - set Warp OFF on the new arrangement clip,
-   - delete the session staging clip.
+   - delete the session staging clip (`delete_clip`).
 7. Return `{ok, data:{audio, model, device, tempo, key, scale,
    stems:[{name, track_index, path, loaded}], fresh, tempo_detected,
    key_detected}}`.
