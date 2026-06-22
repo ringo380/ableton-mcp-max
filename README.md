@@ -29,3 +29,24 @@ the v0.7.0 master-only `MCP Audio Tap`.)
 - `/ableton:analyze` - check the open set against best-practice rulesets and report findings by domain.
 
 See `PROGRESS.md` for capability status and `docs/superpowers/specs/` for the design.
+
+## Stem separation prerequisites
+
+The `separate_stems_to_arrangement` tool (and the `/ableton:stems` command) shell
+out to external command-line tools that are NOT bundled with the MCP server:
+
+- Demucs (source separation), on your PATH:
+  - `pip3 install --break-system-packages demucs`
+  - This installs the `demucs` CLI into your Homebrew Python and onto PATH.
+- librosa (tempo + key detection), in Homebrew Python:
+  - `pip3 install --break-system-packages librosa`
+  - macOS note: the analysis step runs under `/opt/homebrew/bin/python3`, so
+    librosa must be installed there (not `/usr/bin/python3`).
+
+If `demucs` is missing, the tool returns a clear error. If librosa is missing,
+stem layout still runs but tempo / key detection is skipped.
+
+Separated stems are written under the Live User Library
+(`Samples/Stems/<model>/<name>/`) so Live's browser can index and load them, and
+they persist there - the Arrangement clips reference those files on disk. To keep
+a set fully self-contained, use Live's Collect All and Save afterward.

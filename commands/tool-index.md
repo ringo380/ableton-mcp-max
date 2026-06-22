@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_146 tools._
+_147 tools._
 
 ## Session & view
 
@@ -237,3 +237,4 @@ _146 tools._
 - **`load_audio_clip`** - Load an audio sample (typically a loop) into an audio clip slot.
 - **`load_sample_to_drum_pad`** - Load a one-shot sample onto a single Drum Rack pad.
 - **`populate_drum_rack`** - Load many one-shot samples onto many Drum Rack pads in one call.
+- **`separate_stems_to_arrangement`** - Split an audio file into stems and lay each onto its own Arrangement track.

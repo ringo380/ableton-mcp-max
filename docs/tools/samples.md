@@ -8,7 +8,7 @@ nav_order: 20
 # Samples
 {: .no_toc }
 
-Discover audio samples in Live's User Library and factory packs and load them as audio clips, single drum-rack pads, or full drum kits: search by name with automatic loop/one-shot/kit/instrument classification, and load with transparent iCloud materialization.
+Discover audio samples in Live's User Library and factory packs and load them as audio clips, single drum-rack pads, or full drum kits: search by name with automatic loop/one-shot/kit/instrument classification, and load with transparent iCloud materialization. Also includes stem separation - split a full mix into instrument stems and lay them onto the Arrangement timeline.
 
 <details open markdown="block">
   <summary>Tools on this page</summary>
@@ -109,4 +109,45 @@ Parameters:
 
 Returns JSON {ok, data:{track_index, loaded_count, results:[{pad_note,
 sample_path, status:"loaded"|"error", error?}]}}.
+
+## separate_stems_to_arrangement
+
+```python
+separate_stems_to_arrangement(
+    audio_path: str,
+    model: str = 'htdemucs',
+    fresh: bool = False,
+    detect_tempo: bool = True,
+    detect_key: bool = True,
+    device: str = 'auto',
+    output_dir: str = None,
+)
+```
+
+Split an audio file into stems and lay each onto its own Arrangement track.
+
+Uses the Demucs CLI to separate `audio_path` into stems, optionally detects
+the source tempo + key (librosa, via scripts/analyze_audio.py) and applies
+them to the open set, then creates one audio track per stem and places each
+stem at bar 1 of the Arrangement timeline (Warp OFF, so full-song stems stay
+phase-locked). Session view is used only as transient staging; the end state
+has empty session slots.
+
+Prerequisites: the `demucs` CLI on PATH and (for tempo/key) librosa in brew
+Python. See the README "Stem separation" prerequisites; a clear error is
+returned when demucs is missing and analysis degrades gracefully without
+librosa.
+
+Parameters:
+- audio_path: absolute path to the mixed audio file.
+- model: "htdemucs" (4-stem, default), "htdemucs_6s" (6-stem), or "two_stems".
+- fresh: when True, bounce Live to a blank set FIRST (discards the open set).
+  The CALLER must confirm with the user before passing fresh=True.
+- detect_tempo / detect_key: analyze the source and set tempo / song scale.
+- device: "auto" (mps on Apple Silicon, else cpu), "cpu", or "mps".
+- output_dir: where Demucs writes stems (default: a temp dir).
+
+Returns JSON {ok, data:{audio, model, device, tempo, key, scale,
+tempo_detected, key_detected, fresh, stems:[{name, track_index, path,
+loaded}]}}.
 
