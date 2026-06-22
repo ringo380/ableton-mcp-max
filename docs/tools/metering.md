@@ -114,29 +114,50 @@ blocks into a per-track signal (LUFS/dBTP/peak/rms/crest plus the 8-band
 spectrum and stereo width/correlation). region is reserved for a future
 arrangement-window capture.
 
-Returns JSON {ok, data:{window_s, tracks, findings}}:
-- tracks: [{name, index, kind, signal:{...}}] one per connected tap.
-- findings: cross-track analysis from masking_utils -
-  masking (pairwise spectral overlap), balance (tracks sitting too far below
-  the loudest), headroom (near-clip / over-compressed), stereo (mono-compat
-  risk). Each is a (possibly empty) list.
+IMPORTANT - per-track taps are PRE-FADER: the MCP Tap is an audio-effect in
+the track's device chain and Ableton's mixer fader sits AFTER the device
+chain, so each per-track signal reflects the instrument + device-chain output,
+NOT the post-fader level. A fader move does not change its track's reading.
+The only post-fader measurement point is the master (or a return), so the
+master tap's signal (data.master) is the authoritative balance/loudness
+reference. Deploy one with deploy_taps (it auto-adds a master tap by default).
 
-With no taps connected this still returns ok with empty tracks + empty
-findings (not an error). Track names blank-reported by the device are
-backfilled from the LOM track index.
+Returns JSON {ok, data:{window_s, tracks, master, findings}}:
+- tracks: [{name, index, kind, signal:{...}}] one per connected PER-TRACK tap
+  (the master tap is excluded here and reported under `master`).
+- master: the master tap's {name, index, kind, signal} (post-fader program
+  output), or null when no master tap is connected.
+- findings: cross-track analysis from masking_utils over the per-track signals
+  - masking (pairwise spectral overlap), balance (tracks sitting too far below
+  the loudest), headroom (near-clip / over-compressed), stereo (mono-compat
+  risk). Each is a (possibly empty) list. The master is NOT compared against
+  instruments here (it would skew balance/masking).
+
+With no taps connected this still returns ok with empty tracks, null master,
+and empty findings (not an error). Track names blank-reported by the device
+are backfilled from the LOM track index.
 
 ## deploy_taps
 
 ```python
-deploy_taps(track_indices: List[int] = None)
+deploy_taps(track_indices: List[int] = None, include_master: bool = True)
 ```
 
 Load the MCP Tap metering device onto tracks for per-track analysis.
 
 track_indices: omit to auto-target every regular audio track + every MIDI
-track holding an instrument; or pass explicit track indices. The device must
-be present in the User Library (copy m4l/'MCP Tap.amxd' there once); see
+track holding an instrument; or pass explicit track indices. Use -1 for the
+master bus (e.g. track_indices=[-1] taps the master only). The device must be
+present in the User Library (copy m4l/'MCP Tap.amxd' there once); see
 m4l/README.md.
+
+include_master (default True): in auto-target mode (track_indices omitted),
+also drop a tap on the master bus. The master tap is the only POST-FADER
+measurement point, so it is the authoritative balance/loudness reference -
+per-track taps are pre-fader (instrument + device-chain output, ahead of the
+fader) and do not reflect fader moves. Pass include_master=False to skip it.
+When track_indices is given explicitly, include_master is ignored (add -1 to
+the list yourself).
 
 Returns JSON {ok, data:{targets, deployed:[{track_index,device}],
 failed:[{track_index,error}]}}. If EVERY load fails (e.g. the device isn't in
@@ -158,8 +179,9 @@ remove_taps()
 
 Remove every loaded MCP Tap device from the set (delete by name match).
 
-Scans all regular tracks for devices named 'MCP Tap' and deletes them
-(per-track, highest device index first so re-indexing is safe). Returns JSON
-{ok, data:{removed_count, removed:[{track_index,device_index}], errors:[...]}}.
-No-op (removed_count 0) when none are loaded.
+Scans all regular tracks AND the master bus for devices named 'MCP Tap' and
+deletes them (per-track, highest device index first so re-indexing is safe).
+Returns JSON {ok, data:{removed_count,
+removed:[{track_type,track_index,device_index}], errors:[...]}}. No-op
+(removed_count 0) when none are loaded.
 

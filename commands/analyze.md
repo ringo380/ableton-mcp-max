@@ -39,6 +39,13 @@ leave them deferred. The default call is read-only and never plays the set.
      (masking / loudness balance / per-track headroom / stereo correlation), and the
      four `mixing.*` signal rules promote out of "Needs metering". Report those under
      a **Mix signal** section using the real numbers - still never invent values.
+     - **Per-track taps are PRE-FADER** (the tap is a device; the mixer fader sits
+       after the device chain), so a track's LUFS reflects its instrument +
+       device-chain level, NOT the post-fader output - a fader move does not change
+       it. Frame a `loudness_balance` finding as "this instrument is quiet," not
+       "this fader is low." The only post-fader / program reference is the MASTER
+       tap, reported under `data.mix_signal.master` (`deploy_taps` auto-adds one by
+       default); use it for true program loudness and to confirm an output balance.
 3. **Load rationale.** `Read` the relevant `ableton_mcp_max/rulesets/<domain>.json`
    for the full `rationale`/`remediation`/`source` of any rule you report, and the
    text of every `manual_rules` entry. The tool returns ids/titles; the JSON has the

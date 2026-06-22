@@ -114,6 +114,29 @@ def build_mix_findings(sigs, rules):
     return out
 
 
+def partition_master(sigs):
+    """Split integrated signals into (per_track, master).
+
+    The master tap (index -1) measures the POST-FADER program output, so it must
+    not be fed into the cross-track findings - it would read as the loudest
+    'track' and skew loudness_balance / masking. Per-track taps are PRE-FADER
+    (instrument + device-chain output, ahead of the mixer fader), so the master
+    is the only post-fader balance/loudness reference.
+
+    Returns (per_track, master): per_track excludes any index -1 signal; master
+    is the single master signal dict or None. If several taps report index -1
+    (shouldn't happen), the first wins and the rest are dropped.
+    """
+    per_track, master = [], None
+    for s in sigs:
+        if s.get("index") == -1:
+            if master is None:
+                master = s
+        else:
+            per_track.append(s)
+    return per_track, master
+
+
 def enrich_names(sigs, name_by_index):
     """Fill blank/missing per-track names from a {track_index: name} map.
 
