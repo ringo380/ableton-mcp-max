@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_144 tools._
+_145 tools._
 
 ## Session & view
 
@@ -221,6 +221,7 @@ _144 tools._
 - **`quantize_clip_to_scale`** - Snap every note in a clip to the nearest in-scale pitch.
 - **`arpeggiate_clip`** - Arpeggiate a clip: expand simultaneous notes (chords) into sequential
 - **`harmonize_clip`** - Add a harmony voice to each note in a clip. Provide exactly ONE of
+- **`set_song_scale`** - Set the song's global scale - the "Scale" indicator in Live's control
 
 ## Remediation
 
