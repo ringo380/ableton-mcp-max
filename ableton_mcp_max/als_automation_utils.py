@@ -2,21 +2,25 @@
 set file (gzipped XML).
 
 The LOM cannot create arrangement automation (clip.automation_envelope returns
-None for arrangement clips), so we patch the saved set: arrangement automation
-for a parameter is one <AutomationEnvelope> in the owning track's
-<AutomationEnvelopes><Envelopes> list, whose <EnvelopeTarget><PointeeId> equals
-that parameter's <AutomationTarget Id>. See
+None for arrangement clips, session-clip envelopes don't survive
+duplicate_clip_to_arrangement, and there is no track-level breakpoint API), so
+we patch the saved set: arrangement automation for a parameter is one
+<AutomationEnvelope> in the owning track's <AutomationEnvelopes><Envelopes>
+list, whose <EnvelopeTarget><PointeeId> equals that parameter's
+<AutomationTarget Id>. See
 docs/superpowers/specs/2026-06-21-arrangement-automation-design.md.
 
-No Live dependency (server.py imports this; the Remote Script cannot). The
-server resolves the target parameter via the LOM (name/value), then this module
-locates the matching <AutomationTarget Id> in the XML, value-verified, and
-injects the envelope.
+No Live dependency (server.py imports this; the Remote Script cannot).
 
-v1 targets RACK MACROS (MacroControls.<n>, robust + value-verified) and
-top-level native device parameters by element tag (value-verified). Parameters
-of devices NESTED inside a rack are a documented follow-up (their elements
-interleave with the rack's own macros in document order).
+**Targeting via value probe.** Ordinal/name correlation between the LOM
+parameter list and the XML param elements is NOT reliable (the LOM injects
+Device-On + quantized params and reorders), so we don't navigate to the param
+by name. Instead the server sets the target param to a globally-unique sentinel
+value through the LOM, reads back the value Live actually stored, saves the set,
+and `find_target_after_manual` locates the single `<Manual Value=...>` equal to
+that value -> the next `<AutomationTarget Id>` is the PointeeId. This works
+uniformly for macros, native params, nested-in-rack params, and AU/VST plugins
+(all store their value as `<Manual>` immediately before `<AutomationTarget>`).
 """
 
 import gzip
@@ -106,9 +110,65 @@ def build_envelope_xml(pointee_id, points, env_id, value_min=None, value_max=Non
 
 
 # --------------------------------------------------------------------------- #
-# navigation: track span -> device span -> AutomationTarget Id
+# targeting: locate a param's AutomationTarget Id by its probed value
 # --------------------------------------------------------------------------- #
-_TRACK_OPEN = re.compile(r'<(MidiTrack|AudioTrack|GroupTrack|ReturnTrack) Id="\d+">')
+_MANUAL_RE = re.compile(r'<Manual Value="([^"]+)" />')
+
+
+def _value_match(a, b, tol):
+    if tol is not None:
+        return abs(a - b) <= tol
+    # Live's XML keeps ~10 significant figures; the LOM read-back is the same
+    # double, so they agree to well within a tight relative tolerance.
+    return abs(a - b) <= max(1e-6, 1e-6 * abs(b))
+
+
+def find_target_after_manual(xml, value, tol=None):
+    """Locate the parameter whose <Manual Value> equals `value` (a probe sentinel
+    set on exactly one param) and return its AutomationTarget Id (the envelope's
+    PointeeId).
+
+    `value` is the float Live actually stored (read back via the LOM after the
+    probe set), which equals the XML <Manual> modulo string formatting, so the
+    match is by float closeness. Returns {"pointee_id": str, "manual_literal":
+    str}. Raises ValueError unless EXACTLY ONE <Manual> matches (a non-unique
+    sentinel can't be disambiguated -> pick a more distinctive value)."""
+    matches = []
+    for m in _MANUAL_RE.finditer(xml):
+        try:
+            mv = float(m.group(1))
+        except ValueError:
+            continue  # booleans ('true'/'false') etc.
+        if _value_match(mv, float(value), tol):
+            am = re.search(r'<AutomationTarget Id="(\d+)"', xml[m.end():])
+            if am:
+                matches.append((m.group(0), am.group(1)))
+    if len(matches) != 1:
+        raise ValueError(
+            "probe value %r matched %d <Manual> params (need exactly 1); choose "
+            "a more distinctive sentinel" % (value, len(matches)))
+    literal, pointee = matches[0]
+    return {"pointee_id": pointee, "manual_literal": literal}
+
+
+def patch_manual(xml, manual_literal, new_value, value_min=None, value_max=None):
+    """Replace a UNIQUE <Manual ...> literal (as returned by
+    find_target_after_manual) with one holding `new_value`, so the probed knob is
+    left at the envelope's first point on disk instead of the sentinel. Raises
+    ValueError if the literal is not present exactly once."""
+    if xml.count(manual_literal) != 1:
+        raise ValueError("manual literal not unique for patch-back (%d found)"
+                         % xml.count(manual_literal))
+    v = _clamp(float(new_value), value_min, value_max)
+    return xml.replace(manual_literal, '<Manual Value="%s" />' % _fmt(v), 1)
+
+
+# --------------------------------------------------------------------------- #
+# track span navigation (for envelope injection into the OWNING track)
+# --------------------------------------------------------------------------- #
+# Real track opens carry extra attrs (e.g. <MidiTrack Id="12" SelectedToolPanel
+# ="2" ...>), so the open pattern must allow them.
+_TRACK_OPEN = re.compile(r'<(MidiTrack|AudioTrack|GroupTrack|ReturnTrack) Id="\d+"[^>]*>')
 
 
 def find_track_span(xml, track_index):
@@ -129,32 +189,6 @@ def find_track_span(xml, track_index):
     raise ValueError("regular track index %d not found" % track_index)
 
 
-def _direct_device_spans(track_xml):
-    """Spans of the direct child device elements of the track's TOP-LEVEL
-    <Devices> container (depth-aware: skips devices nested in rack chains)."""
-    dstart = track_xml.find("<Devices>")
-    if dstart == -1:
-        return []
-    i = dstart + len("<Devices>")
-    end = _matching_close(track_xml, "Devices", dstart)
-    spans = []
-    # Walk direct children: each child is one element <Tag ...> ... </Tag>.
-    tag_re = re.compile(r'<([A-Za-z][\w.]*)(\s[^>]*?)?(/?)>')
-    while i < end:
-        m = tag_re.search(track_xml, i, end)
-        if not m:
-            break
-        tag, _attrs, selfclose = m.group(1), m.group(2), m.group(3)
-        if selfclose == "/":
-            i = m.end()
-            continue
-        cstart = m.start()
-        cend = _matching_close(track_xml, tag, cstart)
-        spans.append((cstart, cend))
-        i = cend
-    return spans
-
-
 def _matching_close(xml, tag, open_index):
     """Index just past the close tag matching the element opening at open_index,
     accounting for nested same-name elements and self-closing tags."""
@@ -162,7 +196,6 @@ def _matching_close(xml, tag, open_index):
     close = "</%s>" % tag
     m = open_re.match(xml, open_index)
     if not m:
-        # not an opening of `tag` at this index; fall back to next close
         c = xml.find(close, open_index)
         return c + len(close) if c != -1 else len(xml)
     if m.group(2) == "/":
@@ -180,87 +213,6 @@ def _matching_close(xml, tag, open_index):
             depth += 1
         pos = mm.end()
     return pos
-
-
-def _device_span(xml, track_index, device_index):
-    tstart, tend = find_track_span(xml, track_index)
-    track_xml = xml[tstart:tend]
-    spans = _direct_device_spans(track_xml)
-    if device_index >= len(spans):
-        raise ValueError(
-            "device index %d out of range (track has %d top-level devices)"
-            % (device_index, len(spans)))
-    s, e = spans[device_index]
-    return (tstart + s, tstart + e)
-
-
-def _read_target(block):
-    """From a parameter element's inner XML, read (AutomationTarget Id, manual,
-    min, max). Returns None if it has no AutomationTarget."""
-    aid = re.search(r'<AutomationTarget Id="(\d+)"', block)
-    if not aid:
-        return None
-    man = re.search(r'<Manual Value="([^"]+)" />', block)
-    rng = re.search(
-        r'<MidiControllerRange>\s*<Min Value="([^"]+)" />\s*<Max Value="([^"]+)" />',
-        block, re.S)
-    def _f(x):
-        try:
-            return float(x)
-        except (TypeError, ValueError):
-            return None
-    return {
-        "pointee_id": aid.group(1),
-        "manual": _f(man.group(1)) if man else None,
-        "value_min": _f(rng.group(1)) if rng else None,
-        "value_max": _f(rng.group(2)) if rng else None,
-    }
-
-
-def resolve_macro_target(xml, track_index, device_index, macro_index,
-                         expected_value=None, value_tol=0.5):
-    """Resolve a rack macro (MacroControls.<macro_index>) to its target Id.
-    Verifies the macro's Manual against expected_value when given."""
-    ds, de = _device_span(xml, track_index, device_index)
-    dev = xml[ds:de]
-    tag = "MacroControls.%d" % int(macro_index)
-    i = dev.find("<%s>" % tag)
-    if i == -1:
-        raise ValueError("macro %d not found on device %d (not a rack, or fewer macros)"
-                         % (macro_index, device_index))
-    j = _matching_close(dev, tag, i)
-    info = _read_target(dev[i:j])
-    if not info:
-        raise ValueError("macro %d has no AutomationTarget" % macro_index)
-    info["param_name"] = tag
-    info["verified"] = _verify(info["manual"], expected_value, value_tol)
-    return info
-
-
-def resolve_named_param_target(xml, track_index, device_index, element_tag,
-                               expected_value=None, value_tol=0.5):
-    """Resolve a top-level native device parameter by its XML element tag (e.g.
-    'Filter_Frequency'), value-verified. For devices DIRECTLY on the track (not
-    nested in a rack chain)."""
-    ds, de = _device_span(xml, track_index, device_index)
-    dev = xml[ds:de]
-    i = dev.find("<%s>" % element_tag)
-    if i == -1:
-        raise ValueError("param element <%s> not found on device %d"
-                         % (element_tag, device_index))
-    j = _matching_close(dev, element_tag, i)
-    info = _read_target(dev[i:j])
-    if not info:
-        raise ValueError("<%s> has no AutomationTarget" % element_tag)
-    info["param_name"] = element_tag
-    info["verified"] = _verify(info["manual"], expected_value, value_tol)
-    return info
-
-
-def _verify(manual, expected, tol):
-    if expected is None or manual is None:
-        return None
-    return abs(float(manual) - float(expected)) <= tol
 
 
 # --------------------------------------------------------------------------- #
@@ -312,7 +264,6 @@ def _remove_envelope_for_pointee(container, pointee_id):
     """Remove any <AutomationEnvelope> whose EnvelopeTarget PointeeId matches."""
     out = container
     while True:
-        m = re.search(r'<AutomationEnvelope Id="\d+">', out)
         found = None
         for m in re.finditer(r'<AutomationEnvelope Id="\d+">', out):
             end = _matching_close(out, "AutomationEnvelope", m.start())
@@ -324,7 +275,7 @@ def _remove_envelope_for_pointee(container, pointee_id):
         if not found:
             return out
         s, e = found
-        # also swallow surrounding whitespace/indent on the line
+        # also swallow the surrounding whitespace/indent on the line
         line_start = out.rfind("\n", 0, s)
         if line_start == -1:
             line_start = s
