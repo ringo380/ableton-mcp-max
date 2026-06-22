@@ -125,6 +125,7 @@ GROUPS = [
         "load_audio_clip",
         "load_sample_to_drum_pad",
         "populate_drum_rack",
+        "separate_stems_to_arrangement",
     ]),
 ]
 

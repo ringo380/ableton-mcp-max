@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **146 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **147 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -125,7 +125,7 @@ Translate analysis findings into applied mix corrections: shift faders by dB, au
 
 ## [Samples](./samples.html)
 
-Discover audio samples in Live's User Library and factory packs and load them as audio clips, single drum-rack pads, or full drum kits: search by name with automatic loop/one-shot/kit/instrument classification, and load with transparent iCloud materialization.
+Discover audio samples in Live's User Library and factory packs and load them as audio clips, single drum-rack pads, or full drum kits: search by name with automatic loop/one-shot/kit/instrument classification, and load with transparent iCloud materialization. Also includes stem separation - split a full mix into instrument stems and lay them onto the Arrangement timeline.
 
-`search_samples`, `load_audio_clip`, `load_sample_to_drum_pad`, `populate_drum_rack`
+`search_samples`, `load_audio_clip`, `load_sample_to_drum_pad`, `populate_drum_rack`, `separate_stems_to_arrangement`
 

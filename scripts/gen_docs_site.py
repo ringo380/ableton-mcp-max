@@ -115,11 +115,12 @@ CATEGORIES = [
         "balance_mix",
         "apply_findings",
     ]),
-    ("samples", "Samples", "Discover audio samples in Live's User Library and factory packs and load them as audio clips, single drum-rack pads, or full drum kits: search by name with automatic loop/one-shot/kit/instrument classification, and load with transparent iCloud materialization.", [
+    ("samples", "Samples", "Discover audio samples in Live's User Library and factory packs and load them as audio clips, single drum-rack pads, or full drum kits: search by name with automatic loop/one-shot/kit/instrument classification, and load with transparent iCloud materialization. Also includes stem separation - split a full mix into instrument stems and lay them onto the Arrangement timeline.", [
         "search_samples",
         "load_audio_clip",
         "load_sample_to_drum_pad",
         "populate_drum_rack",
+        "separate_stems_to_arrangement",
     ]),
 ]
 
