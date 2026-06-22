@@ -10,6 +10,8 @@ import glob
 import math
 import time
 import subprocess
+import tempfile
+import platform
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, List, Optional, Union
@@ -137,6 +139,7 @@ from ableton_mcp_max.save_utils import (
     set_name_from_path,
 )
 from ableton_mcp_max import als_automation_utils as als
+from ableton_mcp_max import stem_utils
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -5647,6 +5650,194 @@ def search_samples(
     except Exception as e:
         logger.error("Error searching samples: %s", e)
         return _err("Error searching samples: %s" % e)
+
+
+# ---------------------------------------------------------------------------
+# Stem separation helpers (host-side subprocess runners + layout)
+# ---------------------------------------------------------------------------
+
+_BREW_PY = "/opt/homebrew/bin/python3"
+_ANALYZE_SCRIPT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "scripts", "analyze_audio.py")
+
+
+def _run_demucs(audio_path, model, out_dir, device, timeout=1200):
+    """Run the Demucs CLI. Returns (ok, message). Raises nothing."""
+    cmd = stem_utils.build_demucs_cmd(audio_path, model, out_dir, device)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except FileNotFoundError:
+        return (False, "demucs CLI not found on PATH. Install it: "
+                       "pip3 install --break-system-packages demucs")
+    except subprocess.TimeoutExpired:
+        return (False, "demucs timed out after %ds" % timeout)
+    if proc.returncode != 0:
+        tail = (proc.stderr or "").strip().splitlines()[-5:]
+        return (False, "demucs failed (exit %d): %s"
+                % (proc.returncode, " | ".join(tail)))
+    return (True, "ok")
+
+
+def _run_analysis(audio_path, timeout=120):
+    """Run analyze_audio.py under brew python. Returns (tempo, key, scale).
+
+    Degrades gracefully: any failure (no brew python, librosa missing, decode
+    error) yields (None, None, None) so the caller keeps the default tempo.
+    """
+    if not os.path.exists(_BREW_PY):
+        return (None, None, None)
+    try:
+        proc = subprocess.run(
+            [_BREW_PY, _ANALYZE_SCRIPT, audio_path],
+            capture_output=True, text=True, timeout=timeout)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return (None, None, None)
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return (None, None, None)
+    return stem_utils.parse_analysis(proc.stdout.strip().splitlines()[-1])
+
+
+def _lay_stem_on_track(ableton, track_index, stem_name, sample_path):
+    """Load stem into session slot 0, warp off + name it, duplicate to
+    arrangement at bar 1, then delete the session staging clip.
+
+    Returns dict {name, track_index, path, loaded}.
+    """
+    local = _ensure_local(sample_path)
+    uri = _resolve_sample_uri(local, "samples")
+    ableton.send_command("set_highlighted_clip_slot",
+                         {"track_index": track_index, "scene_index": 0})
+    res = ableton.send_command("load_browser_item", {
+        "track_index": track_index, "item_uri": uri, "track_type": "regular"})
+    loaded = bool((res or {}).get("loaded", False))
+    if not loaded:
+        return {"name": stem_name, "track_index": track_index,
+                "path": local, "loaded": False}
+    # Warp OFF + name on the SESSION clip; the arrangement copy inherits both.
+    ableton.send_command("set_clip_property", {
+        "track_index": track_index, "clip_index": 0,
+        "property": "warping", "value": 0})
+    ableton.send_command("set_clip_name", {
+        "track_index": track_index, "clip_index": 0, "name": stem_name})
+    ableton.send_command("set_track_name", {
+        "track_index": track_index, "name": stem_name})
+    ableton.send_command("duplicate_clip_to_arrangement", {
+        "track_index": track_index, "source_slot_index": 0,
+        "destination_time": 0.0})
+    ableton.send_command("delete_clip", {
+        "track_index": track_index, "clip_index": 0})
+    return {"name": stem_name, "track_index": track_index,
+            "path": local, "loaded": True}
+
+
+@mcp.tool()
+def separate_stems_to_arrangement(
+    ctx: Context,
+    audio_path: str,
+    model: str = "htdemucs",
+    fresh: bool = False,
+    detect_tempo: bool = True,
+    detect_key: bool = True,
+    device: str = "auto",
+    output_dir: str = None,
+) -> str:
+    """Split an audio file into stems and lay each onto its own Arrangement track.
+
+    Uses the Demucs CLI to separate `audio_path` into stems, optionally detects
+    the source tempo + key (librosa, via scripts/analyze_audio.py) and applies
+    them to the open set, then creates one audio track per stem and places each
+    stem at bar 1 of the Arrangement timeline (Warp OFF, so full-song stems stay
+    phase-locked). Session view is used only as transient staging; the end state
+    has empty session slots.
+
+    Prerequisites: the `demucs` CLI on PATH and (for tempo/key) librosa in brew
+    Python. See the README "Stem separation" prerequisites; a clear error is
+    returned when demucs is missing and analysis degrades gracefully without
+    librosa.
+
+    Parameters:
+    - audio_path: absolute path to the mixed audio file.
+    - model: "htdemucs" (4-stem, default), "htdemucs_6s" (6-stem), or "two_stems".
+    - fresh: when True, bounce Live to a blank set FIRST (discards the open set).
+      The CALLER must confirm with the user before passing fresh=True.
+    - detect_tempo / detect_key: analyze the source and set tempo / song scale.
+    - device: "auto" (mps on Apple Silicon, else cpu), "cpu", or "mps".
+    - output_dir: where Demucs writes stems (default: a temp dir).
+
+    Returns JSON {ok, data:{audio, model, device, tempo, key, scale,
+    tempo_detected, key_detected, fresh, stems:[{name, track_index, path,
+    loaded}]}}.
+    """
+    try:
+        try:
+            spec = stem_utils.validate_model(model)
+        except ValueError as e:
+            return _err(str(e))
+
+        local_src = _ensure_local(audio_path)
+        if not os.path.isfile(local_src):
+            return _err("Audio file not found: %s" % audio_path)
+
+        resolved_device = stem_utils.resolve_device(device, platform.machine())
+        out_dir = output_dir or tempfile.mkdtemp(prefix="stems_")
+
+        ok, msg = _run_demucs(local_src, model, out_dir, resolved_device)
+        if not ok:
+            return _err(msg)
+
+        basename = os.path.splitext(os.path.basename(local_src))[0]
+        stem_paths = stem_utils.expected_stem_paths(out_dir, model, basename)
+        missing = [p for _, p in stem_paths if not os.path.isfile(p)]
+        if missing:
+            return _err("Demucs produced no output for: %s" % ", ".join(missing))
+
+        tempo, key, scale = (None, None, None)
+        if detect_tempo or detect_key:
+            tempo, key, scale = _run_analysis(local_src)
+
+        ableton = get_ableton_connection()
+
+        if fresh:
+            try:
+                ableton.send_command("restart_live", {})
+                ableton = get_ableton_connection()
+            except Exception as e:
+                return _err("fresh=True could not reach a blank set (%s). Save / "
+                            "name the open set by hand first, then retry." % e)
+
+        if detect_tempo and tempo:
+            ableton.send_command("set_tempo", {"tempo": tempo})
+        if detect_key and key:
+            root, scale_name = comp.resolve_song_scale(key, scale or "major")
+            ableton.send_command(
+                "set_song_scale", {"root_note": root, "scale_name": scale_name})
+
+        info = ableton.send_command("get_session_info") or {}
+        next_index = int(info.get("track_count", 0))
+
+        stems_out = []
+        for stem_name, path in stem_paths:
+            ableton.send_command("create_audio_track", {"index": -1})
+            stems_out.append(
+                _lay_stem_on_track(ableton, next_index, stem_name, path))
+            next_index += 1
+
+        return _ok({
+            "audio": local_src,
+            "model": spec["demucs_model"],
+            "device": resolved_device,
+            "tempo": tempo,
+            "key": key,
+            "scale": scale,
+            "tempo_detected": bool(detect_tempo and tempo),
+            "key_detected": bool(detect_key and key),
+            "fresh": fresh,
+            "stems": stems_out,
+        })
+    except Exception as e:
+        logger.error("Error in separate_stems_to_arrangement: %s", e)
+        return _err("Error in separate_stems_to_arrangement: %s" % e)
 
 
 @mcp.tool()
