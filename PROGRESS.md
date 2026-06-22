@@ -1,5 +1,25 @@
 # ableton-mcp-max — Progress
 
+## Stem separation - LIVE-VERIFIED, pending ship (2026-06-22)
+Branch `feat/stem-separation` (PR #42). New tool `separate_stems_to_arrangement` (147 tools):
+separates a mixed audio file into stems (Demucs CLI), detects tempo + key (librosa via
+`scripts/analyze_audio.py` under brew Python), sets project tempo + song scale, then lays each
+stem on its own audio track at bar 1 of the Arrangement (warp OFF, full length, phase-locked).
+Plus pure `stem_utils.py`, the analysis script, and the `/ableton:stems` command (with up-front
+`fresh=true` confirmation).
+- Stems are written under the User Library (`Samples/Stems/<model>/<name>`) so Live's browser
+  indexes + loads them; resolved by polling `get_browser_items_at_path` on the specific folder
+  (the `_carrier_uri` pattern - fast, no deep walk, no basename collision).
+- Full-length placement: Live auto-warps a loaded sample (truncating the placed clip to the
+  warp-derived beat count). `duplicate_clip_to_arrangement` gained `warp_off` + `clip_seconds`:
+  it unwarps the PLACED arrangement clip (fresh) and sets `end_marker` to the sample's true
+  seconds. KEY gotcha: do NOT pre-unwarp the session staging clip - that leaves it in a state
+  the normalize can't extend (clip stays truncated). RS-side change (reinstall + Live relaunch).
+- LIVE-VERIFIED on Live 12.4: 4 stems, clips end_time 41.0167 beats = full 20s @123.05, warp off,
+  phase-locked at bar 1, session slots empty, tempo+key applied. 851 offline tests pass.
+- NEXT (ship): bump pyproject + plugin.json to next version + `uv lock`, merge PR #42, gh release,
+  bump marketplace `ableton` ref + `node scripts/build-readme.js`.
+
 ## Master tap (#31) - SHIPPED v0.21.0 (2026-06-22)
 Branch `feat/master-tap` merged (PR #41, squash 92ece7b), tag v0.21.0, marketplace `ableton`
 ref bumped v0.20.0->v0.21.0 (@06c08d8). 146 tools (deploy_taps gained a param, no new tool).
