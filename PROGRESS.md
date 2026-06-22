@@ -1,5 +1,25 @@
 # ableton-mcp-max — Progress
 
+## Master tap (#31) - SHIPPED v0.21.0 (2026-06-22)
+Branch `feat/master-tap` merged (PR #41, squash 92ece7b), tag v0.21.0, marketplace `ableton`
+ref bumped v0.20.0->v0.21.0 (@06c08d8). 146 tools (deploy_taps gained a param, no new tool).
+Closes the pre-fader blind spot: per-track MCP Taps are PRE-FADER (the tap is a device in the
+chain; the mixer fader sits after it), so a fader move never changes a per-track reading and
+there is no post-fader program-loudness reference. The only post-fader point is the master bus.
+- **`deploy_taps(include_master=True)`** auto-adds a tap on the master bus in auto-target mode;
+  `include_master=False` skips it, an explicit `track_indices` list with `-1` selects master.
+- **`measure_mix` / `analyze_set(measure=True)`** partition the master tap out of cross-track
+  findings (it would skew loudness_balance/masking) and surface it separately - `data.master` /
+  `mix_signal.master`. New pure helper `masking_utils.partition_master(sigs)->(per_track,master)`.
+- `_find_taps`/`_delete_device_raw`/`remove_taps` gained the master path (3-tuple
+  `(track_type,track_index,device_index)`). No remote-script change (handler already accepts
+  `track_type="master"` from PR #24).
+- Pre-fader limitation documented on measure_mix/gain_stage_track/balance_mix docstrings +
+  /ableton:analyze, /ableton:produce, and a design spec.
+- **LIVE-VERIFIED Live 12.4** (blank set): deploy_taps auto-loaded a master tap that streamed
+  (`index:-1 kind:"master"`), list_taps reported it, remove_taps deleted it (`track_type:"master"`),
+  no errors. 834 offline tests. **DONE.** Open issues remaining: #36 groove-pool population.
+
 ## Arrangement automation (#30) - SHIPPED v0.20.0 (2026-06-22)
 Branch `feat/arrangement-automation` merged (PR #40, squash 13b59c0), tag v0.20.0, marketplace
 `ableton` ref bumped. New tool `set_arrangement_automation` (Composition, 146 tools) writes
