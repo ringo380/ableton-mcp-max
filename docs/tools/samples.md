@@ -120,7 +120,6 @@ separate_stems_to_arrangement(
     detect_tempo: bool = True,
     detect_key: bool = True,
     device: str = 'auto',
-    output_dir: str = None,
 )
 ```
 
@@ -132,6 +131,10 @@ them to the open set, then creates one audio track per stem and places each
 stem at bar 1 of the Arrangement timeline (Warp OFF, so full-song stems stay
 phase-locked). Session view is used only as transient staging; the end state
 has empty session slots.
+
+Stems are written under the Live User Library (Samples/Stems/<model>/<name>)
+so Live's browser indexes them and they can be loaded; they persist there
+(the Arrangement clips reference these files on disk).
 
 Prerequisites: the `demucs` CLI on PATH and (for tempo/key) librosa in brew
 Python. See the README "Stem separation" prerequisites; a clear error is
@@ -145,7 +148,6 @@ Parameters:
   The CALLER must confirm with the user before passing fresh=True.
 - detect_tempo / detect_key: analyze the source and set tempo / song scale.
 - device: "auto" (mps on Apple Silicon, else cpu), "cpu", or "mps".
-- output_dir: where Demucs writes stems (default: a temp dir).
 
 Returns JSON {ok, data:{audio, model, device, tempo, key, scale,
 tempo_detected, key_detected, fresh, stems:[{name, track_index, path,
