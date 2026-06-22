@@ -5740,9 +5740,15 @@ def _lay_stem_on_track(ableton, track_index, stem_name, uri, sample_path):
         "track_index": track_index, "clip_index": 0, "name": stem_name})
     ableton.send_command("set_track_name", {
         "track_index": track_index, "name": stem_name})
+    # Live auto-warps the loaded sample, which truncates the placed clip to the
+    # warp-derived beat count. Normalize the placed arrangement clip: warp off +
+    # end_marker to the full sample length (seconds) so the whole stem plays.
+    _size, frames, rate = _read_audio_meta(sample_path)
+    clip_seconds = float(frames) / rate if rate else 0.0
     ableton.send_command("duplicate_clip_to_arrangement", {
         "track_index": track_index, "source_slot_index": 0,
-        "destination_time": 0.0})
+        "destination_time": 0.0,
+        "warp_off": True, "clip_seconds": clip_seconds})
     ableton.send_command("delete_clip", {
         "track_index": track_index, "clip_index": 0})
     return {"name": stem_name, "track_index": track_index,

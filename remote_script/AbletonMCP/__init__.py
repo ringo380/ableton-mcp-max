@@ -495,8 +495,11 @@ class AbletonMCP(ControlSurface):
             track_index = params.get("track_index", 0)
             source_slot_index = params.get("source_slot_index", 0)
             destination_time = params.get("destination_time", 0.0)
+            warp_off = params.get("warp_off", False)
+            clip_seconds = params.get("clip_seconds", 0.0)
             result = self._duplicate_clip_to_arrangement(
-                track_index, source_slot_index, destination_time)
+                track_index, source_slot_index, destination_time,
+                warp_off, clip_seconds)
         elif command_type == "delete_arrangement_clip":
             track_index = params.get("track_index", 0)
             clip_index = params.get("clip_index", 0)
@@ -3199,8 +3202,17 @@ class AbletonMCP(ControlSurface):
             raise
 
     def _duplicate_clip_to_arrangement(self, track_index, source_slot_index,
-                                       destination_time):
-        """Place a same-track Session-slot clip onto the Arrangement timeline."""
+                                       destination_time, warp_off=False,
+                                       clip_seconds=0.0):
+        """Place a same-track Session-slot clip onto the Arrangement timeline.
+
+        warp_off / clip_seconds normalize the placed clip to play its FULL
+        sample unwarped (used by stem layout): Live auto-warps a loaded sample,
+        which makes the placed clip's length the warp-derived beat count and can
+        truncate the audio. Turning the arrangement clip's warp off makes its
+        markers seconds-based; setting end_marker to the sample's true length in
+        seconds (clip_seconds) extends the clip to span the whole sample.
+        """
         try:
             tracks = self._song.tracks
             if track_index < 0 or track_index >= len(tracks):
@@ -3220,10 +3232,25 @@ class AbletonMCP(ControlSurface):
                 slot.clip, float(destination_time))
             info = None
             if new_clip is not None:
+                # Turn warp OFF first (switches markers to seconds), then extend
+                # end_marker to the full sample so no audio is truncated.
+                if warp_off:
+                    try:
+                        new_clip.warping = False
+                    except Exception:
+                        pass
+                if clip_seconds and clip_seconds > 0:
+                    try:
+                        new_clip.looping = False
+                        new_clip.start_marker = 0.0
+                        new_clip.end_marker = float(clip_seconds)
+                    except Exception:
+                        pass
                 info = {
                     "name": new_clip.name,
                     "start_time": new_clip.start_time,
                     "end_time": new_clip.end_time,
+                    "warping": new_clip.warping,
                 }
             return {
                 "track_index": track_index,
