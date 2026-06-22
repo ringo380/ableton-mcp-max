@@ -87,6 +87,8 @@ def parse_analysis(json_str):
         data = json.loads(json_str)
     except (ValueError, TypeError):
         return (None, None, None)
+    if not isinstance(data, dict):
+        return (None, None, None)
     tempo = data.get("tempo")
     tempo = float(tempo) if isinstance(tempo, (int, float)) else None
     pc = data.get("key_pitch_class")

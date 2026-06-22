@@ -85,6 +85,14 @@ def test_parse_analysis_bad_json_returns_none_tuple():
     assert su.parse_analysis("not json") == (None, None, None)
 
 
+def test_parse_analysis_null_json_returns_none_tuple():
+    assert su.parse_analysis("null") == (None, None, None)
+
+
+def test_parse_analysis_array_json_returns_none_tuple():
+    assert su.parse_analysis("[1, 2, 3]") == (None, None, None)
+
+
 def test_resolve_device_auto():
     assert su.resolve_device("auto", "arm64") == "mps"
     assert su.resolve_device("auto", "x86_64") == "cpu"

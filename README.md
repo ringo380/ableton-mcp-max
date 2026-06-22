@@ -45,3 +45,8 @@ out to external command-line tools that are NOT bundled with the MCP server:
 
 If `demucs` is missing, the tool returns a clear error. If librosa is missing,
 stem layout still runs but tempo / key detection is skipped.
+
+When `output_dir` is not specified, separated stems are written to a temporary
+directory and the Arrangement clips reference those files on disk - so to keep
+a set portable, relocate the stems into the project folder (or pass
+`output_dir`) before the OS clears its temp directory.

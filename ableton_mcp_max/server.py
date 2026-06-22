@@ -11,6 +11,7 @@ import math
 import time
 import subprocess
 import tempfile
+import shutil
 import platform
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
@@ -5780,16 +5781,21 @@ def separate_stems_to_arrangement(
             return _err("Audio file not found: %s" % audio_path)
 
         resolved_device = stem_utils.resolve_device(device, platform.machine())
+        auto_out = output_dir is None
         out_dir = output_dir or tempfile.mkdtemp(prefix="stems_")
 
         ok, msg = _run_demucs(local_src, model, out_dir, resolved_device)
         if not ok:
+            if auto_out:
+                shutil.rmtree(out_dir, ignore_errors=True)
             return _err(msg)
 
         basename = os.path.splitext(os.path.basename(local_src))[0]
         stem_paths = stem_utils.expected_stem_paths(out_dir, model, basename)
         missing = [p for _, p in stem_paths if not os.path.isfile(p)]
         if missing:
+            if auto_out:
+                shutil.rmtree(out_dir, ignore_errors=True)
             return _err("Demucs produced no output for: %s" % ", ".join(missing))
 
         tempo, key, scale = (None, None, None)
