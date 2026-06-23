@@ -38,8 +38,26 @@ concerns.
 **Krumhansl-Schmuckler pitch-class correlation.** Build a single 12-bin
 pitch-class histogram from all content, then correlate it against the 24 rotated
 major/minor Krumhansl-Kessler key profiles. Rank keys by correlation. MIDI feeds
-the histogram directly; audio feeds it via a librosa chroma matrix collapsed to
-12 bins.
+the histogram directly; audio feeds it via a chroma profile collapsed to 12 bins.
+
+**Audio chroma runs as a brew-Python subprocess, not in-process.** The server's
+`uv` venv has no librosa. The repo already analyzes audio by shelling out to
+`scripts/analyze_audio.py` under `/opt/homebrew/bin/python3` (`_run_analysis`).
+This tool follows that pattern: a new `scripts/chroma_profile.py` (brew Python)
+loads the audio files, computes `chroma_cqt`, applies each clip's transpose, and
+prints a single combined 12-bin profile + counts as JSON. The KS correlation and
+MIDI+audio blending stay in the pure uv-side module so all detection logic lives
+in one tested place.
+
+### Decomposition (two plans)
+
+- **Plan A (this spec's core):** `detect_key` with `source` in
+  `{auto, midi, audio}` — MIDI notes + offline audio files. Ships working,
+  testable content-based key detection on its own.
+- **Plan B (follow-up):** `source="tap"` — record live playback to a temp WAV
+  via the M4L audio tap, then reuse `scripts/chroma_profile.py`. This is a
+  separate subsystem (frozen `.amxd` device + node relay + Remote Script PCM
+  capture) and gets its own spec/plan, built on Plan A.
 
 Rejected alternatives:
 - Diatonic scale-fit scoring — worse at relative/parallel disambiguation,
@@ -72,9 +90,11 @@ Functions:
   Sums each note into its pitch-class bin, weighted by `duration * velocity`
   (velocity normalized 0..1). `transpose` (the clip's `pitch_coarse`, in
   semitones) is added to each pitch before the `% 12`.
-- `histogram_from_chroma(chroma, transpose=0) -> list[float]` (len 12)
-  Sums a `12 x N` chroma matrix across frames into a 12-bin vector and rotates
-  by `transpose` semitones.
+- `histogram_from_chroma(profile, transpose=0) -> list[float]` (len 12)
+  Takes a 12-bin chroma profile (already frame-averaged by the subprocess) and
+  rotates it by `transpose` semitones. (Per-file transpose is applied inside
+  `scripts/chroma_profile.py`; this helper covers any whole-profile rotation and
+  keeps the unit under test.)
 - `combine(midi_hist, audio_hist, audio_weight=0.5) -> list[float]`
   L1-normalizes each non-empty source, then blends:
   `(1 - audio_weight) * midi_norm + audio_weight * audio_norm`. If one source is
@@ -130,26 +150,25 @@ def detect_key(ctx, source: str = "auto", audio_weight: float = 0.5,
 ```
 
 - `source`: `"auto"` (MIDI + offline audio files; default), `"midi"`
-  (MIDI only), `"audio"` (audio files only), `"tap"` (audio via the live M4L
-  audio tap instead of files).
+  (MIDI only), `"audio"` (audio files only). `"tap"` is reserved for Plan B and
+  returns a clear "not yet supported" error in Plan A.
 - `audio_weight`: blend weight for the audio histogram (0..1).
 - `top_n`: number of ranked candidates to return.
 
 Flow:
 1. Call `get_clip_contents` (one RS read) → clip list.
-2. **MIDI** (unless `source="audio"`/`"tap"`): for each MIDI clip, read notes
-   via existing `get_clip_notes`, accumulate via `histogram_from_notes` using
-   the clip's `pitch_coarse`. Track note/clip counts.
-3. **Audio offline** (`source` in `auto`/`audio`): for each audio clip with a
-   `file_path`, `_ensure_local(file_path)` (handles iCloud placeholders),
-   `librosa.load` + `librosa.feature.chroma_cqt`, accumulate via
-   `histogram_from_chroma` using `pitch_coarse`. Count skipped/unreadable.
-4. **Audio tap** (`source="tap"`): capture playback through the existing M4L
-   audio tap, compute chroma from the captured buffer, accumulate. (Reuses the
-   tap-deploy/capture path; only covers what is playing.)
-5. `combine(midi_hist, audio_hist, audio_weight)` → `detect_key` → take `top_n`.
-6. Read `get_song_scale` for the Live setting; compute `matches_live`.
-7. Return JSON.
+2. **MIDI** (unless `source="audio"`): for each MIDI clip, read notes via
+   existing `get_clip_notes`, accumulate via `histogram_from_notes` using the
+   clip's `pitch_coarse`. Track note/clip counts.
+3. **Audio offline** (`source` in `auto`/`audio`): collect each audio clip's
+   `{path: _ensure_local(file_path), transpose: pitch_coarse}`, then run
+   `scripts/chroma_profile.py` once under brew Python (`_run_chroma` helper) to
+   get a combined 12-bin audio profile + analyzed/skipped counts. Pass the
+   profile through `histogram_from_chroma` (transpose 0 — already applied
+   per-file in the subprocess).
+4. `combine(midi_hist, audio_hist, audio_weight)` → `detect_key` → take `top_n`.
+5. Read `get_song_scale` for the Live setting; compute `matches_live`.
+6. Return JSON.
 
 ### Output shape
 
@@ -179,14 +198,15 @@ Flow:
 
 - **Empty set / no usable content** → `{"ok": false, "error": "..."}` with a
   clear message (no clips, or all clips empty/unreadable).
-- **librosa unavailable** (import fails) → degrade to MIDI-only, set
-  `sources.audio.mode = "unavailable"` and note it; never crash.
-- **`source="audio"`/`"tap"` but no audio obtainable** → `ok:false` with reason.
+- **brew Python / librosa unavailable** (`_BREW_PY` missing, import fails inside
+  the script, nonzero exit) → `_run_chroma` returns None; degrade to MIDI-only,
+  set `sources.audio.mode = "unavailable"`; never crash.
+- **`source="audio"` but no audio obtainable** → `ok:false` with reason.
+- **`source="tap"` (Plan A)** → `ok:false`, "tap source not yet supported".
 - **Per-clip failures** (missing file, unsupported format, iCloud download
   timeout, note-read error) → skip that clip, increment a skipped counter,
-  continue. Never fatal.
-- **Tap mode with nothing playing / tap not deployed** → surface honestly in
-  `sources.audio` and fall back per `source` semantics.
+  continue. Never fatal. The chroma subprocess reports its own analyzed/skipped
+  counts for audio files it could not decode.
 
 ## Testing
 
@@ -203,8 +223,9 @@ no Live needed):
   single-key histogram yields high confidence.
 - Name/relative-key helpers.
 
-Real-file librosa round-trip test guarded by `@pytest.mark.skipif` (skip if
-librosa or a fixture sample is unavailable).
+`scripts/chroma_profile.py` round-trip test guarded by `@pytest.mark.skipif`
+(skip if brew Python / librosa / a fixture sample is unavailable): a synthetic
+single-pitch tone file yields a profile peaking on that pitch class.
 
 Offline gate: `uv run --with pytest pytest -q`, `uv run python -c "import
 ableton_mcp_max.server"`, `uv run python -m py_compile
@@ -218,11 +239,14 @@ Live verification (manual, recorded in PROGRESS.md): a known-key set →
 
 - `ableton_mcp_max/key_detection_utils.py` — new pure module (KS profiles,
   histogram builders, correlation, naming).
-- `ableton_mcp_max/server.py` — new `detect_key` `@mcp.tool()`; register
-  `get_clip_contents` in the command allow-list; import the new module.
+- `scripts/chroma_profile.py` — new brew-Python subprocess: audio files +
+  per-file transpose → combined 12-bin chroma profile + counts (JSON).
+- `ableton_mcp_max/server.py` — new `detect_key` `@mcp.tool()`; new `_run_chroma`
+  helper (mirrors `_run_analysis`); import the new module.
 - `remote_script/AbletonMCP/__init__.py` — new `get_clip_contents` inline read
   handler.
 - `tests/test_key_detection_utils.py` — new unit tests.
+- `tests/test_chroma_profile.py` — new (skipif-guarded) script round-trip test.
 - Docs/version bumps on ship (per CLAUDE.md publish flow): tool count in
   `README.md`, `docs/index.md`, regen tool index, `pyproject.toml` +
   `.claude-plugin/plugin.json` + `uv.lock`.
