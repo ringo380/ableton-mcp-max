@@ -1,6 +1,11 @@
 # ableton-mcp-max — Progress
 
-## detect_key (PR #43) - LIVE-VERIFIED, pending ship (2026-06-24)
+## detect_key (PR #43) - SHIPPED v0.23.0 (2026-06-24)
+SHIPPED: PR #43 squash-merged (0d12d85), tag v0.23.0 created (= main), marketplace `ableton`
+ref v0.22.0 -> v0.23.0 (@5dc6c00) + build-readme. 148 tools. Live-verified + interactive MCP
+tool confirmed after CC restart.
+
+### Detail (was: LIVE-VERIFIED, pending ship)
 Branch `feat/detect-key`. New tool `detect_key` (148 tools, v0.23.0 in-tree): KS-profile
 key detection from MIDI notes, audio chroma (brew Python + librosa), or both combined
 (`source` in {auto, midi, audio}; tap -> ok:false). Returns ranked candidates with confidence,
