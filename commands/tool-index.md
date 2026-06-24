@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_147 tools._
+_148 tools._
 
 ## Session & view
 
@@ -197,6 +197,7 @@ _147 tools._
 
 - **`analyze_set`** - Analyze the open Live set against curated best-practice rulesets.
 - **`check_clipping`** - Play the set briefly and flag any track/return/master peaking past 0 dBFS.
+- **`detect_key`** - Detect the most likely musical key from the open set's combined content
 
 ## Metering (Audio Tap)
 

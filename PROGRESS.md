@@ -1,5 +1,13 @@
 # ableton-mcp-max — Progress
 
+## detect_key (#TBD) - offline-complete, pending live verification (2026-06-24)
+Branch `feat/detect-key`. New tool `detect_key` (148 tools, v0.23.0 in-tree): KS-profile
+key detection from MIDI notes, audio chroma (brew Python + librosa), or both combined
+(`source` in {auto, midi, audio}; tap -> ok:false). Returns ranked candidates with confidence,
+`matches_live` flag, MIDI/audio source contributions, and graceful degradation when librosa
+is unavailable. Offline gate: 867 tests pass; server import + remote-script py_compile clean.
+- NEXT: live verification (detect_key on MIDI/audio/auto sources), then ship PR + gh release v0.23.0.
+
 ## Stem separation - LIVE-VERIFIED, pending ship (2026-06-22)
 Branch `feat/stem-separation` (PR #42). New tool `separate_stems_to_arrangement` (147 tools):
 separates a mixed audio file into stems (Demucs CLI), detects tempo + key (librosa via
