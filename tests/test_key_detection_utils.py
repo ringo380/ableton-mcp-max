@@ -69,3 +69,15 @@ def test_combine_empty_source_passthrough():
     midi = [2.0] + [0.0] * 11
     out = kd.combine(midi, [0.0] * 12, audio_weight=0.5)
     assert abs(out[0] - 1.0) < 1e-9  # normalized midi, audio ignored
+
+
+def test_histogram_from_notes_skips_muted():
+    notes = [
+        {"pitch": 60, "duration": 1.0, "velocity": 127},          # C - active
+        {"pitch": 64, "duration": 1.0, "velocity": 127, "mute": True},  # E - muted, skipped
+        {"pitch": 67, "duration": 1.0, "velocity": 127, "mute": False}, # G - not muted
+    ]
+    h = kd.histogram_from_notes(notes)
+    assert h[0] == 1.0   # C counted
+    assert h[4] == 0.0   # E skipped (muted)
+    assert h[7] == 1.0   # G counted

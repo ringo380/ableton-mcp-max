@@ -30,8 +30,9 @@ def test_detect_key_midi_only(monkeypatch):
     clips = [{"track_index": 0, "clip_index": 0, "location": "session",
               "is_midi": True, "length": 4.0, "pitch_coarse": 0,
               "file_path": None}]
+    # root_note is an INT (0=C) matching the real Remote Script contract
     conn = _Conn(clips, {(0, 0): _c_major_notes()},
-                 song_scale={"root_note": "C", "scale_name": "Major"})
+                 song_scale={"root_note": 0, "scale_name": "Major"})
     monkeypatch.setattr(server, "get_ableton_connection", lambda: conn)
     out = json.loads(server.detect_key(ctx=None, source="midi"))
     assert out["ok"] is True
@@ -40,6 +41,41 @@ def test_detect_key_midi_only(monkeypatch):
     assert data["candidates"][0]["key"] == "C major"
     assert data["sources"]["midi"]["notes"] == 9
     assert data["matches_live"] is True
+
+
+def test_detect_key_matches_live_false_different_key(monkeypatch):
+    # Live says D major (root_note=2), content is C major -> matches_live False
+    clips = [{"track_index": 0, "clip_index": 0, "location": "session",
+              "is_midi": True, "length": 4.0, "pitch_coarse": 0,
+              "file_path": None}]
+    conn = _Conn(clips, {(0, 0): _c_major_notes()},
+                 song_scale={"root_note": 2, "scale_name": "Major"})
+    monkeypatch.setattr(server, "get_ableton_connection", lambda: conn)
+    out = json.loads(server.detect_key(ctx=None, source="midi"))
+    assert out["ok"] is True
+    assert out["data"]["detected_key"] == "C major"
+    assert out["data"]["matches_live"] is False
+
+
+def test_detect_key_dataless_audio_clip_skipped(monkeypatch):
+    # _ensure_local raises -> audio clip should be skipped, MIDI detection proceeds
+    clips = [
+        {"track_index": 0, "clip_index": 0, "location": "session",
+         "is_midi": True, "length": 4.0, "pitch_coarse": 0, "file_path": None},
+        {"track_index": 1, "clip_index": 0, "location": "session",
+         "is_midi": False, "length": 4.0, "pitch_coarse": 0,
+         "file_path": "/icloud/missing.wav"},
+    ]
+    conn = _Conn(clips, {(0, 0): _c_major_notes()})
+    monkeypatch.setattr(server, "get_ableton_connection", lambda: conn)
+    monkeypatch.setattr(server, "_ensure_local",
+                        lambda p, **k: (_ for _ in ()).throw(RuntimeError("not available")))
+    out = json.loads(server.detect_key(ctx=None, source="auto"))
+    assert out["ok"] is True, "tool must not fail when one audio clip is unavailable"
+    data = out["data"]
+    assert data["detected_key"] == "C major"
+    assert data["sources"]["audio"]["skipped"] == 1
+    assert data["sources"]["audio"]["analyzed"] == 0
 
 
 def test_detect_key_empty_set(monkeypatch):

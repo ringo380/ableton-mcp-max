@@ -7085,6 +7085,8 @@ def list_listeners(ctx: Context) -> str:
     except Exception as e:
         logger.error(f"Error listing listeners: {str(e)}")
         return _err(f"Error listing listeners: {str(e)}")
+
+
 @mcp.tool()
 def detect_key(ctx: Context, source: str = "auto",
                audio_weight: float = 0.5, top_n: int = 5) -> str:
@@ -7104,6 +7106,7 @@ def detect_key(ctx: Context, source: str = "auto",
         return _err("tap source not yet supported")
     if source not in ("auto", "midi", "audio"):
         return _err("source must be one of: auto, midi, audio")
+    top_n = max(1, int(top_n))
     try:
         ableton = get_ableton_connection()
         contents = ableton.send_command("get_clip_contents", {})
@@ -7136,8 +7139,9 @@ def detect_key(ctx: Context, source: str = "auto",
                 if c.get("is_midi") or not c.get("file_path"):
                     continue
                 audio_info["clips"] += 1
-                local = _ensure_local(c["file_path"])
-                if not local:
+                try:
+                    local = _ensure_local(c["file_path"])
+                except Exception:
                     audio_info["skipped"] += 1
                     continue
                 items.append({"path": local,
@@ -7162,8 +7166,9 @@ def detect_key(ctx: Context, source: str = "auto",
 
         live = _song_scale()
         matches = None
-        if live and live.get("root_note") is not None:
-            live_name = "%s %s" % (live.get("root_note"),
+        if live is not None and live.get("root_note") is not None:
+            root_name = kd.PITCH_NAMES[int(live["root_note"]) % 12]
+            live_name = "%s %s" % (root_name,
                                    "major" if str(live.get("scale_name", "")
                                                   ).lower().startswith("maj")
                                    else "minor")

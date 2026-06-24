@@ -63,6 +63,8 @@ def histogram_from_notes(notes, transpose=0):
     """
     hist = [0.0] * 12
     for n in notes:
+        if n.get("mute"):
+            continue
         pc = (int(n["pitch"]) + transpose) % 12
         hist[pc] += float(n.get("duration", 0.0)) * (float(n.get("velocity", 0.0)) / 127.0)
     return hist
