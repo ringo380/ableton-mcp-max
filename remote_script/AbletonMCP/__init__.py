@@ -786,6 +786,8 @@ class AbletonMCP(ControlSurface):
                 track_index = params.get("track_index", 0)
                 clip_index = params.get("clip_index", 0)
                 response["result"] = self._get_clip_info(track_index, clip_index)
+            elif command_type == "get_clip_contents":
+                response["result"] = self._get_clip_contents()
             elif command_type == "get_clip_notes":
                 track_index = params.get("track_index", 0)
                 clip_index = params.get("clip_index", 0)
@@ -2285,6 +2287,49 @@ class AbletonMCP(ControlSurface):
         except Exception as e:
             self.log_message("Error getting clip info: " + str(e))
             raise
+
+    def _get_clip_contents(self):
+        """Enumerate every clip (session slots + arrangement) with the metadata
+        key detection needs. Pure read; audio-only attrs probed via try/except
+        (Live raises RuntimeError -- not AttributeError -- on MIDI clips)."""
+        clips = []
+
+        def _emit(clip, track_index, clip_index, location):
+            if clip is None:
+                return
+            entry = {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "location": location,
+                "is_midi": bool(clip.is_midi_clip),
+                "length": clip.length,
+                "pitch_coarse": 0,
+                "file_path": None,
+            }
+            try:
+                entry["pitch_coarse"] = int(clip.pitch_coarse)
+            except Exception:
+                pass
+            try:
+                if clip.is_audio_clip:
+                    entry["file_path"] = clip.file_path
+            except Exception:
+                pass
+            clips.append(entry)
+
+        for t_index, track in enumerate(self._song.tracks):
+            try:
+                for s_index, slot in enumerate(track.clip_slots):
+                    if slot.has_clip:
+                        _emit(slot.clip, t_index, s_index, "session")
+            except Exception:
+                pass
+            try:
+                for a_index, clip in enumerate(track.arrangement_clips):
+                    _emit(clip, t_index, a_index, "arrangement")
+            except Exception:
+                pass
+        return {"clips": clips}
 
     def _get_clip_notes(self, track_index, clip_index, from_time,
                         time_span, from_pitch, pitch_span):
