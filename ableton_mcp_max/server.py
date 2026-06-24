@@ -139,6 +139,7 @@ from ableton_mcp_max.save_utils import (
 )
 from ableton_mcp_max import als_automation_utils as als
 from ableton_mcp_max import stem_utils
+from ableton_mcp_max import key_detection_utils as kd
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -5697,6 +5698,33 @@ def _run_analysis(audio_path, timeout=120):
     return stem_utils.parse_analysis(proc.stdout.strip().splitlines()[-1])
 
 
+_CHROMA_SCRIPT = os.path.join(os.path.dirname(__file__), "..", "scripts",
+                              "chroma_profile.py")
+
+
+def _run_chroma(items, timeout=180):
+    """Run scripts/chroma_profile.py under brew python on a list of
+    {path, transpose} dicts. Returns {profile, analyzed, skipped} or None on any
+    failure (so the caller degrades to MIDI-only)."""
+    if not items or not os.path.exists(_BREW_PY):
+        return None
+    try:
+        proc = subprocess.run(
+            [_BREW_PY, _CHROMA_SCRIPT], input=json.dumps(items),
+            capture_output=True, text=True, timeout=timeout)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    try:
+        out = json.loads(proc.stdout.strip().splitlines()[-1])
+    except Exception:
+        return None
+    if "error" in out or "profile" not in out:
+        return None
+    return out
+
+
 def _stem_uri(browser_folder, stem_filename, retries=12, delay=1.0):
     """Browser uri for a just-written User Library stem file, or None.
 
@@ -7057,6 +7085,116 @@ def list_listeners(ctx: Context) -> str:
     except Exception as e:
         logger.error(f"Error listing listeners: {str(e)}")
         return _err(f"Error listing listeners: {str(e)}")
+
+
+@mcp.tool()
+def detect_key(ctx: Context, source: str = "auto",
+               audio_weight: float = 0.5, top_n: int = 5) -> str:
+    """Detect the most likely musical key from the open set's combined content
+    (MIDI notes + offline audio files), independent of Live's configured scale.
+
+    Parameters:
+    - source: "auto" (MIDI + audio files; default), "midi", or "audio".
+      ("tap" is not yet supported.)
+    - audio_weight: 0..1 blend of the audio histogram vs MIDI (default 0.5).
+    - top_n: number of ranked candidates to return (default 5).
+
+    Returns {ok, data} where data has detected_key, confidence, candidates,
+    relative_key, pitch_class_histogram, sources, live_scale, matches_live.
+    """
+    if source == "tap":
+        return _err("tap source not yet supported")
+    if source not in ("auto", "midi", "audio"):
+        return _err("source must be one of: auto, midi, audio")
+    top_n = max(1, int(top_n))
+    try:
+        ableton = get_ableton_connection()
+        contents = ableton.send_command("get_clip_contents", {})
+        clips = (contents or {}).get("clips", [])
+
+        midi_hist = [0.0] * 12
+        midi_clips = midi_notes = 0
+        if source in ("auto", "midi"):
+            for c in clips:
+                if not c.get("is_midi"):
+                    continue
+                res = ableton.send_command("get_clip_notes", {
+                    "track_index": c["track_index"],
+                    "clip_index": c["clip_index"],
+                    "from_time": 0.0, "time_span": -1.0,
+                    "from_pitch": 0, "pitch_span": 128})
+                notes = (res or {}).get("notes", [])
+                if not notes:
+                    continue
+                ch = kd.histogram_from_notes(notes, int(c.get("pitch_coarse", 0)))
+                midi_hist = [midi_hist[i] + ch[i] for i in range(12)]
+                midi_clips += 1
+                midi_notes += len(notes)
+
+        audio_hist = [0.0] * 12
+        audio_info = {"clips": 0, "analyzed": 0, "skipped": 0, "mode": "offline"}
+        if source in ("auto", "audio"):
+            items = []
+            for c in clips:
+                if c.get("is_midi") or not c.get("file_path"):
+                    continue
+                audio_info["clips"] += 1
+                try:
+                    local = _ensure_local(c["file_path"])
+                except Exception:
+                    audio_info["skipped"] += 1
+                    continue
+                items.append({"path": local,
+                              "transpose": int(c.get("pitch_coarse", 0))})
+            chroma = _run_chroma(items) if items else None
+            if chroma is None:
+                if items:
+                    audio_info["mode"] = "unavailable"
+                    audio_info["skipped"] += len(items)
+            else:
+                audio_hist = kd.histogram_from_chroma(chroma["profile"], 0)
+                audio_info["analyzed"] = chroma.get("analyzed", 0)
+                audio_info["skipped"] += chroma.get("skipped", 0)
+
+        combined = kd.combine(midi_hist, audio_hist, audio_weight)
+        if sum(combined) <= 0:
+            return _err("no usable MIDI notes or audio content to analyze")
+
+        candidates = kd.detect_key(combined, top_n=top_n)
+        best = candidates[0]
+        rel_pc, rel_mode = kd.relative_key(best["root_pc"], best["mode"])
+
+        live = _song_scale()
+        matches = None
+        if live is not None and live.get("root_note") is not None:
+            root_name = kd.PITCH_NAMES[int(live["root_note"]) % 12]
+            live_name = "%s %s" % (root_name,
+                                   "major" if str(live.get("scale_name", "")
+                                                  ).lower().startswith("maj")
+                                   else "minor")
+            matches = (live_name.lower() == best["key"].lower())
+
+        total = sum(combined) or 1.0
+        data = {
+            "detected_key": best["key"],
+            "confidence": best["confidence"],
+            "candidates": candidates,
+            "relative_key": kd.key_name(rel_pc, rel_mode),
+            "pitch_class_histogram": [round(x / total, 4) for x in combined],
+            "sources": {
+                "midi": {"clips": midi_clips, "notes": midi_notes},
+                "audio": audio_info,
+                "audio_weight": audio_weight,
+            },
+            "live_scale": live,
+            "matches_live": matches,
+        }
+        return _ok(data)
+    except Exception as e:
+        logger.error("Error detecting key: %s", e)
+        return _err("Error detecting key: %s" % e)
+
+
 # Main execution
 def main():
     """Run the MCP server"""

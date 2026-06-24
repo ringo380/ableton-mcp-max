@@ -89,6 +89,7 @@ GROUPS = [
     ("Analysis", [
         "analyze_set",
         "check_clipping",
+        "detect_key",
     ]),
     ("Metering (Audio Tap)", [
         "get_audio_tap_status",

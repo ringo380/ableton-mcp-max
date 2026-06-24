@@ -84,6 +84,7 @@ CATEGORIES = [
     ("analysis", "Analysis", "Inspect the open set against best-practice rulesets and surface findings by domain.", [
         "analyze_set",
         "check_clipping",
+        "detect_key",
     ]),
     ("metering", "Metering (Audio Tap)", "Per-track and master loudness/true-peak/spectrum/stereo from the MCP Tap Max-for-Live devices, plus cross-track mix analysis.", [
         "get_audio_tap_status",

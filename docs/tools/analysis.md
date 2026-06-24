@@ -84,3 +84,21 @@ Honest scope: the LOM output meter is a post-fader peak sampled ~10x/sec, so
 this catches obvious overs but not sub-sample inter-sample peaks - for true
 peak (dBTP) load the MCP Audio Tap and use measure_mix / read_track_meter.
 
+## detect_key
+
+```python
+detect_key(source: str = 'auto', audio_weight: float = 0.5, top_n: int = 5)
+```
+
+Detect the most likely musical key from the open set's combined content
+(MIDI notes + offline audio files), independent of Live's configured scale.
+
+Parameters:
+- source: "auto" (MIDI + audio files; default), "midi", or "audio".
+  ("tap" is not yet supported.)
+- audio_weight: 0..1 blend of the audio histogram vs MIDI (default 0.5).
+- top_n: number of ranked candidates to return (default 5).
+
+Returns {ok, data} where data has detected_key, confidence, candidates,
+relative_key, pitch_class_histogram, sources, live_scale, matches_live.
+
