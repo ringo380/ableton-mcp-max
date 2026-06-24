@@ -52,3 +52,55 @@ def detect_key(hist, top_n=5):
             max(0.0, min(1.0, (c["score"] - mean) / denom)), 4)
         c["score"] = round(c["score"], 4)
     return cands[:min(top_n, 24)]
+
+
+def histogram_from_notes(notes, transpose=0):
+    """Build a 12-bin pitch-class histogram from MIDI notes.
+
+    Each note: {"pitch": int, "duration": float, "velocity": float}
+    Bin = (pitch + transpose) % 12
+    Weight = duration * (velocity / 127.0)
+    """
+    hist = [0.0] * 12
+    for n in notes:
+        pc = (int(n["pitch"]) + transpose) % 12
+        hist[pc] += float(n.get("duration", 0.0)) * (float(n.get("velocity", 0.0)) / 127.0)
+    return hist
+
+
+def histogram_from_chroma(profile, transpose=0):
+    """Rotate a 12-bin chroma profile by transpose.
+
+    out[(i + transpose) % 12] += profile[i]
+    """
+    out = [0.0] * 12
+    for i in range(12):
+        out[(i + transpose) % 12] += float(profile[i])
+    return out
+
+
+def _l1(hist):
+    """L1-normalize a histogram; return None if sum <= 0 (empty)."""
+    s = sum(hist)
+    if s <= 0:
+        return None
+    return [x / s for x in hist]
+
+
+def combine(midi_hist, audio_hist, audio_weight=0.5):
+    """Blend two histograms with L1 normalization.
+
+    Each input is L1-normalized independently. An all-zero source is treated as
+    empty and is ignored (the other passes through normalized). Both empty
+    returns [0.0] * 12. Otherwise: (1 - audio_weight) * midi + audio_weight * audio.
+    """
+    m = _l1(midi_hist)
+    a = _l1(audio_hist)
+    if m is None and a is None:
+        return [0.0] * 12
+    if a is None:
+        return m
+    if m is None:
+        return a
+    w = max(0.0, min(1.0, audio_weight))
+    return [(1.0 - w) * m[i] + w * a[i] for i in range(12)]
