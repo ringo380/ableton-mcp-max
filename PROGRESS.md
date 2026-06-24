@@ -1,12 +1,17 @@
 # ableton-mcp-max — Progress
 
-## detect_key (#TBD) - offline-complete, pending live verification (2026-06-24)
+## detect_key (PR #43) - LIVE-VERIFIED, pending ship (2026-06-24)
 Branch `feat/detect-key`. New tool `detect_key` (148 tools, v0.23.0 in-tree): KS-profile
 key detection from MIDI notes, audio chroma (brew Python + librosa), or both combined
 (`source` in {auto, midi, audio}; tap -> ok:false). Returns ranked candidates with confidence,
 `matches_live` flag, MIDI/audio source contributions, and graceful degradation when librosa
-is unavailable. Offline gate: 867 tests pass; server import + remote-script py_compile clean.
-- NEXT: live verification (detect_key on MIDI/audio/auto sources), then ship PR + gh release v0.23.0.
+is unavailable. Offline gate: 870 tests pass; server import + remote-script py_compile clean.
+- LIVE-VERIFIED (Live 12.4 Suite, 2026-06-24): source=midi -> "C major" (0.93); source=auto same;
+  source=audio on factory "Banjo Arpeggio E Minor" loop -> "E minor" (matches filename), analyzed:1;
+  source=tap -> ok:false. matches_live True for C Major / False for D Major (live_scale.root_note
+  returns INT - confirms the whole-branch-review fix that maps it through pitch names). Scratch
+  clip + audio track cleaned up.
+- NEXT: ship v0.23.0 (merge PR #43, gh release create v0.23.0, marketplace ableton ref bump + build-readme).
 
 ## Stem separation - LIVE-VERIFIED, pending ship (2026-06-22)
 Branch `feat/stem-separation` (PR #42). New tool `separate_stems_to_arrangement` (147 tools):
