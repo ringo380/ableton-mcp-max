@@ -1,8 +1,19 @@
 # ableton-mcp-max — Progress
 
-## VST/AU plugin support (Serum 2) - Task 0 spike: GATE PASSED (2026-06-26)
-Branch `feat/vst-plugin-support`. Spec + plan committed under docs/superpowers/. Goal: expose,
-control, author 3rd-party VST3/AU plugin params via the Configure-list XML backdoor (Serum 2 first).
+## VST/AU plugin support (Serum 2) - IN PROGRESS: Task 0 GATE PASSED + Task 1 done (2026-06-26)
+Branch `feat/vst-plugin-support` (5 commits, clean tree, NOT pushed/PR'd yet). Spec + plan committed
+under docs/superpowers/. Goal: expose, control, author 3rd-party VST3/AU plugin params via the
+Configure-list XML backdoor (Serum 2 first).
+
+**>>> RESUME HERE (NEXT = Task 2, plan §Task 2):** add a `probe_plugin_parameters` READ handler to
+the Remote Script (`get_parameter_names()`/`get_bank_parameters()`), reinstall RS + bounce Live, add
+the thin server tool, then RESTART CLAUDE CODE to load it. Run it live on Serum 2 to (a) confirm the
+`id = 2000000 + index` formula across the full name list and (b) generate `param_maps/serum2.json`.
+Then Task 3 = `expose_plugin_parameters` (Option A live-set patch). Full spike facts + gotchas in the
+[[vst-plugin-support]] memory.
+- **Task 1 DONE (offline, committed @2524660):** `ableton_mcp_max/plugin_config_utils.py` +
+  `tests/test_plugin_config_utils.py` (11 tests): find_empty_slots / build_slot / fill_slots
+  (overflow-reporting) / max_target_id / bump_next_pointee_id. Full suite 884 passed, 2 skipped.
 
 **Make-or-break gate PASSED (Live 12.4 Suite):** an EXTERNALLY-written Configure slot becomes a
 live, named, settable LOM `DeviceParameter`. Method: patched one empty `<PluginFloatParameter>`
@@ -35,8 +46,9 @@ to 0.9 moved Serum's knob in the GUI (user-confirmed). Full LOM control of plugi
     sits nested in the rack chain → its exposed params are NOT on `track.devices[0]` (that's the
     rack: 16 macros + chain selector), so reaching them needs chain-aware param access the current
     tools lack. No `NextPointeeId` needed in `.adg` (preset target ids are all 0).
-- **DELIVERY DECISION PENDING (user checkpoint):** A (top-level, proven, reload-per-instance) vs
-  B (rack `.adg`, no reload, needs new nested-device param tooling). Affects Task 3 scope.
+- **DELIVERY DECISION = C (user-chosen):** Release 1 = Option A (live-set `.als` patch, top-level
+  Serum, proven, existing get/set tools, one save+reload per instance). Release 2 fast-follow =
+  Option B (rack `.adg` + new nested-device param access, no reloads) = plan Task 6.
 - Scratch: `serum2_test.als` has a `.bak`; failed `serum2_mcp.adv` + `serum_probe_rack.adg` +
   `serum2_mcp_probe.vstpreset` left in User Library (harmless).
 
