@@ -24,8 +24,9 @@ Goal: a balanced, headroom-safe mix before mastering. Work from measurement, not
 - Reverb/delay belong on returns (shared, CPU-cheap), not as inserts on every track.
 
 ## Gotchas
-- Device-tool asymmetry: `get_device_parameters`/`set_device_parameter` are regular-track
-  only; use the `track_type`-aware tools for return/master devices.
+- Device-tool asymmetry: `get_automation`/`set_automation` are regular-track only. The
+  device tools (`get_device_parameters`, `set_device_parameter`, `get_rack_macros`,
+  `set_chain_property`, `set_device_on`) accept `track_type='return'|'master'` (since PR #24).
 - Mixer writes can lag their read-back - confirm with a separate `get_mixer`.
 - Re-read `get_session_info` first; track indices change between sessions.
 

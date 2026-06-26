@@ -23,9 +23,10 @@ Ableton MCP active. Cardinal rules for driving Live reliably:
   modal -> socket timeout). quantize_clip is safe.
 - Loading devices HOT-SWAPS: load_instrument_or_effect / load_preset / load_drum_kit
   REPLACE the track's instrument. Experiment on an empty track, delete_device after.
-- Device-tool asymmetry: get_device_parameters / set_device_parameter are regular-track
-  only; get_device_info / get_rack_macros / set_rack_macro / set_chain_property /
-  set_device_on / delete_device take track_type and reach return/master devices.
+- Device-tool asymmetry: get_automation / set_automation are regular-track only. The device
+  param/rack tools (get_device_parameters, set_device_parameter, get_device_info,
+  get_rack_macros, set_rack_macro, set_chain_property, set_device_on, delete_device) take
+  track_type and reach return/master devices (since PR #24).
 - Return/master/group tracks have no .arm; group tracks have no monitoring. Probe optional
   endpoints defensively. No LOM call creates a group track (UI-only).
 - undo is GLOBAL (it undoes user hand-edits too).

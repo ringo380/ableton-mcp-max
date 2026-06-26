@@ -11,9 +11,10 @@ clipping. Master only a clean, headroom-safe mix.
 ## Tools
 - Measure: `measure_loudness` (integrated LUFS / peaks), `check_clipping`,
   the master audio tap for metering.
-- Master chain: inspect/adjust with the `track_type='master'` device tools
-  (`get_device_info`, `get_device_parameters`/`set_device_parameter` are regular-only -
-  use `get_rack_macros`/`set_chain_property`/`set_device_on` for the master rack/limiter).
+- Master chain: inspect/adjust with the `track_type='master'` device tools -
+  `get_device_info`, `get_device_parameters`, `set_device_parameter` all support
+  `track_type='master'` (since PR #24); use `get_rack_macros`/`set_chain_property` for rack
+  chains and `set_device_on` to bypass.
 - Load master devices with `load_instrument_or_effect` / `load_preset` (`track_type='master'`).
 
 ## Principles
@@ -24,8 +25,8 @@ clipping. Master only a clean, headroom-safe mix.
 
 ## Gotchas
 - `measure_loudness` needs audio actually playing through the master.
-- Master-device raw param read/write is not available via `set_device_parameter`; drive
-  the limiter through the rack/chain tools.
+- Master-device raw param read/write IS available via `get_device_parameters`/`set_device_parameter`
+  with `track_type='master'` (since PR #24); use these for direct param control on the master chain.
 
 ## Checklist
 - [ ] Target read from brief (or default applied + noted).
