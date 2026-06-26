@@ -2661,6 +2661,42 @@ def get_device_parameters(
         logger.error(f"Error getting device parameters: {str(e)}")
         return _err(f"Error getting device parameters: {str(e)}")
 @mcp.tool()
+def probe_plugin_parameters(
+    ctx: Context, track_index: int, device_index: int, track_type: str = "regular"
+) -> str:
+    """
+    Read the FULL parameter-name list of a third-party VST/AU plugin device
+    (e.g. Serum 2) - the names Live can Configure, not just the automatable
+    subset visible in get_device_parameters.
+
+    A freshly loaded plugin exposes only 'Device On' as a LOM DeviceParameter;
+    its real knobs are reachable only after they are 'Configured'. This probe
+    returns every parameter name the plugin reports, so a param-map pack can be
+    generated and used to expose a chosen subset via expose_plugin_parameters.
+
+    Parameters:
+    - track_index: index of the track (ignored for master)
+    - device_index: index of the plugin device on that track (0 = first device)
+    - track_type: 'regular' (default), 'return', or 'master'
+
+    Returns JSON: device_name, class_name, parameter_count, names (ordered list;
+    the Configure-slot id for names[i] is id_base + i), bank_indices.
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "probe_plugin_parameters",
+            {
+                "track_index": track_index,
+                "device_index": device_index,
+                "track_type": track_type,
+            },
+        )
+        return _ok(result)
+    except Exception as e:
+        logger.error(f"Error probing plugin parameters: {str(e)}")
+        return _err(f"Error probing plugin parameters: {str(e)}")
+@mcp.tool()
 def set_device_parameter(
     ctx: Context,
     track_index: int,
