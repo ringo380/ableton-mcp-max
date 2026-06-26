@@ -21,11 +21,18 @@ returned, idx-ordered). Two findings BLOCK serum2.json + reshape Task 3:
   (Main/Osc A-B-C/Filter1-2/Env/LFO/FX); idx 312+ is the Mod-matrix/CC/Aftertouch bulk (130 Mod,
   16x CC0-127, etc.). A useful pack is a hand-picked <=128 subset of the core.
 - Full names list saved to scratchpad `serum2_probe_names.json` (NOT in repo).
-**NEXT (needs user direction):** resolve the true ParamID<->name map. Cleanest = pull Task 3's
-save->patch->reload engine forward and run an id->name ORACLE (fill slots with known ParameterIds,
-reload, read get_device_parameters resolved names; ~128/cycle). Then build serum2.json as an
-empirical id<->name table for a curated <=128 subset. Ask user re: curation priorities + whether to
-build the oracle harness now.
+**UPDATE: formula CONFIRMED (my "refuted" was wrong), oracle BUILT + working.** ParameterId =
+2000000 + serum_internal_id (Task 0 right). Decisive test: patched slots w/ sentinel names, reload,
+get_device_parameters - VALID id -> is_enabled=TRUE + real name (Live overrides sentinel), INVALID ->
+disabled + sentinel kept. Built harvest harness (scratchpad harvest.py/reload.sh/harvest_findings.md):
+cycle = save_set("") (clean) -> patch .als -> Cmd+N/Return/open -> read. Filter 1 = ids 2000000..010;
+Filter 2 Level = 2001029. **Serum id space is SPARSE+WIDE** (~11-wide blocks at offsets ~1000 apart,
+>=2000000..2002600) so a FULL dense harvest = ~21 reload cycles.
+**NEXT (needs user direction - asked):** how to build the id<->name map given the sparse space:
+(a) full dense ~21-reload autonomous harvest -> complete map; (b) user Configures ~100 go-to params
+in Serum's UI + saves, I read ids from the .als in 1 reload (cheap, user-curated); (c) targeted
+section harvest (~10 reloads for the sections the user names). Then build serum2.json (<=128) + Task 3
+expose engine (save->patch->reload already prototyped here).
 COMMITTED THIS SESSION: probe tool @6a2c846; **VST/AU URI loader fix @ad655b6** (`_find_browser_item_
 by_uri` lacked the 'plugins' root - VST3/AU were unloadable by URI; fixed + live-verified Serum 2
 loads). RS reinstalled+bounced twice. Full spike facts in [[vst-plugin-support]] memory.
