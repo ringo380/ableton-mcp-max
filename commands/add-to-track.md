@@ -9,6 +9,8 @@ Load this when the user wants to change something on a track that already exists
 
 > Load tools if deferred: `ToolSearch select:mcp__AbletonMCPMax__get_session_info,mcp__AbletonMCPMax__get_track_info,mcp__AbletonMCPMax__get_device_info`
 
+Consult the relevant `ableton-*` skill (mixing, sound-design, midi-composition) for the change at hand.
+
 ## 1. Re-read state before touching anything
 
 The Live set changes between sessions and even mid-session as the user works. **Do not assume a track index from earlier in the conversation.**

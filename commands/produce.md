@@ -11,6 +11,12 @@ Build a complete track from an empty (or near-empty) Live set: brief -> foundati
 
 **Argument:** free text brief, e.g. `/ableton:produce lofi hip hop, 84 bpm, dreamy, 2 minutes`. Anything omitted is filled from the genre table below.
 
+## Project context (read first)
+
+If `project-brief.md` exists in the project folder, read it (and `decisions.md`,
+`samples.md`) before acting - it carries the creative goal, history, and sample palette.
+If it does not exist, suggest `/ableton:init-project`. Append what you do to `decisions.md`.
+
 ## Honest limits (state these to the user up front)
 
 - Sample selection is by name/path keyword, not by listening - no audio-content matching.
@@ -45,6 +51,8 @@ Fill any brief gap from this table; for a genre not listed, derive sensible valu
 | Ambient | 60-90 | Intro 16 / Evolve 32 / Peak 16 / Resolve 16 | slow, evolving pads | -14 |
 | Pop | 100-120 | Intro 4 / Verse 16 / Chorus 8 / Verse 16 / Chorus 8 / Bridge 8 / Chorus 8 / Outro 4 | vocal-forward | -9 |
 | Trap | 130-150 (half-time feel) | Intro 8 / Verse 16 / Hook 8 / Verse 16 / Hook 8 / Outro 8 | 808-heavy, hi-hat rolls | -8 |
+
+Lean on the `ableton-*` skills as each stage comes up (sound-design, midi-composition, arrangement, mixing, mastering) - they auto-load; consult them for tool choice and gotchas.
 
 ## Stage 1 - Brief
 
