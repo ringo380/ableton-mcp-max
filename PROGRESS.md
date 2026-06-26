@@ -1,19 +1,33 @@
 # ableton-mcp-max — Progress
 
-## VST/AU plugin support (Serum 2) - IN PROGRESS: Task 0 GATE PASSED + Task 1 done (2026-06-26)
-Branch `feat/vst-plugin-support` (5 commits, clean tree, NOT pushed/PR'd yet). Spec + plan committed
+## VST/AU plugin support (Serum 2) - IN PROGRESS: Task 0 GATE + Task 1 + Task 2 offline done (2026-06-26)
+Branch `feat/vst-plugin-support` (6 commits, clean tree, NOT pushed/PR'd yet). Spec + plan committed
 under docs/superpowers/. Goal: expose, control, author 3rd-party VST3/AU plugin params via the
 Configure-list XML backdoor (Serum 2 first).
 
-**>>> RESUME HERE (NEXT = Task 2, plan §Task 2):** add a `probe_plugin_parameters` READ handler to
-the Remote Script (`get_parameter_names()`/`get_bank_parameters()`), reinstall RS + bounce Live, add
-the thin server tool, then RESTART CLAUDE CODE to load it. Run it live on Serum 2 to (a) confirm the
-`id = 2000000 + index` formula across the full name list and (b) generate `param_maps/serum2.json`.
-Then Task 3 = `expose_plugin_parameters` (Option A live-set patch). Full spike facts + gotchas in the
-[[vst-plugin-support]] memory.
+**>>> RESUME HERE (Task 2 LIVE half - needs CC RESTART, then this session):** the offline half of
+Task 2 is committed (@6a2c846) and the RS is already reinstalled into both Live bundles (12:59,
+20260626-130027 backup). REMAINING:
+1. **User must RESTART CLAUDE CODE** so the new `probe_plugin_parameters` server tool loads (deferred
+   -> `ToolSearch select:mcp__AbletonDev__probe_plugin_parameters` or the plugin variant).
+2. Then **bounce Live** (`restart_live`) so the new RS handler loads; check the open set isn't dirty
+   first (currently Live 12 Suite running, set state unknown).
+3. Load Serum 2 onto a track (`load_instrument_or_effect`), call `probe_plugin_parameters` on it.
+4. Validate `id = 2000000 + index` against Task 0 (names[7] == "Filter 1 Stereo"; names[3..7] =
+   Filter 1 Freq/Res/Drive/Var/Stereo). Record the FULL names list.
+5. Generate `ableton_mcp_max/param_maps/serum2.json` via `param_map_utils.derive_serum_ids` + hand
+   add `category` tags (Osc/Filter/Env/LFO/FX/Macro/Global). If parameter_count > 128, mark a
+   `curated: true` <=128 subset + record dropped names.
+6. Commit serum2.json. Then Task 3 = `expose_plugin_parameters` (Option A live-set patch).
+Full spike facts + gotchas in the [[vst-plugin-support]] memory.
 - **Task 1 DONE (offline, committed @2524660):** `ableton_mcp_max/plugin_config_utils.py` +
   `tests/test_plugin_config_utils.py` (11 tests): find_empty_slots / build_slot / fill_slots
-  (overflow-reporting) / max_target_id / bump_next_pointee_id. Full suite 884 passed, 2 skipped.
+  (overflow-reporting) / max_target_id / bump_next_pointee_id.
+- **Task 2 OFFLINE DONE (committed @6a2c846):** RS `_probe_plugin_parameters` (full name list via
+  `get_parameter_names(0,-1)`/`get_bank_parameters(-1)`, guarded) + dispatch; thin server tool
+  `probe_plugin_parameters`; pure `param_map_utils` (derive_serum_ids/validate_pack/load_pack/
+  find_params) + 15 tests; empty `param_maps/__init__.py`. Full suite 899 passed, 2 skipped;
+  server import + RS py_compile clean. serum2.json NOT yet generated (needs the live probe).
 
 **Make-or-break gate PASSED (Live 12.4 Suite):** an EXTERNALLY-written Configure slot becomes a
 live, named, settable LOM `DeviceParameter`. Method: patched one empty `<PluginFloatParameter>`
