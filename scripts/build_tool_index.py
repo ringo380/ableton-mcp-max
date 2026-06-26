@@ -141,10 +141,10 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   assume track 0. Confirm writes with a separate follow-up read (song/transport
   property writes can lag their own same-call read-back).
 - **Device-tool track-type asymmetry.** `get_device_parameters` /
-  `set_device_parameter` are REGULAR-track-only (no `track_type` arg), so
-  return/master devices are not reachable for param read/write.
-  `get_device_info` / `get_rack_macros` / `set_rack_macro` /
-  `set_chain_property` / `set_device_on` / `delete_device` DO take `track_type`.
+  `set_device_parameter` accept a `track_type` and reach return/master devices
+  too (since PR #24), as do `get_device_info` / `get_rack_macros` /
+  `set_rack_macro` / `set_chain_property` / `set_device_on` / `delete_device`.
+  The pair that stays regular-track-only is `get_automation` / `set_automation`.
 - **Batch your writes.** When firing several mutations in a row, prefer `batch`
   (one Live task, one round-trip). Reads and async-settle sequences (cue points)
   are not batchable.

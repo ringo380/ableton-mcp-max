@@ -11,6 +11,12 @@ Check the open Live set against the curated rulesets and report findings by doma
 
 **Argument:** optional focus - `all` (default), `mixing`, `mastering`, `sound_design`, `health`.
 
+## Project context (read first)
+
+If `project-brief.md` exists in the project folder, read it (and `decisions.md`,
+`samples.md`) before acting - it carries the creative goal, history, and sample palette.
+If it does not exist, suggest `/ableton:init-project`. Append what you do to `decisions.md`.
+
 ## Honest scope
 
 The Live Object Model exposes **structure and parameter values, not audio signal**.
@@ -25,6 +31,8 @@ Without taps (or with `measure=False`, the default), never invent dB/LUFS number
 leave them deferred. The default call is read-only and never plays the set.
 
 ## Steps
+
+Consult the `ableton-analysis` skill for the measure-first workflow and ruleset reporting.
 
 1. **Connection triage.** The first MCP call after a restart can fail while the
    server reconnects - retry once. If it persists, confirm Live is running and port

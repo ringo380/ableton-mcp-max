@@ -44,7 +44,7 @@ Three different things, do not confuse them:
 
 ## Device-tool asymmetry
 
-`get_device_parameters` / `set_device_parameter` are regular-track-only (no `track_type`). Return/master-track devices are reachable for `get_device_info`/`get_rack_macros`/`set_rack_macro`/`set_chain_property`/`set_device_on`/`delete_device` (these take `track_type`) but NOT for raw param read/write.
+`get_device_parameters` / `set_device_parameter` accept a `track_type` and reach return/master-track devices too (since PR #24), as do `get_device_info`/`get_rack_macros`/`set_rack_macro`/`set_chain_property`/`set_device_on`/`delete_device`. The pair that stays regular-track-only is `get_automation` / `set_automation`.
 
 ## Track-type differences
 

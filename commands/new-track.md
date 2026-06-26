@@ -9,6 +9,8 @@ Load this when the user wants to add a brand-new track (instrument or audio) and
 
 > If MCP tools aren't loaded yet, fetch them: `ToolSearch select:mcp__AbletonMCPMax__create_midi_track,mcp__AbletonMCPMax__set_track_name,mcp__AbletonMCPMax__load_instrument_or_effect,mcp__AbletonMCPMax__create_clip,mcp__AbletonMCPMax__add_notes_to_clip`
 
+Consult `ableton-sound-design` and `ableton-midi-composition` when building the track's instrument and parts.
+
 ## 0. Read current state first
 
 The open Live set changes between sessions — **never assume track 0** or any prior layout. Call `get_session_info` to see current track/scene counts, then decide where the new track goes.
