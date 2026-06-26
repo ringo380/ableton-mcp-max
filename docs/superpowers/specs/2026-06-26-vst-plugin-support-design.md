@@ -102,20 +102,32 @@ the normal parameter tools.
 
 ## Delivery model
 
-**Primary - Option B: ship a pre-exposed plugin device preset.** Manufacture one `.adv` with
-the ParameterList pre-filled from the param-map pack (default patch), write it to the User
-Library, and load it via the existing browser hot-swap path. The user loads "Serum 2 (MCP)"
-and every param is immediately LOM-controllable - no per-session save/patch/reload. This
-reuses the existing `_write_user_preset` / `_load_user_preset` path and is, in effect,
-"Serumify's manual Configure setup, done once and baked in."
+**The Task 0 spike corrected the original plan.** Live 12 will NOT produce a VST3 `.adv` (both
+Save-Preset and drag-to-browser yield a `.vstpreset` = plugin binary state only, no Live
+`<ParameterList>`), and a hand-synthesized `.adv` failed to load. **So the original "ship a
+pre-exposed `.adv`" model is dead for VST3 plugins.** The two viable models, and the chosen
+phasing:
 
-**Fallback - Option A: patch the live set.** Save -> patch the `.als` ParameterList -> reload.
-Operates on the user's actual instance and current sound, but is heavy (full set reload, the
-modal save/reload UI risk) and disrupts the session. Used only if hot-swapping the `.adv`
-turns out to lose patch state (decided in M0).
+**Release 1 - Option A: patch the live set (`.als`).** The engine saves the set, patches the
+plugin device's `<ParameterList>` (fills empty `<PluginFloatParameter>` slots from the param-map
+pack, allocating target ids from `<NextPointeeId>` and advancing it), then reloads the set. Serum
+stays a **top-level track device**, so exposed params are directly reachable by the existing
+`get_device_parameters` / `set_device_parameter` tools - **no new tooling**. This is **proven
+end-to-end** (Task 0). Cost: one set save+reload per Serum instance at expose time (mild
+mid-session friction; `Cmd+S` is clean for an already-saved set, the modal risk is only on
+Untitled sets).
 
-In both options, ongoing knob control is identical: direct live `set_device_parameter`. The
-options differ only in how the one-time exposure happens.
+**Release 2 (fast-follow) - Option B: pre-exposed rack `.adg`.** A rack `.adg` DOES carry the
+exposure (stored compactly as `<PluginParameterSettings>`: Index/VisualIndex/ParameterId/Type)
+plus the plugin state, and loads via the browser with **no set reload**. The catch: the plugin
+sits nested in the rack chain, so reaching its params needs **chain-aware param access** that the
+current tools lack (they only index `track.devices`). Release 2 ships the pre-exposed Serum rack
+preset + new nested-device get/set param access, removing Release 1's reload friction. Deferred
+deliberately so Release 1 ships fast on the proven path.
+
+In both models, ongoing knob control is identical: direct live `set_device_parameter`. They
+differ only in how the one-time exposure happens (per-instance live-set patch vs. a shipped
+preset).
 
 ## Components
 

@@ -201,30 +201,42 @@ git commit -m "feat(plugin): probe_plugin_parameters + Serum 2 param-map pack"
 
 ---
 
-### Task 3: `expose_plugin_parameters` tool (engine, live-verified)
+### Task 3: `expose_plugin_parameters` tool (engine, Option A live-set patch, live-verified)
 
-Builds an exposed device from a pack and loads it (Option B), or patches+reloads the live set (Option A) per the Task 0 decision.
+**Release 1 = Option A (decided post-spike):** patch the live set's `.als` and reload. Serum stays
+a top-level device, so the existing get/set tools control it (no new tooling). Option B (pre-exposed
+rack `.adg` + nested param access) is a deferred Release-2 task (see Task 6).
+
+The exposure flow, proven manually in Task 0, now automated:
+1. **Save** the current set so its state (incl. the plugin chunk) is on disk. Already-saved set ->
+   `Cmd+S` (clean); Untitled -> surface a clear error asking the user to name+save first (the
+   Save-As panel is not reliably scriptable and risks the multi-monitor modal trap hit in Task 0).
+2. **Read** the `.als`, locate the target track's `<PluginDevice>` `<ParameterList>`, `fill_slots`
+   from the pack (allocate the two target ids per slot FROM `<NextPointeeId>` and advance it by 2
+   per slot), `log()` any >128 overflow.
+3. **Reload** the set via the existing `restart_live`/reopen path; re-read params to confirm.
 
 **Files:**
-- Modify: `ableton_mcp_max/server.py` - add `@mcp.tool() expose_plugin_parameters(track_index, device_index=0, pack="serum2", track_type='regular', curated=True)`.
-- Modify: `remote_script/AbletonMCP/__init__.py` - only if Option A (a reload trigger) is needed; Option B reuses existing `load_preset`/browser load.
-- Reference: existing `_write_user_preset` / `_load_user_preset` / `_read_user_preset` in server.py.
+- Modify: `ableton_mcp_max/server.py` - add `@mcp.tool() expose_plugin_parameters(track_index, device_index=0, pack="serum2", track_type='regular', curated=True)`; add `_patch_als_parameter_list(als_path, track_index, device_index, params)` helper using `plugin_config_utils`.
+- Reference: existing save/reload helpers (`save_set`, `restart_live`/`_restart_live_impl`, the `_reload_set` pattern from arrangement automation) and the Task 0 scratchpad patch script.
 
 **Interfaces:**
-- Consumes: `plugin_config_utils.fill_slots`, `param_map_utils.load_pack`.
-- Produces: `expose_plugin_parameters(...)` -> `{ok, exposed_count, dropped_count, method: "preset"|"live_set", loaded: bool}`.
+- Consumes: `plugin_config_utils.fill_slots` + `find_empty_slots` + the `<NextPointeeId>` bump (add `bump_next_pointee_id(full_xml, count) -> (xml, start_id)` to `plugin_config_utils` in Task 1 if not already), `param_map_utils.load_pack`.
+- Produces: `expose_plugin_parameters(...)` -> `{ok, exposed_count, dropped_count, method: "live_set", reloaded: bool, error?}`.
 
-- [ ] **Step 1 (Option B path): implement** - read the device's saved `.adv` (or a shipped default-patch `.adv` for the plugin), `fill_slots` from the pack (allocate target ids from `max_target_id`+1), write to User Library via `_write_user_preset`, load via `_load_user_preset`. `log()` dropped overflow.
+- [ ] **Step 1: Extend `plugin_config_utils`** with `bump_next_pointee_id(full_xml, count)` (read `<NextPointeeId>`, return the doc with it advanced by `2*count` and the first allocatable id) - TDD offline against a synthetic doc; assert the new counter == old + 2*count and exceeds all target ids. Run -> PASS.
 
-- [ ] **Step 2: Offline guard test** - a synthetic `.adv` ParameterList round-trips through `fill_slots` with the pack and produces N filled slots; assert count + escaping. Run -> PASS.
+- [ ] **Step 2: Implement `_patch_als_parameter_list` + the tool** - locate the Nth track's Nth `<PluginDevice>` `<ParameterList>` (navigate, do not match the first `<ParameterList>` blindly - per the preset-XML gotcha), `fill_slots` with pack params, splice back, gzip-write. Untitled-set guard returns a clear error. `log()` overflow.
 
-- [ ] **Step 3: Live verify** - on a scratch track with Serum 2, call `expose_plugin_parameters`. Then `get_device_parameters` -> expect the curated param set now present and settable. Set 3-4 params (a filter, an env, an osc level), confirm audible/readable change. Clean up the scratch track.
+- [ ] **Step 3: Offline guard test** - a synthetic `.als` fragment (PluginDevice + ParameterList + NextPointeeId) round-trips: N empty slots filled, NextPointeeId advanced by 2N, names XML-escaped. Run -> PASS.
 
-- [ ] **Step 4: Record live results in PROGRESS.md; commit.**
+- [ ] **Step 4: Live verify** - load Serum 2 on a scratch track, save the set, call `expose_plugin_parameters`, let it reload, then `get_device_parameters` -> expect the curated param set present and settable. Set 3-4 params (a filter, an env, an osc level), confirm audible/readable change. Clean up the scratch track.
+
+- [ ] **Step 5: Record live results in PROGRESS.md; commit.**
 
 ```bash
-git add ableton_mcp_max/server.py remote_script/AbletonMCP/__init__.py PROGRESS.md
-git commit -m "feat(plugin): expose_plugin_parameters - Configure-slot exposure engine"
+git add ableton_mcp_max/server.py ableton_mcp_max/plugin_config_utils.py tests/ PROGRESS.md
+git commit -m "feat(plugin): expose_plugin_parameters - live-set Configure-slot exposure (Option A)"
 ```
 
 ---
@@ -255,7 +267,7 @@ git commit -m "feat(plugin): plugin preset list + selection"
 
 ---
 
-### Task 5: Curation, docs, ship
+### Task 5: Curation, docs, ship (Release 1)
 
 **Files:**
 - Modify: `ableton_mcp_max/param_maps/serum2.json` (final curation/grouping).
@@ -274,9 +286,28 @@ git commit -m "feat(plugin): plugin preset list + selection"
 
 ---
 
+### Task 6: Release 2 (fast-follow) - pre-exposed rack `.adg` + nested param access
+
+Deferred per the post-spike decision (C). Removes Release 1's per-instance save+reload friction.
+Plan it in detail when Release 1 has shipped and the engine + Serum pack are validated; sketch:
+
+- **Nested-device param access:** extend `get_device_parameters` / `set_device_parameter` (or add
+  `get_chain_device_parameters` / `set_chain_device_parameter`) to address a device inside a rack
+  chain (the released tools only index `track.devices`). Reuse the existing `get_rack_chains` +
+  macro-mapping nested-navigation code.
+- **Rack `.adg` synthesizer:** build a pre-exposed Serum rack `.adg`, storing exposure as
+  `<PluginParameterSettings>` (Index/VisualIndex/ParameterId/Type) - confirmed in Task 0 to carry
+  exposure + plugin state, loads with no set reload, no `<NextPointeeId>` needed. Ship it as the
+  "Serum 2 (MCP)" preset; load via the User-Library browser path (ensure `_find_browser_item`
+  traverses the `user_library` branch - the released `load_preset` did not resolve it in Task 0).
+- **Live verify:** load the rack preset, reach Serum's nested exposed params, set them, confirm
+  audible change with zero set reloads.
+
+---
+
 ## Self-Review
 
-**Spec coverage:** wall/opening findings -> Task 0; slot encoding -> Task 1; param-map discovery + id hypothesis -> Task 2; exposure engine + Option B/A -> Task 3; library navigation (`presets`/`selected_preset_index`) -> Task 4; curation/128-cap/docs/ship -> Task 5. Knob control + authoring are delivered by the existing `get_device_parameters`/`set_device_parameter` once exposed (no new task needed, by design). Hidden-state (wavetable file/mod-matrix) is surfaced via the Task 2 probe (names list shows whether they are host params) - no dedicated task, correctly, since it may be infeasible.
+**Spec coverage:** wall/opening findings -> Task 0 (gate PASSED); slot encoding -> Task 1; param-map discovery + id hypothesis -> Task 2; exposure engine via Option A live-set patch -> Task 3; library navigation (`presets`/`selected_preset_index`) -> Task 4; curation/128-cap/docs/ship Release 1 -> Task 5; Option B rack `.adg` + nested access deferred to Release 2 -> Task 6. Knob control + authoring are delivered by the existing `get_device_parameters`/`set_device_parameter` once exposed (no new task needed, by design). Hidden-state (wavetable file/mod-matrix) is surfaced via the Task 2 probe (names list shows whether they are host params) - no dedicated task, correctly, since it may be infeasible.
 
 **Placeholder scan:** Task 0 is a spike (exploratory by nature, not a code placeholder); all code steps carry real code or exact handler patterns. Conditional branches (Task 4 stop-if-empty, Option A vs B) are decisions gated on recorded findings, not TODOs.
 
