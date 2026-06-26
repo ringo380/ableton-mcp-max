@@ -5,21 +5,30 @@ Branch `feat/vst-plugin-support` (6 commits, clean tree, NOT pushed/PR'd yet). S
 under docs/superpowers/. Goal: expose, control, author 3rd-party VST3/AU plugin params via the
 Configure-list XML backdoor (Serum 2 first).
 
-**>>> RESUME HERE (Task 2 LIVE half - needs CC RESTART, then this session):** the offline half of
-Task 2 is committed (@6a2c846) and the RS is already reinstalled into both Live bundles (12:59,
-20260626-130027 backup). REMAINING:
-1. **User must RESTART CLAUDE CODE** so the new `probe_plugin_parameters` server tool loads (deferred
-   -> `ToolSearch select:mcp__AbletonDev__probe_plugin_parameters` or the plugin variant).
-2. Then **bounce Live** (`restart_live`) so the new RS handler loads; check the open set isn't dirty
-   first (currently Live 12 Suite running, set state unknown).
-3. Load Serum 2 onto a track (`load_instrument_or_effect`), call `probe_plugin_parameters` on it.
-4. Validate `id = 2000000 + index` against Task 0 (names[7] == "Filter 1 Stereo"; names[3..7] =
-   Filter 1 Freq/Res/Drive/Var/Stereo). Record the FULL names list.
-5. Generate `ableton_mcp_max/param_maps/serum2.json` via `param_map_utils.derive_serum_ids` + hand
-   add `category` tags (Osc/Filter/Env/LFO/FX/Macro/Global). If parameter_count > 128, mark a
-   `curated: true` <=128 subset + record dropped names.
-6. Commit serum2.json. Then Task 3 = `expose_plugin_parameters` (Option A live-set patch).
-Full spike facts + gotchas in the [[vst-plugin-support]] memory.
+**>>> RESUME HERE (Task 2 probe LIVE-VERIFIED, but id-formula REFUTED - DECISION NEEDED):**
+The `probe_plugin_parameters` tool WORKS live (Serum 2 VST3, class PluginDevice, **2623 params**
+returned, idx-ordered). Two findings BLOCK serum2.json + reshape Task 3:
+- **`id = 2000000 + probe_index` is REFUTED.** In the idx-ordered name list, "Filter 1 Stereo" is at
+  index **210** (Filter 1 block: Level202/On203/Type204/Freq205/Res206/Drive207/Var208/Wet209/
+  Stereo210), but Task 0 recorded ParameterId **2000007** for "Filter 1 Stereo". So the Configure
+  ParameterId is Serum's INTERNAL VST3 ParamID (small, section-ordered: Filter1 Freq/Res/Drive/Var/
+  Stereo = 2000003..2000007), NOT derivable from the probe's name-list index. `derive_serum_ids`
+  hypothesis is invalid as written. (Caveat to RE-TEST: Task 0's gate may have been on the AU
+  (`AuPluginDevice`), or its index "7" miscounted - a single empirical reload mapping 2000007 vs
+  2000210 -> name would settle it. If 2000210 wins, the formula IS names_index-based and serum2.json
+  derives trivially. UNTESTED - needs the save->patch->reload engine = Task 3.)
+- **128-slot Configure cap vs 2623 params** -> curation is MANDATORY. Core synth engine = idx 0..311
+  (Main/Osc A-B-C/Filter1-2/Env/LFO/FX); idx 312+ is the Mod-matrix/CC/Aftertouch bulk (130 Mod,
+  16x CC0-127, etc.). A useful pack is a hand-picked <=128 subset of the core.
+- Full names list saved to scratchpad `serum2_probe_names.json` (NOT in repo).
+**NEXT (needs user direction):** resolve the true ParamID<->name map. Cleanest = pull Task 3's
+save->patch->reload engine forward and run an id->name ORACLE (fill slots with known ParameterIds,
+reload, read get_device_parameters resolved names; ~128/cycle). Then build serum2.json as an
+empirical id<->name table for a curated <=128 subset. Ask user re: curation priorities + whether to
+build the oracle harness now.
+COMMITTED THIS SESSION: probe tool @6a2c846; **VST/AU URI loader fix @ad655b6** (`_find_browser_item_
+by_uri` lacked the 'plugins' root - VST3/AU were unloadable by URI; fixed + live-verified Serum 2
+loads). RS reinstalled+bounced twice. Full spike facts in [[vst-plugin-support]] memory.
 - **Task 1 DONE (offline, committed @2524660):** `ableton_mcp_max/plugin_config_utils.py` +
   `tests/test_plugin_config_utils.py` (11 tests): find_empty_slots / build_slot / fill_slots
   (overflow-reporting) / max_target_id / bump_next_pointee_id.
