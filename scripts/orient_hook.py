@@ -2,7 +2,7 @@
 
 Prints a distilled tool-usage core when a music context is detected
 (Ableton Live running, or a project-brief.md in the cwd), plus a pointer
-to per-project state files. Silent otherwise.
+to per-project state files when a project-brief.md is present. Silent otherwise.
 """
 import os
 import pathlib
@@ -79,4 +79,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # A SessionStart hook must never fail the session: swallow any error
+    # (e.g. a closed output pipe) so the process always exits cleanly.
+    try:
+        main()
+    except Exception:
+        pass
