@@ -1,5 +1,45 @@
 # ableton-mcp-max — Progress
 
+## VST/AU plugin support (Serum 2) - Task 0 spike: GATE PASSED (2026-06-26)
+Branch `feat/vst-plugin-support`. Spec + plan committed under docs/superpowers/. Goal: expose,
+control, author 3rd-party VST3/AU plugin params via the Configure-list XML backdoor (Serum 2 first).
+
+**Make-or-break gate PASSED (Live 12.4 Suite):** an EXTERNALLY-written Configure slot becomes a
+live, named, settable LOM `DeviceParameter`. Method: patched one empty `<PluginFloatParameter>`
+slot in a saved `.als` (ParameterId=2000007, Manual=0.5), reloaded → `get_device_parameters`
+showed param_count 6 incl. a new control Live resolved to "Filter 1 Stereo"; `set_device_parameter`
+to 0.9 moved Serum's knob in the GUI (user-confirmed). Full LOM control of plugin knobs is real.
+
+**Key findings:**
+- **Default exposure = nothing.** Serum 2 (both AU `AuPluginDevice` and VST3 `PluginDevice`)
+  exposes only `Device On` until params are Configured. No LOM API to Configure (confirmed); the
+  commercial Serumify product also requires manual Configure "up to 128 params" (matches the
+  128-slot pool we found).
+- **Slot encoding (save-diff):** fill `<PluginFloatParameter>` with `ParameterId` (real VST3 id),
+  `ParameterName`, `Manual` (native units; LOM reads/sets normalized 0-1), `VisualIndex`. Empty
+  sentinels: ParameterId=-1, Manual=0.1234567687, VisualIndex=1073741823.
+- **CORRUPTION RULE:** Live keeps a global `<NextPointeeId>` that MUST exceed every
+  `AutomationTarget`/`ModulationTarget` Id. Allocate the slot's two target ids FROM NextPointeeId
+  and advance it by 2, else load fails ("NextPointeeId is too low: N must be bigger than M").
+- **Discovery formula confirmed:** `id = 2000000 + plugin_param_index` (2000007 → "Filter 1
+  Stereo", index 7; Filter 1 block = Freq3/Res4/Drive5/Var6/Stereo7).
+- **Delivery model - corrected:** Live 12 will NOT mint a VST3 `.adv` (both Save-Preset and
+  drag-to-browser produce a `.vstpreset` = plugin binary state only, no ParameterList); a
+  hand-synthesized `.adv` failed to load. So **Option B-via-`.adv` is DEAD for VST3.**
+  - **Option A (live-set `.als` patch): PROVEN.** Serum stays a TOP-LEVEL device → exposed params
+    directly reachable by existing get/set_device_parameter. Cost: one set save+reload per
+    instance to expose.
+  - **Option B-via-rack `.adg`: viable but nests.** A rack `.adg` DOES carry the exposure (as
+    compact `<PluginParameterSettings>`: Index/VisualIndex/ParameterId/Type) AND the plugin state
+    (ProcessorState/ControllerState/Vst3Preset); loads via browser with NO set reload. BUT Serum
+    sits nested in the rack chain → its exposed params are NOT on `track.devices[0]` (that's the
+    rack: 16 macros + chain selector), so reaching them needs chain-aware param access the current
+    tools lack. No `NextPointeeId` needed in `.adg` (preset target ids are all 0).
+- **DELIVERY DECISION PENDING (user checkpoint):** A (top-level, proven, reload-per-instance) vs
+  B (rack `.adg`, no reload, needs new nested-device param tooling). Affects Task 3 scope.
+- Scratch: `serum2_test.als` has a `.bak`; failed `serum2_mcp.adv` + `serum_probe_rack.adg` +
+  `serum2_mcp_probe.vstpreset` left in User Library (harmless).
+
 ## detect_key (PR #43) - SHIPPED v0.23.0 (2026-06-24)
 SHIPPED: PR #43 squash-merged (0d12d85), tag v0.23.0 created (= main), marketplace `ableton`
 ref v0.22.0 -> v0.23.0 (@5dc6c00) + build-readme. 148 tools. Live-verified + interactive MCP
