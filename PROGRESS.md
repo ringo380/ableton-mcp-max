@@ -28,11 +28,17 @@ disabled + sentinel kept. Built harvest harness (scratchpad harvest.py/reload.sh
 cycle = save_set("") (clean) -> patch .als -> Cmd+N/Return/open -> read. Filter 1 = ids 2000000..010;
 Filter 2 Level = 2001029. **Serum id space is SPARSE+WIDE** (~11-wide blocks at offsets ~1000 apart,
 >=2000000..2002600) so a FULL dense harvest = ~21 reload cycles.
-**NEXT (needs user direction - asked):** how to build the id<->name map given the sparse space:
-(a) full dense ~21-reload autonomous harvest -> complete map; (b) user Configures ~100 go-to params
-in Serum's UI + saves, I read ids from the .als in 1 reload (cheap, user-curated); (c) targeted
-section harvest (~10 reloads for the sections the user names). Then build serum2.json (<=128) + Task 3
-expose engine (save->patch->reload already prototyped here).
+**UPDATE: full dense harvest is INFEASIBLE - id space irregular.** User chose dense harvest, but
+discovery showed: only the 2 FILTERS are at predictable ids (Filter 1 = 2000000..010, Filter 2 =
+2001000..010, F2 = F1 offsets +1000). The ~2600 other params (Main/Osc/Env/LFO/FX) have SCATTERED
+ParamIDs at unknown ids (probed stride-1000 modules 0-127, modules 0-31 off 0-3, dense module 2,
+stride-11/-21 - found only the 2 filters). Blind enumeration = vast id space, impractical.
+GOOD NEWS: disk-parse harvest works (save_set after reload persists ParameterId<->Name reliably).
+**NEXT (re-ask user):** RECOMMEND building serum2.json via MANUAL CONFIGURE (Serum's intended flow):
+user right-clicks Serum titlebar -> Configure -> clicks desired knobs -> save_set -> I parse the .als
+for exact id<->name pairs (1 session, user-curated). Harness + full findings in scratchpad
+harvest_findings.md/harvest.py/harvest_klist.py/reload.sh. Then serum2.json + Task 3 expose engine
+(save->patch->reload already prototyped). Filter map already captured (22 params).
 COMMITTED THIS SESSION: probe tool @6a2c846; **VST/AU URI loader fix @ad655b6** (`_find_browser_item_
 by_uri` lacked the 'plugins' root - VST3/AU were unloadable by URI; fixed + live-verified Serum 2
 loads). RS reinstalled+bounced twice. Full spike facts in [[vst-plugin-support]] memory.
