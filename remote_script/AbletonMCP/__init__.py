@@ -3517,7 +3517,7 @@ class AbletonMCP(ControlSurface):
                 categories = []
                 for attr in ('instruments', 'sounds', 'drums', 'audio_effects',
                              'midi_effects', 'user_library', 'packs',
-                             'current_project', 'clips', 'samples'):
+                             'current_project', 'clips', 'samples', 'plugins'):
                     if hasattr(browser_or_item, attr):
                         try:
                             categories.append(getattr(browser_or_item, attr))
