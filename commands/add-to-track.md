@@ -23,9 +23,9 @@ Confirm you have the right track by name, not just index.
 
 ## 2. Know the device-tool asymmetry
 
-- `get_device_parameters` / `set_device_parameter` are **regular-track-only** (no `track_type` arg) — you cannot read/write params on devices that live on return or master tracks (e.g. the A-Reverb / B-Delay on returns are out of reach for param edits).
-- These DO accept a `track_type` and work on returns/master: `get_device_info`, `get_rack_macros`, `set_rack_macro`, `set_chain_property`, `set_device_on`, `delete_device`.
-- Return/master/group tracks have **no `.arm`** and group tracks have no monitoring — don't assume every track exposes the same fields.
+- `get_device_parameters` / `set_device_parameter` accept a `track_type` and reach return/master devices too (since PR #24) - e.g. the A-Reverb / B-Delay on returns, or a master limiter/EQ. The pair that stays regular-track-only is `get_automation` / `set_automation`.
+- Also `track_type`-aware for returns/master: `get_device_info`, `get_rack_macros`, `set_rack_macro`, `set_chain_property`, `set_device_on`, `delete_device`.
+- Return/master/group tracks have **no `.arm`** and group tracks have no monitoring - don't assume every track exposes the same fields.
 
 ## 3. Make the change
 
