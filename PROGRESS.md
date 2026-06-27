@@ -51,12 +51,28 @@ DURABLE ARTIFACTS (survive a fresh session; scratchpad does NOT):
 - Re-derive the live set's slots anytime: gzip-open the .als, regex `<PluginFloatParameter\b.*?</...>` (DOTALL),
   take ParameterId!=-1, html.unescape the ParameterName.
 
-NEXT STEPS:
-1. Task 3 = `expose_plugin_parameters` (Option A live-set patch): save set -> `plugin_config_utils.fill_slots`
-   the chosen params (from `param_map_utils.load_pack("serum2")` / `find_params`) into the `.als`
-   ParameterList + `bump_next_pointee_id` -> reload. The harness in `.vst-harvest-local/` is the working
-   prototype of this engine.
-2. (Later / Release 2) FX control via `.SerumPreset` authoring now that the format is cracked.
+**TASK 3 OFFLINE DONE (@5b7e6fc) - LIVE VERIFY PENDING (needs a Claude Code restart):**
+`expose_plugin_parameters(track_index, device_index=0, pack="serum2", track_type="regular", reload=True)`
+MCP tool added. Flow (Option A): save set -> read `.als` -> `plugin_config_utils.locate_param_list`
+navigates to the device_index-th plugin device's `<ParameterList>` -> `bump_next_pointee_id(count)` ->
+`fill_slots` the pack params into the empty Configure slots -> `write_als` -> `_reload_set` in place.
+Pure navigator `locate_param_list` (depth-aware; skips mixer-sends/nested-rack ParameterLists; rejects a
+non-plugin device) + `_expose_plugin_impl` behind save/reload/IO seams. Manual default "0.5" (Live
+reconciles vs the plugin on load). 13 new tests; full suite 912 passed; server import + RS compile clean.
+- **Tool count will go 148 -> 149** (docs/version NOT yet bumped - that's Task 5/ship).
+
+LIVE-VERIFY PLAN (Step 4 - DO AFTER the user restarts Claude Code so AbletonDev loads the new tool):
+1. **KEY UNKNOWN to settle first:** does a FRESH (unconfigured) Serum 2 serialize empty
+   `<PluginFloatParameter>` slots in its `.als`? The gate patched a pre-existing empty slot, and our
+   findings say "128-slot pool", but the fully-configured test set has 0 empty slots. If a fresh device
+   has 0 empty slots, `fill_slots` fills nothing -> exposure needs to APPEND slots (follow-up). Load a
+   fresh Serum on a scratch MIDI track, `save_set("")`, parse the `.als` ParameterList: count empties.
+2. If empties exist: `expose_plugin_parameters(track_index=<scratch>, pack="serum2")` -> reload -> 
+   `get_device_parameters` should now show ~128 params; `set_device_parameter` a filter/env/osc and
+   confirm the Serum knob moves + the SOUND isn't reset (verifies the Manual="0.5" no-op assumption).
+3. Clean up the scratch track. Record results; then Task 5 (curation/docs/ship Release 1).
+
+(Later / Release 2) FX control via `.SerumPreset` authoring now that the format is cracked.
 
 COMMITTED THIS SESSION (branch feat/vst-plugin-support, NOT pushed): probe tool @6a2c846; **VST/AU URI
 loader fix @ad655b6** (`_find_browser_item_by_uri` lacked the 'plugins' root - VST3/AU were unloadable by
