@@ -1,5 +1,146 @@
 # ableton-mcp-max — Progress
 
+## VST/AU plugin support (Serum 2) - IN PROGRESS: Task 0/1/2 + serum2.json pack DONE (2026-06-27)
+Branch `feat/vst-plugin-support` (7 commits, clean tree, NOT pushed/PR'd yet). Spec + plan committed
+under docs/superpowers/. Goal: expose, control, author 3rd-party VST3/AU plugin params via the
+Configure-list XML backdoor (Serum 2 first).
+
+**>>> RESUME HERE (2026-06-27) - Task 3 `expose_plugin_parameters` LIVE-VERIFIED & PASSED. NEXT = Task 5: curate/docs/version-bump + ship Release 1 (148->149 tools, marketplace ref bump).**
+
+STATE: Task 0 gate + Task 1 (encoder) + Task 2 (probe tool) DONE & committed. The Serum Configure id
+scheme is RESOLVED. The user manually Configured the FULL 128-slot pool; `serum2.json` is built and
+committed. NEXT = Task 3 (`expose_plugin_parameters`).
+
+KEY RESOLVED FACTS:
+- **Serum Configure ParamID = category_base + module_index*1000 + param_offset.** Bases by module TYPE
+  (all CONFIRMED from the live 128 capture): global/voice ~0 (Main Vol=0, Bend Up/Down=5/6, Pitch Bend=7,
+  Mod Wheel=8, Mono=10, Porta=12, Transpose=16), oscillators 1000000 (**A=mod0/B=1/C=2/Noise=3/Sub=4**),
+  filters 2000000 (F1=mod0/F2=mod1; On+0/Wet+1/Type+2/Freq+3/Res+4/Drive+5/Var+6/Stereo+7/Level+8/X+9/Y+10),
+  envelopes 3000000 (**Env 1-4** = +N*1000, ADHSR), LFOs 4000000 (**LFO 1-3** = +N*1000), **mod matrix
+  6000000** (Mod N Amount = +N*1000), macros 7000000 (Macro N = +N*1000), routing/balance/bus 9000000,
+  **clip player 10000000, arp 12000000**. NOT the get_parameter_names probe index.
+- **FX IS UNREACHABLE via Configure** (confirmed): Serum does NOT expose its FX racks (FXDelay/FXComp/FXEQ/
+  FXReverb/...) to the VST3 host parameter list, so they cannot be Configured/LOM-automated. FX control is a
+  separate future path = `.SerumPreset` authoring (format cracked, see below).
+- **`.SerumPreset` FORMAT CRACKED:** `XferJson` container = 8-byte magic "XferJson" + 1 pad + uint64 JSON-len
+  + plaintext metadata JSON + a **zstd**-compressed blob (magic 28 b5 2f fd, preceded by 8-byte
+  uint32-len/flags). Decompress (`zstandard`) -> **CBOR** (`cbor2`) = the FULL internal state tree:
+  Oscillator0-4, VoiceFilter0/1, Env0-3, LFO0-9, FXRack0-2 (each `FX:[{type,...}]`), ModSlot0-63, Macro0-7,
+  every module's `plainParams` (internal `kParam*` names). `ModSlot` entries carry destModuleID/
+  destModuleParamID/destModuleParamName/destModuleTypeString = a built-in ID<->name Rosetta Stone that
+  CONFIRMS the Configure formula (Noise osc destModuleID=3, kParamVolume paramID=1 -> Configure 1003001
+  "Noise Level"). `.XferShape` is the same container. Decoder one-liner: find `\x28\xb5\x2f\xfd`, zstd-decompress,
+  cbor2.loads. Saved decoded sample at `.vst-harvest-local/serum_preset_decoded.json`.
+- **MIDI CC export = empty** (user tried Serum's "save MIDI CC map" - no CC mappings were assigned, so nothing
+  written; not a bug).
+- **The ORACLE / disk-parse harvest:** fill a `<PluginFloatParameter>` slot with a ParameterId + sentinel
+  name, reload the set, then `save_set` -> Live persists the REAL ParameterId<->ParameterName into the
+  `.als` for VALID ids (is_enabled stays false + sentinel kept for invalid). Parse the `.als` on disk = cheap.
+  GOTCHA: the slot open tag is `<PluginFloatParameter Id="N">` (has an attribute) - parse regex must allow it
+  (`<PluginFloatParameter\b...`); a bare `<PluginFloatParameter>` matches NOTHING.
+
+DURABLE ARTIFACTS (survive a fresh session; scratchpad does NOT):
+- **Committed:** `ableton_mcp_max/param_maps/serum2.json` (128 params, {plugin,id_base,params:[{param_id,
+  name,category}]}; macros normalized to generic "Macro N") + `tests/test_param_map_utils.py` load test.
+- Live test set: `/Users/ryanrobson/Desktop/serum2_test Project/serum2_idtest.als` - Serum 2 on track 0
+  (dev 0), holding all 128 Configured params (saved). REOPEN this set in Live to continue.
+- `<repo>/.vst-harvest-local/` (git-ignored, local-only): `serum2_configured_current.json` (the live 128
+  id<->name pairs, raw incl. custom macro labels), `serum2_configured_76.json` (older 76 snapshot),
+  `serum_preset_decoded.json` (decoded .SerumPreset CBOR), `harvest.py`/`reload.sh` (patch+reload harness),
+  `harvest_findings.md`, `serum2_probe_names.json` (full 2623-name probe).
+- Re-derive the live set's slots anytime: gzip-open the .als, regex `<PluginFloatParameter\b.*?</...>` (DOTALL),
+  take ParameterId!=-1, html.unescape the ParameterName.
+
+**TASK 3 LIVE-VERIFIED & PASSED (2026-06-27, Live 12.4 Suite via AbletonDev working-tree tool):**
+- **KEY UNKNOWN SETTLED: a FRESH (unconfigured) Serum 2 DOES serialize 128 empty `<PluginFloatParameter>`
+  slots** (ParameterId=-1) in its `.als`. Loaded a fresh Serum on scratch track 1, `save_set("")`, parsed
+  the on-disk .als: the fresh device's ParameterList = `floatparams=128 empty=128`; the configured track-0
+  device = `128 nonempty`. So Option A's `fill_slots` has a full 128-slot pool to fill - NO slot-append
+  follow-up needed.
+- Fresh Serum baseline confirmed `parameter_count=1` (only "Device On") = "default exposure = nothing".
+- `expose_plugin_parameters(track_index=1, pack="serum2")` returned `{exposed_count:128, dropped_count:0,
+  reloaded:true, method:"live_set"}`. After the in-place reload, `get_device_parameters(track 1)` showed
+  **129 params** (Device On + 128 named: oscillators/filters/Env1-4/LFO1-3/Mod1-8/Macro1-8/routing/Arp/Clip),
+  all `is_enabled:true`. Values reconciled to the plugin's REAL defaults (A Uni Blend 0.75, Env 1 Attack
+  0.126, Bend Up 0.542 - NOT all stuck at 0.5), confirming Live merged the Configure exposure WITHOUT
+  resetting plugin state (Manual="0.5" no-op assumption HOLDS).
+- `set_device_parameter(track 1, "Filter 1 Freq", 0.3)` applied (0.300); settability confirmed (the original
+  gate already user-confirmed the physical knob moves).
+- Cleanup: deleted the scratch Serum (track 1 device_count 0), saved -> set restored to baseline.
+- **NEXT = Task 5: curation/docs/version bump + ship Release 1** (148 -> 149 tools, marketplace ref bump).
+
+**TASK 3 OFFLINE DONE (@5b7e6fc):**
+`expose_plugin_parameters(track_index, device_index=0, pack="serum2", track_type="regular", reload=True)`
+MCP tool added. Flow (Option A): save set -> read `.als` -> `plugin_config_utils.locate_param_list`
+navigates to the device_index-th plugin device's `<ParameterList>` -> `bump_next_pointee_id(count)` ->
+`fill_slots` the pack params into the empty Configure slots -> `write_als` -> `_reload_set` in place.
+Pure navigator `locate_param_list` (depth-aware; skips mixer-sends/nested-rack ParameterLists; rejects a
+non-plugin device) + `_expose_plugin_impl` behind save/reload/IO seams. Manual default "0.5" (Live
+reconciles vs the plugin on load). 13 new tests; full suite 912 passed; server import + RS compile clean.
+- **Tool count will go 148 -> 149** (docs/version NOT yet bumped - that's Task 5/ship).
+
+LIVE-VERIFY PLAN (Step 4 - DO AFTER the user restarts Claude Code so AbletonDev loads the new tool):
+1. **KEY UNKNOWN to settle first:** does a FRESH (unconfigured) Serum 2 serialize empty
+   `<PluginFloatParameter>` slots in its `.als`? The gate patched a pre-existing empty slot, and our
+   findings say "128-slot pool", but the fully-configured test set has 0 empty slots. If a fresh device
+   has 0 empty slots, `fill_slots` fills nothing -> exposure needs to APPEND slots (follow-up). Load a
+   fresh Serum on a scratch MIDI track, `save_set("")`, parse the `.als` ParameterList: count empties.
+2. If empties exist: `expose_plugin_parameters(track_index=<scratch>, pack="serum2")` -> reload -> 
+   `get_device_parameters` should now show ~128 params; `set_device_parameter` a filter/env/osc and
+   confirm the Serum knob moves + the SOUND isn't reset (verifies the Manual="0.5" no-op assumption).
+3. Clean up the scratch track. Record results; then Task 5 (curation/docs/ship Release 1).
+
+(Later / Release 2) FX control via `.SerumPreset` authoring now that the format is cracked.
+
+COMMITTED THIS SESSION (branch feat/vst-plugin-support, NOT pushed): probe tool @6a2c846; **VST/AU URI
+loader fix @ad655b6** (`_find_browser_item_by_uri` lacked the 'plugins' root - VST3/AU were unloadable by
+URI; live-verified Serum 2 loads); several PROGRESS docs. RS reinstalled+bounced this session.
+- **Task 1 DONE (offline, committed @2524660):** `ableton_mcp_max/plugin_config_utils.py` +
+  `tests/test_plugin_config_utils.py` (11 tests): find_empty_slots / build_slot / fill_slots
+  (overflow-reporting) / max_target_id / bump_next_pointee_id.
+- **Task 2 OFFLINE DONE (committed @6a2c846):** RS `_probe_plugin_parameters` (full name list via
+  `get_parameter_names(0,-1)`/`get_bank_parameters(-1)`, guarded) + dispatch; thin server tool
+  `probe_plugin_parameters`; pure `param_map_utils` (derive_serum_ids/validate_pack/load_pack/
+  find_params) + 15 tests; empty `param_maps/__init__.py`. Full suite 899 passed, 2 skipped;
+  server import + RS py_compile clean. serum2.json NOT yet generated (needs the live probe).
+
+**Make-or-break gate PASSED (Live 12.4 Suite):** an EXTERNALLY-written Configure slot becomes a
+live, named, settable LOM `DeviceParameter`. Method: patched one empty `<PluginFloatParameter>`
+slot in a saved `.als` (ParameterId=2000007, Manual=0.5), reloaded → `get_device_parameters`
+showed param_count 6 incl. a new control Live resolved to "Filter 1 Stereo"; `set_device_parameter`
+to 0.9 moved Serum's knob in the GUI (user-confirmed). Full LOM control of plugin knobs is real.
+
+**Key findings:**
+- **Default exposure = nothing.** Serum 2 (both AU `AuPluginDevice` and VST3 `PluginDevice`)
+  exposes only `Device On` until params are Configured. No LOM API to Configure (confirmed); the
+  commercial Serumify product also requires manual Configure "up to 128 params" (matches the
+  128-slot pool we found).
+- **Slot encoding (save-diff):** fill `<PluginFloatParameter>` with `ParameterId` (real VST3 id),
+  `ParameterName`, `Manual` (native units; LOM reads/sets normalized 0-1), `VisualIndex`. Empty
+  sentinels: ParameterId=-1, Manual=0.1234567687, VisualIndex=1073741823.
+- **CORRUPTION RULE:** Live keeps a global `<NextPointeeId>` that MUST exceed every
+  `AutomationTarget`/`ModulationTarget` Id. Allocate the slot's two target ids FROM NextPointeeId
+  and advance it by 2, else load fails ("NextPointeeId is too low: N must be bigger than M").
+- **Discovery formula confirmed:** `id = 2000000 + plugin_param_index` (2000007 → "Filter 1
+  Stereo", index 7; Filter 1 block = Freq3/Res4/Drive5/Var6/Stereo7).
+- **Delivery model - corrected:** Live 12 will NOT mint a VST3 `.adv` (both Save-Preset and
+  drag-to-browser produce a `.vstpreset` = plugin binary state only, no ParameterList); a
+  hand-synthesized `.adv` failed to load. So **Option B-via-`.adv` is DEAD for VST3.**
+  - **Option A (live-set `.als` patch): PROVEN.** Serum stays a TOP-LEVEL device → exposed params
+    directly reachable by existing get/set_device_parameter. Cost: one set save+reload per
+    instance to expose.
+  - **Option B-via-rack `.adg`: viable but nests.** A rack `.adg` DOES carry the exposure (as
+    compact `<PluginParameterSettings>`: Index/VisualIndex/ParameterId/Type) AND the plugin state
+    (ProcessorState/ControllerState/Vst3Preset); loads via browser with NO set reload. BUT Serum
+    sits nested in the rack chain → its exposed params are NOT on `track.devices[0]` (that's the
+    rack: 16 macros + chain selector), so reaching them needs chain-aware param access the current
+    tools lack. No `NextPointeeId` needed in `.adg` (preset target ids are all 0).
+- **DELIVERY DECISION = C (user-chosen):** Release 1 = Option A (live-set `.als` patch, top-level
+  Serum, proven, existing get/set tools, one save+reload per instance). Release 2 fast-follow =
+  Option B (rack `.adg` + new nested-device param access, no reloads) = plan Task 6.
+- Scratch: `serum2_test.als` has a `.bak`; failed `serum2_mcp.adv` + `serum_probe_rack.adg` +
+  `serum2_mcp_probe.vstpreset` left in User Library (harmless).
+
 ## detect_key (PR #43) - SHIPPED v0.23.0 (2026-06-24)
 SHIPPED: PR #43 squash-merged (0d12d85), tag v0.23.0 created (= main), marketplace `ableton`
 ref v0.22.0 -> v0.23.0 (@5dc6c00) + build-readme. 148 tools. Live-verified + interactive MCP

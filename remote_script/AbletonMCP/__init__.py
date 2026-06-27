@@ -756,6 +756,12 @@ class AbletonMCP(ControlSurface):
                 track_type = params.get("track_type", "regular")
                 response["result"] = self._get_device_parameters(
                     track_index, device_index, track_type)
+            elif command_type == "probe_plugin_parameters":
+                track_index = params.get("track_index", 0)
+                device_index = params.get("device_index", 0)
+                track_type = params.get("track_type", "regular")
+                response["result"] = self._probe_plugin_parameters(
+                    track_index, device_index, track_type)
             elif command_type == "get_device_info":
                 track_index = params.get("track_index", 0)
                 device_index = params.get("device_index", 0)
@@ -1340,6 +1346,38 @@ class AbletonMCP(ControlSurface):
             "device_name": device.name,
             "parameter_count": len(parameters),
             "parameters": parameters,
+        }
+
+    def _probe_plugin_parameters(self, track_index, device_index, track_type="regular"):
+        """Read a third-party plugin's FULL parameter-name list (the names Live
+        exposes for Configure), not just the automatable subset in
+        device.parameters.
+
+        PluginDevice/AuPluginDevice expose get_parameter_names(first, count) and
+        get_bank_parameters(bank). count=-1 means "all"; bank=-1 means "best of"
+        / all banks. Both raise on non-plugin devices, so guard each. Used by
+        the param-map probe to derive the Configure-slot id list
+        (id = id_base + parameter_index)."""
+        track, device = self._resolve_device(track_index, device_index, track_type)
+        names = []
+        try:
+            names = [str(n) for n in device.get_parameter_names(0, -1)]
+        except Exception as e:
+            self.log_message("probe_plugin_parameters names err: %s" % e)
+        banks = []
+        try:
+            banks = [[int(i) for i in device.get_bank_parameters(-1)]]
+        except Exception as e:
+            self.log_message("probe_plugin_parameters banks err: %s" % e)
+        return {
+            "track_index": track_index,
+            "track_type": track_type,
+            "device_index": device_index,
+            "device_name": device.name,
+            "class_name": getattr(device, "class_name", ""),
+            "parameter_count": len(names),
+            "names": names,
+            "bank_indices": banks,
         }
 
     def _set_device_parameter(self, track_index, device_index, parameter_index, value,
@@ -3479,7 +3517,7 @@ class AbletonMCP(ControlSurface):
                 categories = []
                 for attr in ('instruments', 'sounds', 'drums', 'audio_effects',
                              'midi_effects', 'user_library', 'packs',
-                             'current_project', 'clips', 'samples'):
+                             'current_project', 'clips', 'samples', 'plugins'):
                     if hasattr(browser_or_item, attr):
                         try:
                             categories.append(getattr(browser_or_item, attr))

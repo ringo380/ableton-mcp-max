@@ -140,6 +140,8 @@ from ableton_mcp_max.save_utils import (
 from ableton_mcp_max import als_automation_utils as als
 from ableton_mcp_max import stem_utils
 from ableton_mcp_max import key_detection_utils as kd
+from ableton_mcp_max import plugin_config_utils as pcu
+from ableton_mcp_max import param_map_utils as pmu
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -2660,6 +2662,186 @@ def get_device_parameters(
     except Exception as e:
         logger.error(f"Error getting device parameters: {str(e)}")
         return _err(f"Error getting device parameters: {str(e)}")
+@mcp.tool()
+def probe_plugin_parameters(
+    ctx: Context, track_index: int, device_index: int, track_type: str = "regular"
+) -> str:
+    """
+    Read the FULL parameter-name list of a third-party VST/AU plugin device
+    (e.g. Serum 2) - the names Live can Configure, not just the automatable
+    subset visible in get_device_parameters.
+
+    A freshly loaded plugin exposes only 'Device On' as a LOM DeviceParameter;
+    its real knobs are reachable only after they are 'Configured'. This probe
+    returns every parameter name the plugin reports, so a param-map pack can be
+    generated and used to expose a chosen subset via expose_plugin_parameters.
+
+    Parameters:
+    - track_index: index of the track (ignored for master)
+    - device_index: index of the plugin device on that track (0 = first device)
+    - track_type: 'regular' (default), 'return', or 'master'
+
+    Returns JSON: device_name, class_name, parameter_count, names (ordered list;
+    the Configure-slot id for names[i] is id_base + i), bank_indices.
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "probe_plugin_parameters",
+            {
+                "track_index": track_index,
+                "device_index": device_index,
+                "track_type": track_type,
+            },
+        )
+        return _ok(result)
+    except Exception as e:
+        logger.error(f"Error probing plugin parameters: {str(e)}")
+        return _err(f"Error probing plugin parameters: {str(e)}")
+
+
+# Default Manual value written into a freshly-exposed Configure slot. Live
+# reconciles it against the plugin's real parameter range/value on load, so a
+# neutral mid-point is a safe placeholder (the plugin's own ProcessorState chunk,
+# stored separately in the .als, is the source of truth for the actual sound).
+_EXPOSE_DEFAULT_MANUAL = "0.5"
+
+
+def _expose_plugin_impl(track_index, device_index, track_type, params, manual,
+                        reload, save_impl, reload_impl,
+                        read_als=als.read_als, write_als=als.write_als,
+                        find_track_span=als.find_track_span,
+                        title_fn=None, resolve_path=None):
+    """Core of expose_plugin_parameters, factored behind seams (save/reload/IO)
+    so it is unit-testable without Live. Saves the set, patches the target
+    plugin device's <ParameterList> with the pack params (filling empty Configure
+    slots + allocating target ids from <NextPointeeId>), writes the .als, and
+    reloads. Returns the result dict."""
+    if track_type != "regular":
+        raise ValueError("expose_plugin_parameters supports regular tracks only "
+                         "in v1 (VST/AU instruments load on regular tracks).")
+    title = (title_fn or _live_window_title)()
+    if is_untitled_title(title):
+        raise ValueError("Set is untitled — save it first via save_set_as, then "
+                         "retry (exposure patches the .als on disk).")
+
+    save_res = save_impl()
+    if not save_res.get("saved"):
+        return {"reloaded": False, "exposed_count": 0,
+                "dropped_count": len(params), "method": "live_set",
+                "error": "save_set failed: %s" % save_res.get("error", save_res)}
+
+    path = (resolve_path or (lambda: _current_set_path(title) or
+                             _find_saved_set(title)))()
+    if not path:
+        raise RuntimeError(
+            "Could not resolve the current set's .als path from Live's log or the "
+            "common save folders. Open/save the set so it's a real file on disk.")
+    set_name = set_name_from_path(path)
+
+    xml = read_als(path)
+    # Count how many params will actually fit (empty slots in the target list).
+    ts, te = find_track_span(xml, track_index)
+    pl_s, pl_e = pcu.locate_param_list(xml, ts, te, device_index)
+    n_empty = len(pcu.find_empty_slots(xml[pl_s:pl_e]))
+    n_filled_existing = pcu.count_slots(xml[pl_s:pl_e]) - n_empty
+    count = min(len(params), n_empty)
+    if count == 0:
+        return {"set_path": path, "reloaded": False, "exposed_count": 0,
+                "dropped_count": len(params), "method": "live_set",
+                "error": "no empty Configure slots on device %d (all %d slots "
+                         "already configured)" % (device_index,
+                                                  pcu.count_slots(xml[pl_s:pl_e]))}
+
+    # Allocate the 2 target ids per slot from <NextPointeeId> (Live rejects the
+    # set if any target id >= NextPointeeId). The bump rewrites one token, which
+    # can shift offsets, so re-locate the list on the bumped doc before filling.
+    xml, start_id = pcu.bump_next_pointee_id(xml, count)
+    ts, te = find_track_span(xml, track_index)
+    pl_s, pl_e = pcu.locate_param_list(xml, ts, te, device_index)
+
+    fill_params = []
+    for i, p in enumerate(params):
+        fill_params.append({
+            "param_id": int(p["param_id"]),
+            "name": p["name"],
+            "manual": manual,
+            "visual_index": n_filled_existing + i,
+        })
+    new_plist, dropped = pcu.fill_slots(xml[pl_s:pl_e], fill_params, start_id)
+    xml = xml[:pl_s] + new_plist + xml[pl_e:]
+    write_als(path, xml)
+
+    reloaded = False
+    if reload:
+        rr = reload_impl(path, set_name)
+        reloaded = rr.get("reloaded", False)
+
+    return {"set_path": path, "reloaded": reloaded,
+            "exposed_count": count, "dropped_count": dropped,
+            "method": "live_set"}
+
+
+@mcp.tool()
+def expose_plugin_parameters(
+    ctx: Context,
+    track_index: int,
+    device_index: int = 0,
+    pack: str = "serum2",
+    track_type: str = "regular",
+    reload: bool = True,
+) -> str:
+    """Expose a third-party VST/AU plugin's parameters as live, settable LOM
+    DeviceParameters by Configuring them via the .als backdoor.
+
+    A freshly loaded plugin (e.g. Serum 2) exposes ONLY 'Device On' to the LOM;
+    its real knobs become controllable only after they are 'Configured', and Live
+    has no API for that. This tool fills the plugin device's empty Configure slots
+    from a committed param-map pack, then reloads the set in place. Afterward the
+    exposed params are reachable by the normal get_device_parameters /
+    set_device_parameter (and automatable / arrangement-automatable).
+
+    The set MUST be saved to a real file first (an Untitled set errors — use
+    save_set_as). Live is briefly focused for the in-place reload (~5s); one MCP
+    call right after may transiently fail and self-heal. Regular tracks only in v1
+    (VST/AU instruments load on regular tracks).
+
+    Parameters:
+    - track_index: the track holding the plugin (regular Midi/Audio, doc order).
+    - device_index: device on that track (0 = first). Must be the VST/AU plugin.
+    - pack: param-map pack name under param_maps/ (default 'serum2'); its params
+      (each a real plugin ParameterId + name) fill the Configure slots, capped at
+      the 128-slot pool — any overflow is dropped and reported.
+    - track_type: 'regular' only in v1.
+    - reload: reload the set in place when done (default True). False leaves the
+      patched .als on disk (reload Live yourself to see the exposed params).
+
+    Returns JSON {ok, data:{set_path, exposed_count, dropped_count, method,
+    reloaded, error?}}. exposed_count is how many params were Configured (fit in
+    the empty slots); dropped_count is pack params that didn't fit.
+    """
+    try:
+        loaded = pmu.load_pack(pack)
+        ableton = get_ableton_connection()  # ensure Live is reachable before save
+        data = _expose_plugin_impl(
+            track_index, device_index, track_type, loaded["params"],
+            _EXPOSE_DEFAULT_MANUAL, reload,
+            save_impl=lambda: _save_set_impl(name=""),
+            reload_impl=lambda p, n: _reload_set(
+                p, n, probe=lambda: get_ableton_connection().send_command(
+                    "get_session_info")),
+        )
+        if data.get("dropped_count"):
+            logger.warning("expose_plugin_parameters: dropped %d params (slot pool "
+                           "full)", data["dropped_count"])
+        return _ok(data)
+    except (ValueError, RuntimeError, FileNotFoundError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("expose_plugin_parameters error: %s", e)
+        return _err("expose_plugin_parameters error: %s" % e)
+
+
 @mcp.tool()
 def set_device_parameter(
     ctx: Context,
