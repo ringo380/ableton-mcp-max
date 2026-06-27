@@ -110,3 +110,76 @@ def test_bump_next_pointee_id_multi():
     out, start = pcu.bump_next_pointee_id(doc, count=3)
     assert start == 500
     assert '<NextPointeeId Value="506" />' in out  # 500 + 2*3
+
+
+# --- locate_param_list (device navigation) --------------------------------
+
+def _track(devices_inner, plist='<ParameterList><PluginFloatParameter Id="0" /></ParameterList>'):
+    """A synthetic track whose main <Devices> holds `devices_inner`."""
+    return (
+        '<MidiTrack Id="9">'
+        '<Mixer><Sends><ParameterList>MIXER_PLIST</ParameterList></Sends></Mixer>'
+        '<DeviceChain><Devices>%s</Devices></DeviceChain>'
+        '</MidiTrack>'
+    ) % devices_inner
+
+
+def test_locate_param_list_first_device():
+    plist = '<ParameterList><Slot Id="7" /></ParameterList>'
+    xml = _track('<PluginDevice Id="0"><X />%s</PluginDevice>' % plist)
+    s, e = pcu.locate_param_list(xml, 0, len(xml), 0)
+    # Must select the PLUGIN's ParameterList, not the earlier mixer-sends one.
+    assert xml[s:e] == plist
+    assert "MIXER_PLIST" not in xml[s:e]
+
+
+def test_locate_param_list_second_device_skips_native():
+    plist = '<ParameterList><Slot Id="7" /></ParameterList>'
+    inner = ('<Operator Id="0"><ParameterList>NATIVE</ParameterList></Operator>'
+             '<PluginDevice Id="1"><Y />%s</PluginDevice>') % plist
+    xml = _track(inner)
+    s, e = pcu.locate_param_list(xml, 0, len(xml), 1)
+    assert xml[s:e] == plist
+
+
+def test_locate_param_list_rejects_non_plugin():
+    xml = _track('<Operator Id="0"><ParameterList>N</ParameterList></Operator>')
+    try:
+        pcu.locate_param_list(xml, 0, len(xml), 0)
+        assert False, "expected ValueError"
+    except ValueError as err:
+        assert "not a VST/AU plugin" in str(err)
+
+
+def test_locate_param_list_index_out_of_range():
+    xml = _track('<PluginDevice Id="0"><ParameterList>P</ParameterList></PluginDevice>')
+    try:
+        pcu.locate_param_list(xml, 0, len(xml), 5)
+        assert False, "expected ValueError"
+    except ValueError as err:
+        assert "out of range" in str(err)
+
+
+def test_locate_param_list_ignores_nested_rack_devices():
+    # An instrument rack: its chain holds a nested <Devices> with another plugin.
+    # device 0 is the rack (GroupDevice); its ParameterList is the macros list.
+    nested = ('<InstrumentGroupDevice Id="0">'
+              '<ParameterList>MACROS</ParameterList>'
+              '<Branches><Branch><DeviceChain><Devices>'
+              '<PluginDevice Id="1"><ParameterList>INNER</ParameterList></PluginDevice>'
+              '</Devices></DeviceChain></Branch></Branches>'
+              '</InstrumentGroupDevice>')
+    xml = _track(nested)
+    # device 0 is the rack -> not a plugin (rejected, correct: macros aren't VST params)
+    try:
+        pcu.locate_param_list(xml, 0, len(xml), 0)
+        assert False
+    except ValueError as err:
+        assert "not a VST/AU plugin" in str(err)
+    # there is exactly one top-level device (the rack); index 1 is out of range,
+    # proving the nested inner plugin is NOT counted as a sibling.
+    try:
+        pcu.locate_param_list(xml, 0, len(xml), 1)
+        assert False
+    except ValueError as err:
+        assert "out of range" in str(err)

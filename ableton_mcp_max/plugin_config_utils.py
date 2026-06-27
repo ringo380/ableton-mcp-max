@@ -124,6 +124,85 @@ def fill_slots(parameter_list_xml, params, start_target_id):
     return new_xml, dropped
 
 
+PLUGIN_DEVICE_TAGS = ("PluginDevice", "AuPluginDevice")
+
+_TAG_RE = re.compile(r'<(/?)([A-Za-z0-9_]+)((?:\s[^>]*?)?)(/?)>')
+
+
+def _matching_close(xml, tag, open_end):
+    """Index just past the `</tag>` that closes an element whose open tag ends at
+    `open_end`. Counts nested same-named opens; ignores self-closing tags."""
+    depth = 1
+    for m in _TAG_RE.finditer(xml, open_end):
+        closing, name, _, selfclose = m.groups()
+        if selfclose or name != tag:
+            continue
+        if closing:
+            depth -= 1
+            if depth == 0:
+                return m.end()
+        else:
+            depth += 1
+    raise ValueError("unterminated <%s>" % tag)
+
+
+def _top_level_children(xml, inner_start, inner_end):
+    """(tag, open_start, open_end, self_closing) for each direct child element in
+    xml[inner_start:inner_end] (depth-0 within that range, document order)."""
+    out = []
+    depth = 0
+    for m in _TAG_RE.finditer(xml, inner_start):
+        if m.start() >= inner_end:
+            break
+        closing, name, _, selfclose = m.groups()
+        if selfclose:
+            if depth == 0:
+                out.append((name, m.start(), m.end(), True))
+            continue
+        if closing:
+            depth -= 1
+        else:
+            if depth == 0:
+                out.append((name, m.start(), m.end(), False))
+            depth += 1
+    return out
+
+
+def locate_param_list(full_xml, track_start, track_end, device_index,
+                      plugin_tags=PLUGIN_DEVICE_TAGS):
+    """Char span (start, end) of the `<ParameterList>...</ParameterList>` of the
+    `device_index`-th device in the track's main device chain.
+
+    `track_start`/`track_end` bound one track's XML (e.g. from
+    `als_automation_utils.find_track_span`). Navigates: the track's main
+    `<Devices>` container -> its depth-0 child elements (the devices) -> the
+    device_index-th child -> that device's `<ParameterList>`. Does NOT match the
+    first `<ParameterList>` blindly (mixer sends etc. have their own).
+
+    Raises ValueError if the device isn't a plugin (tag not in `plugin_tags`),
+    the index is out of range, or no ParameterList is found.
+    """
+    dev_open = full_xml.find("<Devices>", track_start, track_end)
+    if dev_open == -1:
+        raise ValueError("track has no <Devices> chain")
+    dev_inner = dev_open + len("<Devices>")
+    dev_close = _matching_close(full_xml, "Devices", dev_inner)
+    children = _top_level_children(full_xml, dev_inner, dev_close)
+    if device_index >= len(children):
+        raise ValueError("device index %d out of range (%d devices)"
+                         % (device_index, len(children)))
+    tag, c_start, c_open_end, selfclose = children[device_index]
+    if tag not in plugin_tags:
+        raise ValueError("device %d is a <%s>, not a VST/AU plugin "
+                         "(expected one of %s)" % (device_index, tag, plugin_tags))
+    dev_end = _matching_close(full_xml, tag, c_open_end)
+    pl_open = full_xml.find("<ParameterList>", c_open_end, dev_end)
+    if pl_open == -1:
+        raise ValueError("plugin device %d has no <ParameterList>" % device_index)
+    pl_end = _matching_close(full_xml, "ParameterList", pl_open + len("<ParameterList>"))
+    return pl_open, pl_end
+
+
 def bump_next_pointee_id(full_xml, count):
     """Advance the global <NextPointeeId> by 2*count and return (xml, start_id).
 
