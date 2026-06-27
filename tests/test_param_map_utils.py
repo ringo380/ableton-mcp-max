@@ -119,3 +119,22 @@ def test_find_params_category_filter():
 
 def test_find_params_empty_query_matches_all():
     assert len(pmu.find_params(_good_pack(), "")) == 2
+
+
+def test_serum2_pack_loads_and_validates():
+    """The committed serum2.json pack loads, validates, and has the expected shape."""
+    pack = pmu.load_pack("serum2")
+    assert pack["plugin"] == "Serum2"
+    # 128 Configure slots captured (the full Serum 2 Configure pool).
+    assert len(pack["params"]) == 128
+    # Every param carries a category tag and a positive Serum ParamID.
+    for p in pack["params"]:
+        assert p["category"]
+        assert p["param_id"] >= 0
+    # Spot-check the live-verified anchor (gate param) and a routing param.
+    by_name = {p["name"]: p for p in pack["params"]}
+    assert by_name["Filter 1 Stereo"]["param_id"] == 2000007
+    assert by_name["Filter 1 Stereo"]["category"] == "Filter"
+    # Module-base buckets resolve to the right categories.
+    assert pmu.find_params(pack, "Macro 1", category="Macro")
+    assert pmu.find_params(pack, "Env 4 Release", category="Envelope")

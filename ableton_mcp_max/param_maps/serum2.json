@@ -1,0 +1,646 @@
+{
+ "plugin": "Serum2",
+ "id_base": 0,
+ "params": [
+  {
+   "param_id": 0,
+   "name": "Main Vol",
+   "category": "Global"
+  },
+  {
+   "param_id": 5,
+   "name": "Bend Up",
+   "category": "Global"
+  },
+  {
+   "param_id": 6,
+   "name": "Bend Down",
+   "category": "Global"
+  },
+  {
+   "param_id": 7,
+   "name": "Pitch Bend",
+   "category": "Global"
+  },
+  {
+   "param_id": 8,
+   "name": "Mod Wheel",
+   "category": "Global"
+  },
+  {
+   "param_id": 10,
+   "name": "Mono Toggle",
+   "category": "Global"
+  },
+  {
+   "param_id": 12,
+   "name": "Porta Always",
+   "category": "Global"
+  },
+  {
+   "param_id": 16,
+   "name": "Transpose",
+   "category": "Global"
+  },
+  {
+   "param_id": 1000000,
+   "name": "A Enable",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1000001,
+   "name": "A Level",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1000002,
+   "name": "A Pan",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1000003,
+   "name": "A Octave",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1000004,
+   "name": "A Semi",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1000005,
+   "name": "A Fine",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1000006,
+   "name": "A Coarse Pitch",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1000024,
+   "name": "A Unison",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1000026,
+   "name": "A Uni Detune",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1000027,
+   "name": "A Uni Blend",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1000033,
+   "name": "A Warp",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1000036,
+   "name": "A Warp 2",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1000039,
+   "name": "A Timbre",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1001000,
+   "name": "B Enable",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1001004,
+   "name": "B Semi",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1001005,
+   "name": "B Fine",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1001006,
+   "name": "B Coarse Pitch",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1001024,
+   "name": "B Unison",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1001026,
+   "name": "B Uni Detune",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1001027,
+   "name": "B Uni Blend",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1001033,
+   "name": "B Warp",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1001036,
+   "name": "B Warp 2",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1001039,
+   "name": "B Param40",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1001041,
+   "name": "B Param42",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1001042,
+   "name": "B Param43",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1002000,
+   "name": "C Enable",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1002003,
+   "name": "C Octave",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1002004,
+   "name": "C Semi",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1002005,
+   "name": "C Fine",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1002006,
+   "name": "C Coarse Pitch",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1002041,
+   "name": "C Phase",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1002042,
+   "name": "C Rand Phase",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1003001,
+   "name": "Noise Level",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1003002,
+   "name": "Noise Pan",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1003033,
+   "name": "Noise Pitch",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1003034,
+   "name": "Noise Fine",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1004000,
+   "name": "Sub Enable",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1004001,
+   "name": "Sub Level",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1004002,
+   "name": "Sub Pan",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1004003,
+   "name": "Sub Octave",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 1004033,
+   "name": "Sub Shape",
+   "category": "Oscillator"
+  },
+  {
+   "param_id": 2000000,
+   "name": "Filter 1 On",
+   "category": "Filter"
+  },
+  {
+   "param_id": 2000001,
+   "name": "Filter 1 Wet",
+   "category": "Filter"
+  },
+  {
+   "param_id": 2000003,
+   "name": "Filter 1 Freq",
+   "category": "Filter"
+  },
+  {
+   "param_id": 2000004,
+   "name": "Filter 1 Res",
+   "category": "Filter"
+  },
+  {
+   "param_id": 2000005,
+   "name": "Filter 1 Drive",
+   "category": "Filter"
+  },
+  {
+   "param_id": 2000006,
+   "name": "Filter 1 Var",
+   "category": "Filter"
+  },
+  {
+   "param_id": 2000007,
+   "name": "Filter 1 Stereo",
+   "category": "Filter"
+  },
+  {
+   "param_id": 2000008,
+   "name": "Filter 1 Level",
+   "category": "Filter"
+  },
+  {
+   "param_id": 2001000,
+   "name": "Filter 2 On",
+   "category": "Filter"
+  },
+  {
+   "param_id": 2001001,
+   "name": "Filter 2 Wet",
+   "category": "Filter"
+  },
+  {
+   "param_id": 2001003,
+   "name": "Filter 2 Freq",
+   "category": "Filter"
+  },
+  {
+   "param_id": 2001004,
+   "name": "Filter 2 Res",
+   "category": "Filter"
+  },
+  {
+   "param_id": 2001005,
+   "name": "Filter 2 Drive",
+   "category": "Filter"
+  },
+  {
+   "param_id": 2001006,
+   "name": "Filter 2 Var",
+   "category": "Filter"
+  },
+  {
+   "param_id": 2001007,
+   "name": "Filter 2 Stereo",
+   "category": "Filter"
+  },
+  {
+   "param_id": 2001008,
+   "name": "Filter 2 Level",
+   "category": "Filter"
+  },
+  {
+   "param_id": 3000000,
+   "name": "Env 1 Attack",
+   "category": "Envelope"
+  },
+  {
+   "param_id": 3000001,
+   "name": "Env 1 Hold",
+   "category": "Envelope"
+  },
+  {
+   "param_id": 3000002,
+   "name": "Env 1 Decay",
+   "category": "Envelope"
+  },
+  {
+   "param_id": 3000003,
+   "name": "Env 1 Sustain",
+   "category": "Envelope"
+  },
+  {
+   "param_id": 3000004,
+   "name": "Env 1 Release",
+   "category": "Envelope"
+  },
+  {
+   "param_id": 3001000,
+   "name": "Env 2 Attack",
+   "category": "Envelope"
+  },
+  {
+   "param_id": 3001001,
+   "name": "Env 2 Hold",
+   "category": "Envelope"
+  },
+  {
+   "param_id": 3001002,
+   "name": "Env 2 Decay",
+   "category": "Envelope"
+  },
+  {
+   "param_id": 3001003,
+   "name": "Env 2 Sustain",
+   "category": "Envelope"
+  },
+  {
+   "param_id": 3001004,
+   "name": "Env 2 Release",
+   "category": "Envelope"
+  },
+  {
+   "param_id": 3002000,
+   "name": "Env 3 Attack",
+   "category": "Envelope"
+  },
+  {
+   "param_id": 3002001,
+   "name": "Env 3 Hold",
+   "category": "Envelope"
+  },
+  {
+   "param_id": 3002002,
+   "name": "Env 3 Decay",
+   "category": "Envelope"
+  },
+  {
+   "param_id": 3002003,
+   "name": "Env 3 Sustain",
+   "category": "Envelope"
+  },
+  {
+   "param_id": 3002004,
+   "name": "Env 3 Release",
+   "category": "Envelope"
+  },
+  {
+   "param_id": 3003000,
+   "name": "Env 4 Attack",
+   "category": "Envelope"
+  },
+  {
+   "param_id": 3003001,
+   "name": "Env 4 Hold",
+   "category": "Envelope"
+  },
+  {
+   "param_id": 3003002,
+   "name": "Env 4 Decay",
+   "category": "Envelope"
+  },
+  {
+   "param_id": 3003003,
+   "name": "Env 4 Sustain",
+   "category": "Envelope"
+  },
+  {
+   "param_id": 3003004,
+   "name": "Env 4 Release",
+   "category": "Envelope"
+  },
+  {
+   "param_id": 4000000,
+   "name": "LFO 1 Rate",
+   "category": "LFO"
+  },
+  {
+   "param_id": 4000001,
+   "name": "LFO 1 Smooth",
+   "category": "LFO"
+  },
+  {
+   "param_id": 4000002,
+   "name": "LFO 1 Rise",
+   "category": "LFO"
+  },
+  {
+   "param_id": 4000003,
+   "name": "LFO 1 Delay",
+   "category": "LFO"
+  },
+  {
+   "param_id": 4000004,
+   "name": "LFO 1 Phase",
+   "category": "LFO"
+  },
+  {
+   "param_id": 4001000,
+   "name": "LFO 2 Rate",
+   "category": "LFO"
+  },
+  {
+   "param_id": 4001001,
+   "name": "LFO 2 Smooth",
+   "category": "LFO"
+  },
+  {
+   "param_id": 4001002,
+   "name": "LFO 2 Rise",
+   "category": "LFO"
+  },
+  {
+   "param_id": 4001003,
+   "name": "LFO 2 Delay",
+   "category": "LFO"
+  },
+  {
+   "param_id": 4001004,
+   "name": "LFO 2 Phase",
+   "category": "LFO"
+  },
+  {
+   "param_id": 4002000,
+   "name": "LFO 3 Rate",
+   "category": "LFO"
+  },
+  {
+   "param_id": 4002001,
+   "name": "LFO 3 Smooth",
+   "category": "LFO"
+  },
+  {
+   "param_id": 4002002,
+   "name": "LFO 3 Rise",
+   "category": "LFO"
+  },
+  {
+   "param_id": 4002003,
+   "name": "LFO 3 Delay",
+   "category": "LFO"
+  },
+  {
+   "param_id": 4002004,
+   "name": "LFO 3 Phase",
+   "category": "LFO"
+  },
+  {
+   "param_id": 6000000,
+   "name": "Mod 1 Amount",
+   "category": "Mod Matrix"
+  },
+  {
+   "param_id": 6001000,
+   "name": "Mod 2 Amount",
+   "category": "Mod Matrix"
+  },
+  {
+   "param_id": 6002000,
+   "name": "Mod 3 Amount",
+   "category": "Mod Matrix"
+  },
+  {
+   "param_id": 6003000,
+   "name": "Mod 4 Amount",
+   "category": "Mod Matrix"
+  },
+  {
+   "param_id": 6004000,
+   "name": "Mod 5 Amount",
+   "category": "Mod Matrix"
+  },
+  {
+   "param_id": 6005000,
+   "name": "Mod 6 Amount",
+   "category": "Mod Matrix"
+  },
+  {
+   "param_id": 6005001,
+   "name": "Mod 6 Out",
+   "category": "Mod Matrix"
+  },
+  {
+   "param_id": 6006000,
+   "name": "Mod 7 Amount",
+   "category": "Mod Matrix"
+  },
+  {
+   "param_id": 6007000,
+   "name": "Mod 8 Amount",
+   "category": "Mod Matrix"
+  },
+  {
+   "param_id": 7000000,
+   "name": "Macro 1",
+   "category": "Macro"
+  },
+  {
+   "param_id": 7001000,
+   "name": "Macro 2",
+   "category": "Macro"
+  },
+  {
+   "param_id": 7002000,
+   "name": "Macro 3",
+   "category": "Macro"
+  },
+  {
+   "param_id": 7003000,
+   "name": "Macro 4",
+   "category": "Macro"
+  },
+  {
+   "param_id": 7004000,
+   "name": "Macro 5",
+   "category": "Macro"
+  },
+  {
+   "param_id": 7005000,
+   "name": "Macro 6",
+   "category": "Macro"
+  },
+  {
+   "param_id": 7006000,
+   "name": "Macro 7",
+   "category": "Macro"
+  },
+  {
+   "param_id": 7007000,
+   "name": "Macro 8",
+   "category": "Macro"
+  },
+  {
+   "param_id": 9000000,
+   "name": "A>Filter Balance",
+   "category": "Routing"
+  },
+  {
+   "param_id": 9000001,
+   "name": "A>BUS1",
+   "category": "Routing"
+  },
+  {
+   "param_id": 9000002,
+   "name": "A>BUS2",
+   "category": "Routing"
+  },
+  {
+   "param_id": 9001000,
+   "name": "B>Filter Balance",
+   "category": "Routing"
+  },
+  {
+   "param_id": 9001001,
+   "name": "B>BUS1",
+   "category": "Routing"
+  },
+  {
+   "param_id": 9001002,
+   "name": "B>BUS2",
+   "category": "Routing"
+  },
+  {
+   "param_id": 9002000,
+   "name": "C>Filter Balance",
+   "category": "Routing"
+  },
+  {
+   "param_id": 9003000,
+   "name": "Noise>Filter Balance",
+   "category": "Routing"
+  },
+  {
+   "param_id": 9004000,
+   "name": "Sub Osc>Filter Balance",
+   "category": "Routing"
+  },
+  {
+   "param_id": 10000000,
+   "name": "Clip Player Enable",
+   "category": "Clip Player"
+  },
+  {
+   "param_id": 12000000,
+   "name": "Arp Enable",
+   "category": "Arp"
+  }
+ ]
+}
