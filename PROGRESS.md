@@ -5,43 +5,51 @@ Branch `feat/vst-plugin-support` (6 commits, clean tree, NOT pushed/PR'd yet). S
 under docs/superpowers/. Goal: expose, control, author 3rd-party VST3/AU plugin params via the
 Configure-list XML backdoor (Serum 2 first).
 
-**>>> RESUME HERE (Task 2 probe LIVE-VERIFIED, but id-formula REFUTED - DECISION NEEDED):**
-The `probe_plugin_parameters` tool WORKS live (Serum 2 VST3, class PluginDevice, **2623 params**
-returned, idx-ordered). Two findings BLOCK serum2.json + reshape Task 3:
-- **`id = 2000000 + probe_index` is REFUTED.** In the idx-ordered name list, "Filter 1 Stereo" is at
-  index **210** (Filter 1 block: Level202/On203/Type204/Freq205/Res206/Drive207/Var208/Wet209/
-  Stereo210), but Task 0 recorded ParameterId **2000007** for "Filter 1 Stereo". So the Configure
-  ParameterId is Serum's INTERNAL VST3 ParamID (small, section-ordered: Filter1 Freq/Res/Drive/Var/
-  Stereo = 2000003..2000007), NOT derivable from the probe's name-list index. `derive_serum_ids`
-  hypothesis is invalid as written. (Caveat to RE-TEST: Task 0's gate may have been on the AU
-  (`AuPluginDevice`), or its index "7" miscounted - a single empirical reload mapping 2000007 vs
-  2000210 -> name would settle it. If 2000210 wins, the formula IS names_index-based and serum2.json
-  derives trivially. UNTESTED - needs the save->patch->reload engine = Task 3.)
-- **128-slot Configure cap vs 2623 params** -> curation is MANDATORY. Core synth engine = idx 0..311
-  (Main/Osc A-B-C/Filter1-2/Env/LFO/FX); idx 312+ is the Mod-matrix/CC/Aftertouch bulk (130 Mod,
-  16x CC0-127, etc.). A useful pack is a hand-picked <=128 subset of the core.
-- Full names list saved to scratchpad `serum2_probe_names.json` (NOT in repo).
-**UPDATE: formula CONFIRMED (my "refuted" was wrong), oracle BUILT + working.** ParameterId =
-2000000 + serum_internal_id (Task 0 right). Decisive test: patched slots w/ sentinel names, reload,
-get_device_parameters - VALID id -> is_enabled=TRUE + real name (Live overrides sentinel), INVALID ->
-disabled + sentinel kept. Built harvest harness (scratchpad harvest.py/reload.sh/harvest_findings.md):
-cycle = save_set("") (clean) -> patch .als -> Cmd+N/Return/open -> read. Filter 1 = ids 2000000..010;
-Filter 2 Level = 2001029. **Serum id space is SPARSE+WIDE** (~11-wide blocks at offsets ~1000 apart,
->=2000000..2002600) so a FULL dense harvest = ~21 reload cycles.
-**UPDATE: full dense harvest is INFEASIBLE - id space irregular.** User chose dense harvest, but
-discovery showed: only the 2 FILTERS are at predictable ids (Filter 1 = 2000000..010, Filter 2 =
-2001000..010, F2 = F1 offsets +1000). The ~2600 other params (Main/Osc/Env/LFO/FX) have SCATTERED
-ParamIDs at unknown ids (probed stride-1000 modules 0-127, modules 0-31 off 0-3, dense module 2,
-stride-11/-21 - found only the 2 filters). Blind enumeration = vast id space, impractical.
-GOOD NEWS: disk-parse harvest works (save_set after reload persists ParameterId<->Name reliably).
-**NEXT (re-ask user):** RECOMMEND building serum2.json via MANUAL CONFIGURE (Serum's intended flow):
-user right-clicks Serum titlebar -> Configure -> clicks desired knobs -> save_set -> I parse the .als
-for exact id<->name pairs (1 session, user-curated). Harness + full findings in scratchpad
-harvest_findings.md/harvest.py/harvest_klist.py/reload.sh. Then serum2.json + Task 3 expose engine
-(save->patch->reload already prototyped). Filter map already captured (22 params).
-COMMITTED THIS SESSION: probe tool @6a2c846; **VST/AU URI loader fix @ad655b6** (`_find_browser_item_
-by_uri` lacked the 'plugins' root - VST3/AU were unloadable by URI; fixed + live-verified Serum 2
-loads). RS reinstalled+bounced twice. Full spike facts in [[vst-plugin-support]] memory.
+**>>> RESUME HERE (2026-06-27) - mid manual-Configure of Serum 2; build serum2.json next.**
+
+STATE: Task 0 gate + Task 1 (encoder) + Task 2 (probe tool) all DONE & committed. The Serum Configure
+id scheme is RESOLVED, and the user has manually Configured 76 of 128 params in a live Serum 2 instance.
+We're WAITING ON the user to add ~52 more (FX rack, Env 2-4, LFO 2+, Noise) in Serum's Configure UI;
+then build `ableton_mcp_max/param_maps/serum2.json` from the captured id<->name pairs, then Task 3
+(`expose_plugin_parameters`).
+
+KEY RESOLVED FACTS:
+- **Serum Configure ParamID = per-module-base + module_index*1000 + param_offset.** Bases by module TYPE:
+  global/voice ~0 (Pitch Bend=7), oscillators 1000000 (A=mod0/B=1/C=2/Sub=4), filters 2000000 (F1=mod0/
+  F2=mod1; per-filter On+0/Wet+1/Type+2/Freq+3/Res+4/Drive+5/Var+6/Stereo+7/Level+8/X+9/Y+10), envelopes
+  3000000, LFOs 4000000, macros 7000000 (Macro N = +N*1000), routing/balance 9000000. NOT the
+  get_parameter_names probe index. (Earlier "2000000+index" and "scattered/infeasible" reads were WRONG -
+  blind probing only ever hit the filter base.)
+- **The ORACLE / disk-parse harvest:** fill a `<PluginFloatParameter>` slot with a ParameterId + sentinel
+  name, reload the set, then `save_set` -> Live persists the REAL ParameterId<->ParameterName into the
+  `.als` for VALID ids (is_enabled stays false + sentinel kept for invalid). Parse the `.als` on disk =
+  cheap. The whole technique + reload gotchas are in the [[vst-plugin-support]] memory and ~/.claude/notes/
+  ableton-mcp.md.
+
+DURABLE ARTIFACTS (survive a fresh session; scratchpad does NOT):
+- Live test set: `/Users/ryanrobson/Desktop/serum2_test Project/serum2_idtest.als` - Serum 2 on track 0
+  (dev 0), currently holding the 76 user-Configured params (saved). REOPEN this set in Live to continue.
+- `<repo>/.vst-harvest-local/` (git-ignored, local-only): `serum2_configured_76.json` (the 76 id<->name
+  pairs - the serum2.json seed), `harvest.py` / `harvest_klist.py` / `reload.sh` (the patch+reload harness),
+  `harvest_findings.md`, `serum2_probe_names.json` (full 2623-name probe).
+- Re-derive the 76 anytime by parsing the .als (slots whose ParameterId != -1):
+  `uv run python -c "from ableton_mcp_max import als_automation_utils as als, plugin_config_utils as pcu; ..."`
+  (pattern in `.vst-harvest-local/harvest_findings.md`).
+
+NEXT STEPS:
+1. User reopens `serum2_idtest.als`, opens Serum, right-click device titlebar -> Configure -> clicks the
+   remaining knobs (FX rack [none captured yet - biggest gap], Env 2/3/4, LFO 2+, Noise osc), up to 128.
+2. `save_set("")`, then parse the `.als` for all id<->name pairs (unescape `&gt;` etc.).
+3. Build `ableton_mcp_max/param_maps/serum2.json` via `param_map_utils` shape {plugin, id_base, params:
+   [{param_id, name, category}]} - hand-tag categories from the module base (osc/filter/env/lfo/macro/fx/
+   routing/global). `param_map_utils.validate_pack` enforces the shape; add a load_pack test.
+4. Task 3 = `expose_plugin_parameters` (Option A live-set patch): save set -> `plugin_config_utils.fill_slots`
+   the chosen params into the `.als` ParameterList + `bump_next_pointee_id` -> reload. The harness in
+   `.vst-harvest-local/` is the working prototype of this engine.
+
+COMMITTED THIS SESSION (branch feat/vst-plugin-support, NOT pushed): probe tool @6a2c846; **VST/AU URI
+loader fix @ad655b6** (`_find_browser_item_by_uri` lacked the 'plugins' root - VST3/AU were unloadable by
+URI; live-verified Serum 2 loads); several PROGRESS docs. RS reinstalled+bounced this session.
 - **Task 1 DONE (offline, committed @2524660):** `ableton_mcp_max/plugin_config_utils.py` +
   `tests/test_plugin_config_utils.py` (11 tests): find_empty_slots / build_slot / fill_slots
   (overflow-reporting) / max_target_id / bump_next_pointee_id.
