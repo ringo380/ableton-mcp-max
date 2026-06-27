@@ -2,7 +2,7 @@
 layout: default
 title: Arrangement Structure
 parent: Tools
-nav_order: 10
+nav_order: 11
 ---
 
 # Arrangement Structure

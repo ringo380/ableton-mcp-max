@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **148 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **150 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -38,6 +38,12 @@ Read and edit notes inside MIDI clips via the Live 11 extended note API.
 Inspect and drive devices, rack macros, and chains; load instruments and effects.
 
 `get_device_parameters`, `set_device_parameter`, `get_device_info`, `delete_device`, `set_device_on`, `get_rack_macros`, `set_rack_macro`, `get_rack_chains`, `set_chain_property`, `load_instrument_or_effect`
+
+## [Plugins (VST/AU)](./plugins.html)
+
+Expose and control third-party VST3/AU plugin parameters via the Configure-slot backdoor: probe a plugin's full parameter list, then Configure a curated param-map pack so its knobs become settable, automatable LOM parameters.
+
+`probe_plugin_parameters`, `expose_plugin_parameters`
 
 ## [Mixer & Routing](./mixer-routing.html)
 

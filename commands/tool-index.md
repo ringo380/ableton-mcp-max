@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_148 tools._
+_150 tools._
 
 ## Session & view
 
@@ -80,6 +80,11 @@ _148 tools._
 - **`set_rack_macro`** - Set a rack macro control value.
 - **`get_rack_chains`** - List the chains of a rack device, each with its name, mute/solo state, and
 - **`set_chain_property`** - Set a property on one chain of a rack device.
+
+## Plugins (VST/AU)
+
+- **`probe_plugin_parameters`** - Read the FULL parameter-name list of a third-party VST/AU plugin device
+- **`expose_plugin_parameters`** - Expose a third-party VST/AU plugin's parameters as live, settable LOM
 
 ## Clips & MIDI notes
 

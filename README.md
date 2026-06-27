@@ -4,7 +4,7 @@ A self-owned, extensible MCP server for Ableton Live, forked from
 [ahujasid/ableton-mcp](https://github.com/ahujasid/ableton-mcp) and extended
 toward broad Live Object Model coverage.
 
-**Documentation:** [ringo380.github.io/ableton-mcp-max](https://ringo380.github.io/ableton-mcp-max/) - landing page, install guide, and reference for all 148 tools.
+**Documentation:** [ringo380.github.io/ableton-mcp-max](https://ringo380.github.io/ableton-mcp-max/) - landing page, install guide, and reference for all 150 tools.
 
 ## Install
 1. `bash scripts/install_remote_script.sh` - installs the Live Remote Script.

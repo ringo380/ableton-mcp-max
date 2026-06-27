@@ -36,6 +36,9 @@ GROUPS = [
         "delete_device", "set_device_on", "get_rack_macros", "set_rack_macro",
         "get_rack_chains", "set_chain_property",
     ]),
+    ("Plugins (VST/AU)", [
+        "probe_plugin_parameters", "expose_plugin_parameters",
+    ]),
     ("Clips & MIDI notes", [
         "create_clip", "get_clip_info", "set_clip_name", "set_clip_property",
         "set_clip_loop", "duplicate_clip", "delete_clip", "quantize_clip",

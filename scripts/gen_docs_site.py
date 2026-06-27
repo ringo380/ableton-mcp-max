@@ -39,6 +39,9 @@ CATEGORIES = [
         "get_device_parameters", "set_device_parameter", "get_device_info", "delete_device", "set_device_on",
         "get_rack_macros", "set_rack_macro", "get_rack_chains", "set_chain_property", "load_instrument_or_effect",
     ]),
+    ("plugins", "Plugins (VST/AU)", "Expose and control third-party VST3/AU plugin parameters via the Configure-slot backdoor: probe a plugin's full parameter list, then Configure a curated param-map pack so its knobs become settable, automatable LOM parameters.", [
+        "probe_plugin_parameters", "expose_plugin_parameters",
+    ]),
     ("mixer-routing", "Mixer & Routing", "Volume, pan, sends, and input/output routing for every track type.", [
         "get_mixer", "set_mixer_property", "get_routing", "set_routing",
     ]),

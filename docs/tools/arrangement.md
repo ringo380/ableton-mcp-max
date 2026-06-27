@@ -2,7 +2,7 @@
 layout: default
 title: Arrangement & Cues
 parent: Tools
-nav_order: 9
+nav_order: 10
 ---
 
 # Arrangement & Cues
