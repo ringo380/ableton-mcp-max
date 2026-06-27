@@ -1,51 +1,62 @@
 # ableton-mcp-max — Progress
 
-## VST/AU plugin support (Serum 2) - IN PROGRESS: Task 0 GATE + Task 1 + Task 2 offline done (2026-06-26)
-Branch `feat/vst-plugin-support` (6 commits, clean tree, NOT pushed/PR'd yet). Spec + plan committed
+## VST/AU plugin support (Serum 2) - IN PROGRESS: Task 0/1/2 + serum2.json pack DONE (2026-06-27)
+Branch `feat/vst-plugin-support` (7 commits, clean tree, NOT pushed/PR'd yet). Spec + plan committed
 under docs/superpowers/. Goal: expose, control, author 3rd-party VST3/AU plugin params via the
 Configure-list XML backdoor (Serum 2 first).
 
-**>>> RESUME HERE (2026-06-27) - mid manual-Configure of Serum 2; build serum2.json next.**
+**>>> RESUME HERE (2026-06-27) - serum2.json pack built (@5e6caf3); Task 3 `expose_plugin_parameters` next.**
 
-STATE: Task 0 gate + Task 1 (encoder) + Task 2 (probe tool) all DONE & committed. The Serum Configure
-id scheme is RESOLVED, and the user has manually Configured 76 of 128 params in a live Serum 2 instance.
-We're WAITING ON the user to add ~52 more (FX rack, Env 2-4, LFO 2+, Noise) in Serum's Configure UI;
-then build `ableton_mcp_max/param_maps/serum2.json` from the captured id<->name pairs, then Task 3
-(`expose_plugin_parameters`).
+STATE: Task 0 gate + Task 1 (encoder) + Task 2 (probe tool) DONE & committed. The Serum Configure id
+scheme is RESOLVED. The user manually Configured the FULL 128-slot pool; `serum2.json` is built and
+committed. NEXT = Task 3 (`expose_plugin_parameters`).
 
 KEY RESOLVED FACTS:
-- **Serum Configure ParamID = per-module-base + module_index*1000 + param_offset.** Bases by module TYPE:
-  global/voice ~0 (Pitch Bend=7), oscillators 1000000 (A=mod0/B=1/C=2/Sub=4), filters 2000000 (F1=mod0/
-  F2=mod1; per-filter On+0/Wet+1/Type+2/Freq+3/Res+4/Drive+5/Var+6/Stereo+7/Level+8/X+9/Y+10), envelopes
-  3000000, LFOs 4000000, macros 7000000 (Macro N = +N*1000), routing/balance 9000000. NOT the
-  get_parameter_names probe index. (Earlier "2000000+index" and "scattered/infeasible" reads were WRONG -
-  blind probing only ever hit the filter base.)
+- **Serum Configure ParamID = category_base + module_index*1000 + param_offset.** Bases by module TYPE
+  (all CONFIRMED from the live 128 capture): global/voice ~0 (Main Vol=0, Bend Up/Down=5/6, Pitch Bend=7,
+  Mod Wheel=8, Mono=10, Porta=12, Transpose=16), oscillators 1000000 (**A=mod0/B=1/C=2/Noise=3/Sub=4**),
+  filters 2000000 (F1=mod0/F2=mod1; On+0/Wet+1/Type+2/Freq+3/Res+4/Drive+5/Var+6/Stereo+7/Level+8/X+9/Y+10),
+  envelopes 3000000 (**Env 1-4** = +N*1000, ADHSR), LFOs 4000000 (**LFO 1-3** = +N*1000), **mod matrix
+  6000000** (Mod N Amount = +N*1000), macros 7000000 (Macro N = +N*1000), routing/balance/bus 9000000,
+  **clip player 10000000, arp 12000000**. NOT the get_parameter_names probe index.
+- **FX IS UNREACHABLE via Configure** (confirmed): Serum does NOT expose its FX racks (FXDelay/FXComp/FXEQ/
+  FXReverb/...) to the VST3 host parameter list, so they cannot be Configured/LOM-automated. FX control is a
+  separate future path = `.SerumPreset` authoring (format cracked, see below).
+- **`.SerumPreset` FORMAT CRACKED:** `XferJson` container = 8-byte magic "XferJson" + 1 pad + uint64 JSON-len
+  + plaintext metadata JSON + a **zstd**-compressed blob (magic 28 b5 2f fd, preceded by 8-byte
+  uint32-len/flags). Decompress (`zstandard`) -> **CBOR** (`cbor2`) = the FULL internal state tree:
+  Oscillator0-4, VoiceFilter0/1, Env0-3, LFO0-9, FXRack0-2 (each `FX:[{type,...}]`), ModSlot0-63, Macro0-7,
+  every module's `plainParams` (internal `kParam*` names). `ModSlot` entries carry destModuleID/
+  destModuleParamID/destModuleParamName/destModuleTypeString = a built-in ID<->name Rosetta Stone that
+  CONFIRMS the Configure formula (Noise osc destModuleID=3, kParamVolume paramID=1 -> Configure 1003001
+  "Noise Level"). `.XferShape` is the same container. Decoder one-liner: find `\x28\xb5\x2f\xfd`, zstd-decompress,
+  cbor2.loads. Saved decoded sample at `.vst-harvest-local/serum_preset_decoded.json`.
+- **MIDI CC export = empty** (user tried Serum's "save MIDI CC map" - no CC mappings were assigned, so nothing
+  written; not a bug).
 - **The ORACLE / disk-parse harvest:** fill a `<PluginFloatParameter>` slot with a ParameterId + sentinel
   name, reload the set, then `save_set` -> Live persists the REAL ParameterId<->ParameterName into the
-  `.als` for VALID ids (is_enabled stays false + sentinel kept for invalid). Parse the `.als` on disk =
-  cheap. The whole technique + reload gotchas are in the [[vst-plugin-support]] memory and ~/.claude/notes/
-  ableton-mcp.md.
+  `.als` for VALID ids (is_enabled stays false + sentinel kept for invalid). Parse the `.als` on disk = cheap.
+  GOTCHA: the slot open tag is `<PluginFloatParameter Id="N">` (has an attribute) - parse regex must allow it
+  (`<PluginFloatParameter\b...`); a bare `<PluginFloatParameter>` matches NOTHING.
 
 DURABLE ARTIFACTS (survive a fresh session; scratchpad does NOT):
+- **Committed:** `ableton_mcp_max/param_maps/serum2.json` (128 params, {plugin,id_base,params:[{param_id,
+  name,category}]}; macros normalized to generic "Macro N") + `tests/test_param_map_utils.py` load test.
 - Live test set: `/Users/ryanrobson/Desktop/serum2_test Project/serum2_idtest.als` - Serum 2 on track 0
-  (dev 0), currently holding the 76 user-Configured params (saved). REOPEN this set in Live to continue.
-- `<repo>/.vst-harvest-local/` (git-ignored, local-only): `serum2_configured_76.json` (the 76 id<->name
-  pairs - the serum2.json seed), `harvest.py` / `harvest_klist.py` / `reload.sh` (the patch+reload harness),
+  (dev 0), holding all 128 Configured params (saved). REOPEN this set in Live to continue.
+- `<repo>/.vst-harvest-local/` (git-ignored, local-only): `serum2_configured_current.json` (the live 128
+  id<->name pairs, raw incl. custom macro labels), `serum2_configured_76.json` (older 76 snapshot),
+  `serum_preset_decoded.json` (decoded .SerumPreset CBOR), `harvest.py`/`reload.sh` (patch+reload harness),
   `harvest_findings.md`, `serum2_probe_names.json` (full 2623-name probe).
-- Re-derive the 76 anytime by parsing the .als (slots whose ParameterId != -1):
-  `uv run python -c "from ableton_mcp_max import als_automation_utils as als, plugin_config_utils as pcu; ..."`
-  (pattern in `.vst-harvest-local/harvest_findings.md`).
+- Re-derive the live set's slots anytime: gzip-open the .als, regex `<PluginFloatParameter\b.*?</...>` (DOTALL),
+  take ParameterId!=-1, html.unescape the ParameterName.
 
 NEXT STEPS:
-1. User reopens `serum2_idtest.als`, opens Serum, right-click device titlebar -> Configure -> clicks the
-   remaining knobs (FX rack [none captured yet - biggest gap], Env 2/3/4, LFO 2+, Noise osc), up to 128.
-2. `save_set("")`, then parse the `.als` for all id<->name pairs (unescape `&gt;` etc.).
-3. Build `ableton_mcp_max/param_maps/serum2.json` via `param_map_utils` shape {plugin, id_base, params:
-   [{param_id, name, category}]} - hand-tag categories from the module base (osc/filter/env/lfo/macro/fx/
-   routing/global). `param_map_utils.validate_pack` enforces the shape; add a load_pack test.
-4. Task 3 = `expose_plugin_parameters` (Option A live-set patch): save set -> `plugin_config_utils.fill_slots`
-   the chosen params into the `.als` ParameterList + `bump_next_pointee_id` -> reload. The harness in
-   `.vst-harvest-local/` is the working prototype of this engine.
+1. Task 3 = `expose_plugin_parameters` (Option A live-set patch): save set -> `plugin_config_utils.fill_slots`
+   the chosen params (from `param_map_utils.load_pack("serum2")` / `find_params`) into the `.als`
+   ParameterList + `bump_next_pointee_id` -> reload. The harness in `.vst-harvest-local/` is the working
+   prototype of this engine.
+2. (Later / Release 2) FX control via `.SerumPreset` authoring now that the format is cracked.
 
 COMMITTED THIS SESSION (branch feat/vst-plugin-support, NOT pushed): probe tool @6a2c846; **VST/AU URI
 loader fix @ad655b6** (`_find_browser_item_by_uri` lacked the 'plugins' root - VST3/AU were unloadable by
