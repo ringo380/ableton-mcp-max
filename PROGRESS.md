@@ -5,7 +5,7 @@ Branch `feat/vst-plugin-support` (7 commits, clean tree, NOT pushed/PR'd yet). S
 under docs/superpowers/. Goal: expose, control, author 3rd-party VST3/AU plugin params via the
 Configure-list XML backdoor (Serum 2 first).
 
-**>>> RESUME HERE (2026-06-27) - serum2.json pack built (@5e6caf3); Task 3 `expose_plugin_parameters` next.**
+**>>> RESUME HERE (2026-06-27) - Task 3 `expose_plugin_parameters` LIVE-VERIFIED & PASSED. NEXT = Task 5: curate/docs/version-bump + ship Release 1 (148->149 tools, marketplace ref bump).**
 
 STATE: Task 0 gate + Task 1 (encoder) + Task 2 (probe tool) DONE & committed. The Serum Configure id
 scheme is RESOLVED. The user manually Configured the FULL 128-slot pool; `serum2.json` is built and
@@ -51,7 +51,25 @@ DURABLE ARTIFACTS (survive a fresh session; scratchpad does NOT):
 - Re-derive the live set's slots anytime: gzip-open the .als, regex `<PluginFloatParameter\b.*?</...>` (DOTALL),
   take ParameterId!=-1, html.unescape the ParameterName.
 
-**TASK 3 OFFLINE DONE (@5b7e6fc) - LIVE VERIFY PENDING (needs a Claude Code restart):**
+**TASK 3 LIVE-VERIFIED & PASSED (2026-06-27, Live 12.4 Suite via AbletonDev working-tree tool):**
+- **KEY UNKNOWN SETTLED: a FRESH (unconfigured) Serum 2 DOES serialize 128 empty `<PluginFloatParameter>`
+  slots** (ParameterId=-1) in its `.als`. Loaded a fresh Serum on scratch track 1, `save_set("")`, parsed
+  the on-disk .als: the fresh device's ParameterList = `floatparams=128 empty=128`; the configured track-0
+  device = `128 nonempty`. So Option A's `fill_slots` has a full 128-slot pool to fill - NO slot-append
+  follow-up needed.
+- Fresh Serum baseline confirmed `parameter_count=1` (only "Device On") = "default exposure = nothing".
+- `expose_plugin_parameters(track_index=1, pack="serum2")` returned `{exposed_count:128, dropped_count:0,
+  reloaded:true, method:"live_set"}`. After the in-place reload, `get_device_parameters(track 1)` showed
+  **129 params** (Device On + 128 named: oscillators/filters/Env1-4/LFO1-3/Mod1-8/Macro1-8/routing/Arp/Clip),
+  all `is_enabled:true`. Values reconciled to the plugin's REAL defaults (A Uni Blend 0.75, Env 1 Attack
+  0.126, Bend Up 0.542 - NOT all stuck at 0.5), confirming Live merged the Configure exposure WITHOUT
+  resetting plugin state (Manual="0.5" no-op assumption HOLDS).
+- `set_device_parameter(track 1, "Filter 1 Freq", 0.3)` applied (0.300); settability confirmed (the original
+  gate already user-confirmed the physical knob moves).
+- Cleanup: deleted the scratch Serum (track 1 device_count 0), saved -> set restored to baseline.
+- **NEXT = Task 5: curation/docs/version bump + ship Release 1** (148 -> 149 tools, marketplace ref bump).
+
+**TASK 3 OFFLINE DONE (@5b7e6fc):**
 `expose_plugin_parameters(track_index, device_index=0, pack="serum2", track_type="regular", reload=True)`
 MCP tool added. Flow (Option A): save set -> read `.als` -> `plugin_config_utils.locate_param_list`
 navigates to the device_index-th plugin device's `<ParameterList>` -> `bump_next_pointee_id(count)` ->
