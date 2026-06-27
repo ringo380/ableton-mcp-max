@@ -1,11 +1,12 @@
 # ableton-mcp-max — Progress
 
-## VST/AU plugin support (Serum 2) - IN PROGRESS: Task 0/1/2 + serum2.json pack DONE (2026-06-27)
-Branch `feat/vst-plugin-support` (7 commits, clean tree, NOT pushed/PR'd yet). Spec + plan committed
-under docs/superpowers/. Goal: expose, control, author 3rd-party VST3/AU plugin params via the
-Configure-list XML backdoor (Serum 2 first).
+## VST/AU plugin support (Serum 2) - RELEASE 1 SHIPPED v0.24.0 (2026-06-27)
+Merged via PR #45 (squash @7abdc0a); docs regen @4f33568; tag **v0.24.0** = main @4f33568 (150 tools,
+21 categories - new "Plugins (VST/AU)" category); marketplace `ableton` ref bumped v0.23.0 -> **v0.24.0**
+(@998ed2d) + build-readme. Full chain verified (local=origin=ls-remote tag; marketplace ref pushed).
+Goal met: expose + control 3rd-party VST3/AU plugin params (Serum 2) via the Configure-list `.als` backdoor.
 
-**>>> RESUME HERE (2026-06-27) - Task 3 `expose_plugin_parameters` LIVE-VERIFIED & PASSED. NEXT = Task 5: curate/docs/version-bump + ship Release 1 (148->149 tools, marketplace ref bump).**
+**>>> RESUME HERE (2026-06-27) - RELEASE 1 SHIPPED (v0.24.0, 150 tools). Nothing else queued. NEXT (optional) = Release 2: FX control via `.SerumPreset` authoring (format cracked) + Option B rack `.adg` nested-param access.**
 
 STATE: Task 0 gate + Task 1 (encoder) + Task 2 (probe tool) DONE & committed. The Serum Configure id
 scheme is RESOLVED. The user manually Configured the FULL 128-slot pool; `serum2.json` is built and
