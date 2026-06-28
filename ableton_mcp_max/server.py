@@ -2987,7 +2987,8 @@ def insert_serum_fx(
     """Insert an FX of catalog fx_type into a Serum rack (0-2) at index.
 
     fx_type ints come from get_serum_fx / the serum2_fx catalog. New FX uses
-    Serum defaults (empty plainParams). Patches the .als and reloads.
+    Serum defaults (empty plainParams). State authoring (not a live LOM knob);
+    patches the .als and reloads the set.
 
     Parameters:
     - track_index: track holding the Serum 2 instance.
@@ -3024,7 +3025,7 @@ def remove_serum_fx(
 ) -> str:
     """Remove the FX at rack (0-2) / slot from a Serum instance.
 
-    Patches the .als and reloads the set in place.
+    State authoring (not a live LOM knob); patches the .als and reloads the set.
 
     Parameters:
     - track_index: track holding the Serum 2 instance.
@@ -3065,7 +3066,7 @@ def reorder_serum_fx(
     If bypass is None (default), moves the FX at from_index to to_index within
     the rack. If bypass is provided, instead toggles the FX at from_index:
     bypass=True disables it (kParamEnable=0), bypass=False re-enables it.
-    Patches the .als and reloads the set in place.
+    State authoring (not a live LOM knob); patches the .als and reloads the set.
 
     Parameters:
     - track_index: track holding the Serum 2 instance.
