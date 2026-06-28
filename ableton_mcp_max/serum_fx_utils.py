@@ -7,11 +7,14 @@ from ableton_mcp_max import serum_fx_catalog as cat
 RACK_KEYS = ("FXRack0", "FXRack1", "FXRack2")
 
 
-def _rack_list(tree, rack):
+def _rack_list(tree, rack, create=False):
     if rack < 0 or rack >= len(RACK_KEYS):
         raise ValueError("rack must be 0..2, got %r" % (rack,))
     node = tree.get(RACK_KEYS[rack]) if hasattr(tree, "get") else None
     if not node:
+        if not create:
+            raise ValueError("rack %d (FXRack%d) not present in state"
+                             % (rack, rack))
         node = {"FX": [], "displayName": "", "plainParams": {}}
         tree[RACK_KEYS[rack]] = node
     return node["FX"]
@@ -53,9 +56,10 @@ def list_fx(tree):
         if not node:
             continue
         for si, fx in enumerate(node.get("FX", [])):
-            pp = _plain_params(fx) if _fx_wrapper(fx)[1] else {}
+            wk, wrapper = _fx_wrapper(fx)
+            pp = wrapper.get("plainParams", {}) if wrapper else {}
             out.append({"rack": ri, "slot": si, "type": int(fx.get("type")),
-                        "name": _fx_wrapper(fx)[0] or "", "enabled": pp.get("kParamEnable", 1.0) != 0.0,
+                        "name": wk or "", "enabled": pp.get("kParamEnable", 1.0) != 0.0,
                         "params": dict(pp)})
     return out
 
@@ -84,7 +88,7 @@ def insert_fx(catalog, tree, rack, index, fx_type):
     if not wk:
         raise ValueError("fx_type %s has no wrapper_key in catalog" % fx_type)
     entry = {"type": int(fx_type), wk: {"plainParams": dict(info.get("default_template") or {})}}
-    fxs = _rack_list(tree, rack)
+    fxs = _rack_list(tree, rack, create=True)
     if index < 0 or index > len(fxs):
         raise ValueError("index %r out of range (0..%d)" % (index, len(fxs)))
     fxs.insert(index, entry)

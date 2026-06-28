@@ -55,3 +55,15 @@ def test_bad_rack_slot_raises():
         fx.get_fx_params(t, 0, 5)
     with pytest.raises(ValueError):
         fx.get_fx_params(t, 9, 0)
+
+def test_set_enabled_toggle_back_on():
+    t = _tree()
+    fx.set_fx_enabled(t, 0, 0, False)
+    fx.set_fx_enabled(t, 0, 0, True)
+    assert fx.get_fx_params(t, 0, 0)["kParamEnable"] == 1.0
+
+def test_read_missing_rack_raises_without_creating_key():
+    t = {"FXRack0": {"FX": [], "displayName": "", "plainParams": {}}}
+    with pytest.raises(ValueError):
+        fx.get_fx_params(t, 2, 0)
+    assert "FXRack2" not in t
