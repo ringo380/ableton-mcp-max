@@ -140,8 +140,13 @@ All take `track_index`, `device_index=0`, `track_type="regular"`, `reload=True`,
 ## Risks and unknowns (settled by live verification)
 
 - **Which blob drives the reloaded sound** - processor, controller, or the `Vst3Preset` wrapper.
-  First pass patches processor + controller; if the reloaded sound does not change, extend the
-  splice to `Vst3Preset`. This is the make-or-break live check.
+  REVISED 2026-06-28 from real-data finding: ProcessorState and ControllerState store FX in
+  DIFFERENT, incompatible schemas (processor `{type, FXWrapper:{plainParams}}`; controller
+  `{defaultPlainValues:{kParam*}, kUIParamMixOrGain}` - no type/wrapper). So "patch both
+  consistently" is not viable; the implementation patches ProcessorState only (the real FX
+  state). Live verification (Task 7) confirms whether the sound + Serum GUI update from
+  processor-only; if not, add a controller `defaultPlainValues`-by-name updater and/or
+  `Vst3Preset`. This is the make-or-break live check.
 - **zstd recompression** is not byte-identical. Mitigation: codec gate requires
   `decode(encode(decode(x))) == decode(x)` (CBOR-tree equality) across all 791 presets, and a
   no-op mutation must produce a Serum-loadable blob.

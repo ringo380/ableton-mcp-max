@@ -14,7 +14,7 @@
 - Pure `*_utils`/codec modules are imported by `server.py` only; the Remote Script cannot import them. No RS changes in this plan.
 - Native units are the source of truth for FX values; `normalized` is optional/deferred.
 - This is state authoring, not LOM automation - document in every tool docstring. One save+reload per mutation; reads are reload-free.
-- Patch BOTH `ProcessorState` and `ControllerState` consistently. `Vst3Preset` left untouched pending live verification (Task 7).
+- Patch ONLY `ProcessorState` (REVISED 2026-06-28 from real-data finding): the ProcessorState holds the real FX state (`{type, FXWrapper:{plainParams}}`), while ControllerState stores FX in an incompatible schema (`{defaultPlainValues:{kParam*}, kUIParamMixOrGain}` - no `type`, no wrapper) that `serum_fx_utils` cannot patch. So the mutate path patches ProcessorState only. `ControllerState` (`defaultPlainValues` by name) and `Vst3Preset` are deferred to live verification (Task 7) - extend only if processor-only doesn't change the sound/GUI.
 - Run tests with: `PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run --with pytest pytest -q`. Syntax-check server: `uv run python -c "import ableton_mcp_max.server"`.
 - Container framing (verified): `b"XferJson"` + `b"\x00"` + uint64 LE metadata-JSON length + metadata JSON (utf-8) + 8-byte header (`<II` = uint32 uncompressed CBOR length, uint32 flags `2`) + zstd frame to end. `meta["hash"]` = `md5(zstd_blob).hexdigest()` (32 hex chars).
 - Factory presets: `/Library/Audio/Presets/Xfer Records/Serum 2 Presets/Presets/` (791 `*.SerumPreset`). Live test set: `/Users/ryanrobson/Desktop/serum2_test Project/serum2_idtest.als`.
