@@ -18,7 +18,10 @@ Live rejects the set: "NextPointeeId is too low"). Allocate ids FROM
 
 All functions are pure (XML string in, XML string out). No Live deps.
 """
+import binascii
+import json
 import re
+import struct
 
 EMPTY_PARAM_ID = -1
 EMPTY_MANUAL = "0.1234567687"
@@ -217,3 +220,60 @@ def bump_next_pointee_id(full_xml, count):
     new = start + 2 * count
     out = full_xml[:m.start()] + '<NextPointeeId Value="%d" />' % new + full_xml[m.end():]
     return out, start
+
+
+def _state_inner_span(full_xml, search_from, search_to, tag):
+    """Return (inner_start, inner_end) of the hex text inside <tag>...</tag>,
+    searching within [search_from, search_to). Returns None if not found."""
+    m = re.compile(r"<%s[^>]*>" % tag).search(full_xml, search_from, search_to)
+    if not m:
+        return None
+    close = full_xml.find("</%s>" % tag, m.end(), search_to)
+    if close < 0:
+        return None
+    return (m.end(), close)
+
+
+def locate_plugin_state(full_xml, track_start, track_end, device_index):
+    """Return inner-hex spans of the device_index-th plugin device's
+    <ProcessorState> and <ControllerState> within [track_start, track_end).
+
+    A VST3/AU plugin device holds exactly one of each. Returns a dict with
+    keys 'processor' and 'controller', each a (start, end) char-index pair
+    bracketing the raw hex text (exclusive of the XML tags themselves).
+
+    Raises ValueError if the device_index-th ProcessorState or its paired
+    ControllerState are not found within the track span.
+    """
+    proc_iter = list(re.finditer(r"<ProcessorState[^>]*>",
+                                 full_xml[track_start:track_end]))
+    if device_index >= len(proc_iter):
+        raise ValueError("no plugin ProcessorState #%d in track" % device_index)
+    base = track_start
+    proc_start = base + proc_iter[device_index].start()
+    proc = _state_inner_span(full_xml, proc_start, track_end, "ProcessorState")
+    if proc is None:
+        raise ValueError("ProcessorState close tag not found for device %d"
+                         % device_index)
+    ctrl = _state_inner_span(full_xml, proc[1], track_end, "ControllerState")
+    if ctrl is None:
+        raise ValueError("ControllerState not found for device %d" % device_index)
+    return {"processor": proc, "controller": ctrl}
+
+
+def is_serum_state(inner_hex):
+    """Return True if inner_hex is the hex-encoded XferJson blob for a Serum2 plugin.
+
+    Decodes the container header (magic 'XferJson', 8-byte length, JSON metadata)
+    and checks that the 'product' field equals 'Serum2'.
+    """
+    h = "".join(inner_hex.split())
+    try:
+        blob = binascii.unhexlify(h[: len(h) // 2 * 2])
+        if blob[:8] != b"XferJson":
+            return False
+        jlen = struct.unpack("<Q", blob[9:17])[0]
+        meta = json.loads(blob[17:17 + jlen].decode("utf-8"))
+        return meta.get("product") == "Serum2"
+    except Exception:
+        return False
