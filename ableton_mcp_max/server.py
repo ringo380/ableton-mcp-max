@@ -142,6 +142,9 @@ from ableton_mcp_max import stem_utils
 from ableton_mcp_max import key_detection_utils as kd
 from ableton_mcp_max import plugin_config_utils as pcu
 from ableton_mcp_max import param_map_utils as pmu
+from ableton_mcp_max import serum_state_codec as _ssc
+from ableton_mcp_max import serum_fx_utils as _sfx
+from ableton_mcp_max import serum_fx_catalog as _sfxcat
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -2840,6 +2843,89 @@ def expose_plugin_parameters(
     except Exception as e:
         logger.error("expose_plugin_parameters error: %s", e)
         return _err("expose_plugin_parameters error: %s" % e)
+
+
+def _serum_fx_resolve_path(title_fn, resolve_path):
+    title = (title_fn or _live_window_title)()
+    if is_untitled_title(title):
+        raise ValueError("Set is untitled - save it first via save_set_as, then retry.")
+    path = (resolve_path or (lambda: _current_set_path(title) or _find_saved_set(title)))()
+    if not path:
+        raise RuntimeError("Could not resolve the current set's .als path.")
+    return path
+
+
+def _serum_fx_read_impl(track_index, device_index, *, save_impl,
+                        read_als=als.read_als, find_track_span=als.find_track_span,
+                        resolve_path=None, title_fn=None):
+    """Read-only Serum 2 FX listing. Saves the set, decodes the device's
+    ProcessorState from disk, and returns the FX list (no reload).
+
+    Returns {ok, set_path, fx:[...]} or {ok:False, error:...}."""
+    save_res = save_impl()
+    if not save_res.get("saved"):
+        return {"ok": False, "error": "save_set failed: %s" % save_res.get("error", save_res)}
+    path = _serum_fx_resolve_path(title_fn, resolve_path)
+    xml = read_als(path)
+    ts, te = find_track_span(xml, track_index)
+    spans = pcu.locate_plugin_state(xml, ts, te, device_index)
+    s, e = spans["processor"]
+    if not pcu.is_serum_state(xml[s:e]):
+        return {"ok": False, "set_path": path,
+                "error": "device %d on track %d is not a Serum 2 plugin" % (device_index, track_index)}
+    blob = _ssc.from_hex(xml[s:e])
+    tree = _ssc.decode(blob).tree
+    return {"ok": True, "set_path": path, "fx": _sfx.list_fx(tree)}
+
+
+def _serum_fx_mutate_impl(track_index, device_index, mutate_fn, *, reload,
+                          save_impl, reload_impl,
+                          read_als=als.read_als, write_als=als.write_als,
+                          find_track_span=als.find_track_span,
+                          resolve_path=None, title_fn=None):
+    """Apply mutate_fn(catalog, tree) to both processor and controller blobs,
+    re-encode, splice (high-offset first to keep earlier offsets valid), write,
+    and optionally reload. Returns {ok, reloaded, set_path}."""
+    save_res = save_impl()
+    if not save_res.get("saved"):
+        return {"ok": False, "reloaded": False,
+                "error": "save_set failed: %s" % save_res.get("error", save_res)}
+    path = _serum_fx_resolve_path(title_fn, resolve_path)
+    xml = read_als(path)
+    ts, te = find_track_span(xml, track_index)
+    spans = pcu.locate_plugin_state(xml, ts, te, device_index)
+    if not pcu.is_serum_state(xml[spans["processor"][0]:spans["processor"][1]]):
+        return {"ok": False, "reloaded": False, "set_path": path,
+                "error": "device %d on track %d is not a Serum 2 plugin" % (device_index, track_index)}
+    catalog = _sfxcat.load_catalog()
+    # Decode, mutate, and re-encode both blobs; splice high-offset span first so
+    # the earlier span's offsets stay valid.
+    edits = []
+    for key in ("processor", "controller"):
+        s, e = spans[key]
+        st = _ssc.decode(_ssc.from_hex(xml[s:e]))
+        mutate_fn(catalog, st.tree)
+        new_hex = _ssc.to_hex(_ssc.encode(st, st.tree))
+        edits.append((s, e, new_hex))
+    for s, e, new_hex in sorted(edits, key=lambda t: t[0], reverse=True):
+        xml = xml[:s] + new_hex + xml[e:]
+    write_als(path, xml)
+    reloaded = False
+    if reload:
+        reloaded = bool(reload_impl(path, set_name_from_path(path)))
+    return {"ok": True, "reloaded": reloaded, "set_path": path}
+
+
+@mcp.tool()
+def get_serum_fx(track_index: int, device_index: int = 0) -> dict:
+    """List the FX in a Serum 2 instance's three FX racks (read-only).
+
+    Saves the set, then decodes the device's plugin state from the .als on disk
+    (no reload). Returns {ok, set_path, fx:[{rack, slot, type, name, enabled,
+    params}]}. params are native Serum units. State authoring only - FX are NOT
+    LOM-automatable knobs; use set_serum_fx_param etc. to change them."""
+    return _serum_fx_read_impl(track_index, device_index,
+                               save_impl=lambda: _save_set_impl(name=""))
 
 
 @mcp.tool()

@@ -56,9 +56,12 @@ def list_fx(tree):
         if not node:
             continue
         for si, fx in enumerate(node.get("FX", [])):
+            fx_type = fx.get("type")
+            if fx_type is None:
+                continue  # skip empty/unoccupied slots
             wk, wrapper = _fx_wrapper(fx)
             pp = wrapper.get("plainParams", {}) if wrapper else {}
-            out.append({"rack": ri, "slot": si, "type": int(fx.get("type")),
+            out.append({"rack": ri, "slot": si, "type": int(fx_type),
                         "name": wk or "", "enabled": pp.get("kParamEnable", 1.0) != 0.0,
                         "params": dict(pp)})
     return out
