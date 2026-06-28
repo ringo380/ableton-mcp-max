@@ -81,14 +81,14 @@ def _create(conn):
 
 
 def rebuild(conn):
-    """Drop everything and recreate from scratch."""
-    cur = conn.execute(
-        "SELECT name,type FROM sqlite_master WHERE type IN ('table','trigger','view')")
-    for name, _type in cur.fetchall():
-        if name.startswith("sqlite_"):
-            continue
-        conn.execute("DROP TABLE IF EXISTS %s" % name) if _type == "table" \
-            else conn.execute("DROP %s IF EXISTS %s" % (_type.upper(), name))
+    """Drop everything and recreate from scratch. Drops the known objects
+    explicitly: dropping items_fts cascades its FTS5 shadow tables, and
+    dropping a table drops its triggers."""
+    for stmt in ("DROP TABLE IF EXISTS items_fts",
+                 "DROP TABLE IF EXISTS items",
+                 "DROP TABLE IF EXISTS roots",
+                 "DROP TABLE IF EXISTS meta"):
+        conn.execute(stmt)
     conn.commit()
     _create(conn)
 
@@ -97,9 +97,9 @@ def _schema_ok(conn):
     try:
         row = conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'").fetchone()
-    except sqlite3.DatabaseError:
+        return row is not None and int(row[0]) == SCHEMA_VERSION
+    except (sqlite3.DatabaseError, ValueError, TypeError):
         return False
-    return row is not None and int(row[0]) == SCHEMA_VERSION
 
 
 def open_db(path=None):
