@@ -2883,9 +2883,9 @@ def _serum_fx_mutate_impl(track_index, device_index, mutate_fn, *, reload,
                           read_als=als.read_als, write_als=als.write_als,
                           find_track_span=als.find_track_span,
                           resolve_path=None, title_fn=None):
-    """Apply mutate_fn(catalog, tree) to both processor and controller blobs,
-    re-encode, splice (high-offset first to keep earlier offsets valid), write,
-    and optionally reload. Returns {ok, reloaded, set_path}."""
+    """Apply mutate_fn(catalog, tree) to the ProcessorState blob only, re-encode,
+    splice it back, write, and optionally reload. ControllerState is left
+    untouched (incompatible FX schema). Returns {ok, reloaded, set_path}."""
     save_res = save_impl()
     if not save_res.get("saved"):
         return {"ok": False, "reloaded": False,
@@ -2898,17 +2898,13 @@ def _serum_fx_mutate_impl(track_index, device_index, mutate_fn, *, reload,
         return {"ok": False, "reloaded": False, "set_path": path,
                 "error": "device %d on track %d is not a Serum 2 plugin" % (device_index, track_index)}
     catalog = _sfxcat.load_catalog()
-    # Decode, mutate, and re-encode both blobs; splice high-offset span first so
-    # the earlier span's offsets stay valid.
-    edits = []
-    for key in ("processor", "controller"):
-        s, e = spans[key]
-        st = _ssc.decode(_ssc.from_hex(xml[s:e]))
-        mutate_fn(catalog, st.tree)
-        new_hex = _ssc.to_hex(_ssc.encode(st, st.tree))
-        edits.append((s, e, new_hex))
-    for s, e, new_hex in sorted(edits, key=lambda t: t[0], reverse=True):
-        xml = xml[:s] + new_hex + xml[e:]
+    # Processor-only: ControllerState uses an incompatible FX schema
+    # (defaultPlainValues, no type/wrapper); deferred to live verification (Task 7).
+    s, e = spans["processor"]
+    st = _ssc.decode(_ssc.from_hex(xml[s:e]))
+    mutate_fn(catalog, st.tree)
+    new_hex = _ssc.to_hex(_ssc.encode(st, st.tree))
+    xml = xml[:s] + new_hex + xml[e:]
     write_als(path, xml)
     reloaded = False
     if reload:
