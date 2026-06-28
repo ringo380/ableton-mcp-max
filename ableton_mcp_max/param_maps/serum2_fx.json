@@ -1,0 +1,972 @@
+{
+  "fx_types": {
+    "0": {
+      "default_template": {},
+      "name": "Distortion",
+      "params": [
+        {
+          "kparam": "kParamBW",
+          "native_max": 7.575,
+          "native_min": 0.075
+        },
+        {
+          "kparam": "kParamDrive",
+          "native_max": 100.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamEnable",
+          "native_max": 0.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamFreq",
+          "native_max": 1.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamLPHP",
+          "native_max": 100.0,
+          "native_min": 0.12959367595613003
+        },
+        {
+          "kparam": "kParamLevelOut",
+          "native_max": 0.956140398979187,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamNumStages",
+          "native_max": 16.0,
+          "native_min": 2.0
+        },
+        {
+          "kparam": "kParamPrePost",
+          "native_max": 2.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamWet",
+          "native_max": 99.56140518188477,
+          "native_min": 0.0
+        }
+      ],
+      "wrapper_key": "FXDistortion"
+    },
+    "1": {
+      "default_template": {},
+      "name": "Flanger",
+      "params": [
+        {
+          "kparam": "kParamBeatSync",
+          "native_max": 1.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamDepth",
+          "native_max": 99.96541142463684,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamFeedback",
+          "native_max": 90.91830253601074,
+          "native_min": 19.736841320991516
+        },
+        {
+          "kparam": "kParamLevelOut",
+          "native_max": 0.7294819355010986,
+          "native_min": 0.3976608216762543
+        },
+        {
+          "kparam": "kParamRate",
+          "native_max": 8.525824107173934,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamWet",
+          "native_max": 87.1345043182373,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamWidth",
+          "native_max": 360.0,
+          "native_min": 0.0
+        }
+      ],
+      "wrapper_key": "FXFlanger"
+    },
+    "10": {
+      "default_template": {},
+      "name": "Bode",
+      "params": [
+        {
+          "kparam": "kParamBeatSync",
+          "native_max": 1.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamBlur",
+          "native_max": 100.0,
+          "native_min": 1.1718226596713066
+        },
+        {
+          "kparam": "kParamDelayBalance",
+          "native_max": 100.0,
+          "native_min": -92.55071356892586
+        },
+        {
+          "kparam": "kParamDelayTime",
+          "native_max": 1.7535988968822402,
+          "native_min": 0.0005494492066697335
+        },
+        {
+          "kparam": "kParamEnable",
+          "native_max": 0.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamFeedback",
+          "native_max": 100.0,
+          "native_min": 8.33333358168602
+        },
+        {
+          "kparam": "kParamLevelOut",
+          "native_max": 0.743199348449707,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamMonoInput",
+          "native_max": 1.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamOutputMix",
+          "native_max": 100.0,
+          "native_min": -100.0
+        },
+        {
+          "kparam": "kParamOutputWidth",
+          "native_max": 99.41520690917969,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamRange",
+          "native_max": 3043.1762971037997,
+          "native_min": 0.1
+        },
+        {
+          "kparam": "kParamRetrig",
+          "native_max": 1.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamShift",
+          "native_max": 73.38266372680664,
+          "native_min": -100.0
+        },
+        {
+          "kparam": "kParamSwapAB",
+          "native_max": 1.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamWet",
+          "native_max": 72.92253971099854,
+          "native_min": 0.0
+        }
+      ],
+      "wrapper_key": "FXBode"
+    },
+    "11": {
+      "default_template": {},
+      "name": "Conv",
+      "params": [
+        {
+          "kparam": "kParamAttack",
+          "native_max": 0.2319293435177316,
+          "native_min": 2.8751432033024185e-07
+        },
+        {
+          "kparam": "kParamDamping",
+          "native_max": 100.0,
+          "native_min": 10.167214274406433
+        },
+        {
+          "kparam": "kParamDecay",
+          "native_max": 40.0,
+          "native_min": 2.2399004592443816e-05
+        },
+        {
+          "kparam": "kParamEnable",
+          "native_max": 0.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamIpTrim",
+          "native_max": 6.0,
+          "native_min": -34.0
+        },
+        {
+          "kparam": "kParamLevelOut",
+          "native_max": 0.8138518929481506,
+          "native_min": 0.02383432909846306
+        },
+        {
+          "kparam": "kParamMinPhase",
+          "native_max": 1.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamPredelay",
+          "native_max": 0.3547270376311502,
+          "native_min": 8.309903350667513e-09
+        },
+        {
+          "kparam": "kParamPredelayBeatSync",
+          "native_max": 1.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamSize",
+          "native_max": 1000.0,
+          "native_min": 10.0
+        },
+        {
+          "kparam": "kParamTone",
+          "native_max": 84.21052694320679,
+          "native_min": -100.0
+        },
+        {
+          "kparam": "kParamWet",
+          "native_max": 100.0,
+          "native_min": 0.0
+        }
+      ],
+      "wrapper_key": "FXConv"
+    },
+    "12": {
+      "default_template": {},
+      "name": "Utils",
+      "params": [
+        {
+          "kparam": "kParamBalance",
+          "native_max": 100.0,
+          "native_min": -100.0
+        },
+        {
+          "kparam": "kParamHPF",
+          "native_max": 400.0,
+          "native_min": 1.3351743724075973
+        },
+        {
+          "kparam": "kParamLFMono",
+          "native_max": 1.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamLFXover",
+          "native_max": 400.0,
+          "native_min": 20.25
+        },
+        {
+          "kparam": "kParamLPF",
+          "native_max": 19924.255979922462,
+          "native_min": 50.0
+        },
+        {
+          "kparam": "kParamLevelOut",
+          "native_max": 1.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamPolarityL",
+          "native_max": 1.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamPolarityR",
+          "native_max": 1.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamWet",
+          "native_max": 96.72611355781555,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamWidth",
+          "native_max": 800.0,
+          "native_min": 0.0
+        }
+      ],
+      "wrapper_key": "FXUtils"
+    },
+    "13": {
+      "default_template": {},
+      "name": "Split",
+      "params": [
+        {
+          "kparam": "kParamFreq",
+          "native_max": 3517.8945185868497,
+          "native_min": 30.784049901939603
+        },
+        {
+          "kparam": "kParamModuleCount1",
+          "native_max": 3.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamModuleCount2",
+          "native_max": 5.0,
+          "native_min": 1.0
+        }
+      ],
+      "wrapper_key": "FXSplit"
+    },
+    "14": {
+      "default_template": {},
+      "name": "Split3",
+      "params": [
+        {
+          "kparam": "kParamFreq",
+          "native_max": 1202.0494873636967,
+          "native_min": 79.99999733101906
+        },
+        {
+          "kparam": "kParamFreq2",
+          "native_max": 8999.999343213833,
+          "native_min": 309.4924073112388
+        },
+        {
+          "kparam": "kParamModuleCount1",
+          "native_max": 3.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamModuleCount2",
+          "native_max": 4.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamModuleCount3",
+          "native_max": 5.0,
+          "native_min": 1.0
+        }
+      ],
+      "wrapper_key": "FXSplit3"
+    },
+    "15": {
+      "default_template": {},
+      "name": "SplitMS",
+      "params": [
+        {
+          "kparam": "kParamModuleCount1",
+          "native_max": 2.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamModuleCount2",
+          "native_max": 3.0,
+          "native_min": 1.0
+        }
+      ],
+      "wrapper_key": "FXSplitMS"
+    },
+    "2": {
+      "default_template": {},
+      "name": "Phaser",
+      "params": [
+        {
+          "kparam": "kParamBeatSync",
+          "native_max": 1.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamDepth",
+          "native_max": 100.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamDepth2",
+          "native_max": 1.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamEnable",
+          "native_max": 0.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamFeedback",
+          "native_max": 100.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamFreq",
+          "native_max": 18000.0,
+          "native_min": 20.0
+        },
+        {
+          "kparam": "kParamLevelOut",
+          "native_max": 0.7623224854469299,
+          "native_min": 0.31578946113586426
+        },
+        {
+          "kparam": "kParamNumPoles",
+          "native_max": 18.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamRate",
+          "native_max": 20.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamWet",
+          "native_max": 82.61488080024719,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamWidth",
+          "native_max": 313.39638233184814,
+          "native_min": 0.0
+        }
+      ],
+      "wrapper_key": "FXPhaser"
+    },
+    "3": {
+      "default_template": {},
+      "name": "Chorus",
+      "params": [
+        {
+          "kparam": "kParamBeatSync",
+          "native_max": 1.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamDelay",
+          "native_max": 19.777668981092873,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamDelay2",
+          "native_max": 11.944331345689037,
+          "native_min": 0.04941691534257303
+        },
+        {
+          "kparam": "kParamDepth",
+          "native_max": 25.245323150890364,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamEnable",
+          "native_max": 0.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamFeedback",
+          "native_max": 79.67881560325623,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamFilt",
+          "native_max": 20000.0,
+          "native_min": 50.0
+        },
+        {
+          "kparam": "kParamFiltMode",
+          "native_max": 1.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamLevelOut",
+          "native_max": 1.0,
+          "native_min": 0.37014803290367126
+        },
+        {
+          "kparam": "kParamRate",
+          "native_max": 1.3799662613639498,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamWet",
+          "native_max": 100.0,
+          "native_min": 0.0
+        }
+      ],
+      "wrapper_key": "FXChorus"
+    },
+    "4": {
+      "default_template": {},
+      "name": "Delay",
+      "params": [
+        {
+          "kparam": "kParamBW",
+          "native_max": 8.25,
+          "native_min": 0.75
+        },
+        {
+          "kparam": "kParamBeatSync",
+          "native_max": 0.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamEnable",
+          "native_max": 0.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamFeedback",
+          "native_max": 94.31849122047424,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamFreq",
+          "native_max": 18000.0,
+          "native_min": 40.0
+        },
+        {
+          "kparam": "kParamHQ",
+          "native_max": 0.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamLevelOut",
+          "native_max": 0.8526178598403931,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamLink",
+          "native_max": 1.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamMode",
+          "native_max": 2.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamOffsetL",
+          "native_max": 1.5,
+          "native_min": 0.5
+        },
+        {
+          "kparam": "kParamOffsetR",
+          "native_max": 1.5,
+          "native_min": 0.5
+        },
+        {
+          "kparam": "kParamTimeL",
+          "native_max": 0.3420000304333147,
+          "native_min": 0.001
+        },
+        {
+          "kparam": "kParamTimeR",
+          "native_max": 0.3242733708946071,
+          "native_min": 0.001
+        },
+        {
+          "kparam": "kParamWet",
+          "native_max": 100.0,
+          "native_min": 0.0
+        }
+      ],
+      "wrapper_key": "FXDelay"
+    },
+    "5": {
+      "default_template": {},
+      "name": "Comp",
+      "params": [
+        {
+          "kparam": "kParamAttack",
+          "native_max": 1000.0,
+          "native_min": 0.10000000149011612
+        },
+        {
+          "kparam": "kParamCompensatedWetDry",
+          "native_max": 0.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamDeadband0",
+          "native_max": 7.000000074505806,
+          "native_min": 7.000000074505806
+        },
+        {
+          "kparam": "kParamDeadband1",
+          "native_max": 11.600000113248825,
+          "native_min": 11.600000113248825
+        },
+        {
+          "kparam": "kParamDeadband2",
+          "native_max": 5.3000000193715096,
+          "native_min": 5.3000000193715096
+        },
+        {
+          "kparam": "kParamEnable",
+          "native_max": 0.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamGain0",
+          "native_max": 16.5,
+          "native_min": -24.0
+        },
+        {
+          "kparam": "kParamGain1",
+          "native_max": 16.249998092651367,
+          "native_min": -16.211538791656494
+        },
+        {
+          "kparam": "kParamGain2",
+          "native_max": 24.0,
+          "native_min": -16.21428608894348
+        },
+        {
+          "kparam": "kParamLevelOut",
+          "native_max": 1.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamMakeup",
+          "native_max": 31.0,
+          "native_min": 1.0005771011451219
+        },
+        {
+          "kparam": "kParamMultiband",
+          "native_max": 1.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamRatio",
+          "native_max": 1000000.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamRatio0",
+          "native_max": 0.9266666769981384,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamRatio1",
+          "native_max": 0.8876190185546875,
+          "native_min": 0.3333333432674408
+        },
+        {
+          "kparam": "kParamRatio2",
+          "native_max": 0.9858750104904175,
+          "native_min": 0.18666666746139526
+        },
+        {
+          "kparam": "kParamRatioBelow",
+          "native_max": 1.0,
+          "native_min": 0.0255504809319973
+        },
+        {
+          "kparam": "kParamRatioBelow0",
+          "native_max": 0.9399999976158142,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamRatioBelow1",
+          "native_max": 0.9745051860809326,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamRatioBelow2",
+          "native_max": 0.9700000286102295,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamRelease",
+          "native_max": 1000.0,
+          "native_min": 0.10000000149011612
+        },
+        {
+          "kparam": "kParamThresh",
+          "native_max": 1.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamThreshUD0",
+          "native_max": 181.333327293396,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamThreshUD1",
+          "native_max": 200.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamThreshUD2",
+          "native_max": 167.25612878799438,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamWet",
+          "native_max": 98.61955046653748,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamXoverHi",
+          "native_max": 10594.133806072088,
+          "native_min": 300.0
+        },
+        {
+          "kparam": "kParamXoverLow",
+          "native_max": 5000.0,
+          "native_min": 53.60849053123577
+        }
+      ],
+      "wrapper_key": "FXComp"
+    },
+    "6": {
+      "default_template": {},
+      "name": "Reverb",
+      "params": [
+        {
+          "kparam": "kParamDelay",
+          "native_max": 250.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamFeedback",
+          "native_max": 100.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamFreq",
+          "native_max": 100.0,
+          "native_min": 4.476125165820122
+        },
+        {
+          "kparam": "kParamFreqB",
+          "native_max": 100.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamFreqC",
+          "native_max": 100.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamLevelOut",
+          "native_max": 1.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamMode",
+          "native_max": 100.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamPreDelay",
+          "native_max": 2.5,
+          "native_min": 5.343299215100872e-13
+        },
+        {
+          "kparam": "kParamPreDelayBeatSync",
+          "native_max": 1.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamSize",
+          "native_max": 100.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamVintageScale",
+          "native_max": 100.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamVintageScaleB",
+          "native_max": 100.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamWet",
+          "native_max": 100.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamWidth",
+          "native_max": 100.0,
+          "native_min": 0.0
+        }
+      ],
+      "wrapper_key": "FXReverb"
+    },
+    "7": {
+      "default_template": {},
+      "name": "EQ",
+      "params": [
+        {
+          "kparam": "kParamEnable",
+          "native_max": 0.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamFreq1",
+          "native_max": 9453.660918909522,
+          "native_min": 21.53320125
+        },
+        {
+          "kparam": "kParamFreq2",
+          "native_max": 20000.0,
+          "native_min": 21.53320125
+        },
+        {
+          "kparam": "kParamGain1",
+          "native_max": 24.0,
+          "native_min": -24.0
+        },
+        {
+          "kparam": "kParamGain2",
+          "native_max": 24.0,
+          "native_min": -24.0
+        },
+        {
+          "kparam": "kParamLevelOut",
+          "native_max": 1.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamReso1",
+          "native_max": 100.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamReso2",
+          "native_max": 94.30646896362305,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamType1",
+          "native_max": 2.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamType2",
+          "native_max": 2.0,
+          "native_min": 1.0
+        }
+      ],
+      "wrapper_key": "FXEQ"
+    },
+    "8": {
+      "default_template": {},
+      "name": "Filter",
+      "params": [
+        {
+          "kparam": "kParamDrive",
+          "native_max": 75.26212930679321,
+          "native_min": 0.3976975567638874
+        },
+        {
+          "kparam": "kParamFreq",
+          "native_max": 1.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamLevelOut",
+          "native_max": 1.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamPad",
+          "native_max": 1.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamReso",
+          "native_max": 99.12006855010986,
+          "native_min": 0.11478892993181944
+        },
+        {
+          "kparam": "kParamStereo",
+          "native_max": 82.61889815330505,
+          "native_min": 19.736842811107635
+        },
+        {
+          "kparam": "kParamVar",
+          "native_max": 100.0,
+          "native_min": 2.9999999329447746
+        },
+        {
+          "kparam": "kParamWet",
+          "native_max": 99.80126023292542,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamX",
+          "native_max": 1.0,
+          "native_min": 0.0066006602719426155
+        },
+        {
+          "kparam": "kParamY",
+          "native_max": 0.13636364042758942,
+          "native_min": 0.03030303120613098
+        }
+      ],
+      "wrapper_key": "FXFilter"
+    },
+    "9": {
+      "default_template": {},
+      "name": "HyperD",
+      "params": [
+        {
+          "kparam": "kParamDetune",
+          "native_max": 100.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamDimELevelOut",
+          "native_max": 0.4868420958518982,
+          "native_min": 0.29618969559669495
+        },
+        {
+          "kparam": "kParamDimESize",
+          "native_max": 100.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamDimEWet",
+          "native_max": 100.0,
+          "native_min": 0.43859630823135376
+        },
+        {
+          "kparam": "kParamEnable",
+          "native_max": 0.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamLevelOut",
+          "native_max": 0.6885964870452881,
+          "native_min": 0.16228070855140686
+        },
+        {
+          "kparam": "kParamRate",
+          "native_max": 100.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamRetrig",
+          "native_max": 1.0,
+          "native_min": 1.0
+        },
+        {
+          "kparam": "kParamUnison",
+          "native_max": 7.0,
+          "native_min": 0.0
+        },
+        {
+          "kparam": "kParamWet",
+          "native_max": 100.0,
+          "native_min": 0.0
+        }
+      ],
+      "wrapper_key": "FXHyperD"
+    }
+  },
+  "plugin": "Serum2"
+}
