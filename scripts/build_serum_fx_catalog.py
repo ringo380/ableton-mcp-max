@@ -48,6 +48,8 @@ def main():
         except Exception:
             continue
         for fx in _fx_entries(tree):
+            if fx.get("type") is None:
+                continue
             t = int(fx.get("type"))
             wrapper, params = _wrapper_and_params(fx)
             slot = types.setdefault(t, {"name": (wrapper or "FX%d" % t).replace("FX", "", 1) or "FX%d" % t,
