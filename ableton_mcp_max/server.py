@@ -2933,6 +2933,169 @@ def get_serum_fx(ctx: Context, track_index: int, device_index: int = 0) -> str:
 
 
 @mcp.tool()
+def set_serum_fx_param(
+    ctx: Context,
+    track_index: int,
+    rack: int,
+    slot: int,
+    kparam: str,
+    value: float,
+    device_index: int = 0,
+    reload: bool = True,
+) -> str:
+    """Set one Serum FX parameter (native units) on rack (0-2) / slot.
+
+    Patches the plugin state in the .als and reloads the set in place. value is a
+    native Serum value (e.g. kParamWet in %, kParamFreq in Hz); validated against
+    the catalog's observed range. State authoring - not a live LOM knob.
+
+    Parameters:
+    - track_index: track holding the Serum 2 instance.
+    - rack: FX rack index (0, 1, or 2).
+    - slot: slot within the rack (0-based).
+    - kparam: Serum internal parameter key (e.g. "kParamWet").
+    - value: native Serum value; validated against catalog min/max.
+    - device_index: device position on the track (default 0).
+    - reload: reload the set in Live after patching (default True).
+
+    Returns JSON {ok, data:{reloaded, set_path}}."""
+    try:
+        get_ableton_connection()
+        def mutate_fn(catalog, tree):
+            _sfx.set_fx_param(catalog, tree, rack, slot, kparam, value)
+        result = _serum_fx_mutate_impl(
+            track_index, device_index, mutate_fn, reload=reload,
+            save_impl=lambda: _save_set_impl(name=""),
+            reload_impl=lambda p, n: _reload_set(p, n))
+        if not result.get("ok"):
+            return _err(result.get("error", "set_serum_fx_param failed"))
+        return _ok(result)
+    except (ValueError, RuntimeError, FileNotFoundError) as e:
+        return _err(str(e))
+
+
+@mcp.tool()
+def insert_serum_fx(
+    ctx: Context,
+    track_index: int,
+    rack: int,
+    index: int,
+    fx_type: int,
+    device_index: int = 0,
+    reload: bool = True,
+) -> str:
+    """Insert an FX of catalog fx_type into a Serum rack (0-2) at index.
+
+    fx_type ints come from get_serum_fx / the serum2_fx catalog. New FX uses
+    Serum defaults (empty plainParams). Patches the .als and reloads.
+
+    Parameters:
+    - track_index: track holding the Serum 2 instance.
+    - rack: FX rack index (0, 1, or 2).
+    - index: position to insert at (0 = before all existing FX).
+    - fx_type: integer FX type from the catalog (see get_serum_fx).
+    - device_index: device position on the track (default 0).
+    - reload: reload the set in Live after patching (default True).
+
+    Returns JSON {ok, data:{reloaded, set_path}}."""
+    try:
+        get_ableton_connection()
+        def mutate_fn(catalog, tree):
+            _sfx.insert_fx(catalog, tree, rack, index, fx_type)
+        result = _serum_fx_mutate_impl(
+            track_index, device_index, mutate_fn, reload=reload,
+            save_impl=lambda: _save_set_impl(name=""),
+            reload_impl=lambda p, n: _reload_set(p, n))
+        if not result.get("ok"):
+            return _err(result.get("error", "insert_serum_fx failed"))
+        return _ok(result)
+    except (ValueError, RuntimeError, FileNotFoundError) as e:
+        return _err(str(e))
+
+
+@mcp.tool()
+def remove_serum_fx(
+    ctx: Context,
+    track_index: int,
+    rack: int,
+    slot: int,
+    device_index: int = 0,
+    reload: bool = True,
+) -> str:
+    """Remove the FX at rack (0-2) / slot from a Serum instance.
+
+    Patches the .als and reloads the set in place.
+
+    Parameters:
+    - track_index: track holding the Serum 2 instance.
+    - rack: FX rack index (0, 1, or 2).
+    - slot: slot within the rack to remove (0-based).
+    - device_index: device position on the track (default 0).
+    - reload: reload the set in Live after patching (default True).
+
+    Returns JSON {ok, data:{reloaded, set_path}}."""
+    try:
+        get_ableton_connection()
+        def mutate_fn(catalog, tree):
+            _sfx.remove_fx(tree, rack, slot)
+        result = _serum_fx_mutate_impl(
+            track_index, device_index, mutate_fn, reload=reload,
+            save_impl=lambda: _save_set_impl(name=""),
+            reload_impl=lambda p, n: _reload_set(p, n))
+        if not result.get("ok"):
+            return _err(result.get("error", "remove_serum_fx failed"))
+        return _ok(result)
+    except (ValueError, RuntimeError, FileNotFoundError) as e:
+        return _err(str(e))
+
+
+@mcp.tool()
+def reorder_serum_fx(
+    ctx: Context,
+    track_index: int,
+    rack: int,
+    from_index: int,
+    to_index: int = 0,
+    bypass: bool = None,
+    device_index: int = 0,
+    reload: bool = True,
+) -> str:
+    """Move an FX within a Serum rack (0-2), or toggle its bypass state.
+
+    If bypass is None (default), moves the FX at from_index to to_index within
+    the rack. If bypass is provided, instead toggles the FX at from_index:
+    bypass=True disables it (kParamEnable=0), bypass=False re-enables it.
+    Patches the .als and reloads the set in place.
+
+    Parameters:
+    - track_index: track holding the Serum 2 instance.
+    - rack: FX rack index (0, 1, or 2).
+    - from_index: source slot (or slot to bypass when bypass is not None).
+    - to_index: destination slot for reorder (ignored when bypass is provided).
+    - bypass: if not None, enable/disable the FX instead of reordering.
+    - device_index: device position on the track (default 0).
+    - reload: reload the set in Live after patching (default True).
+
+    Returns JSON {ok, data:{reloaded, set_path}}."""
+    try:
+        get_ableton_connection()
+        def mutate_fn(catalog, tree):
+            if bypass is not None:
+                _sfx.set_fx_enabled(tree, rack, from_index, not bypass)
+            else:
+                _sfx.reorder_fx(tree, rack, from_index, to_index)
+        result = _serum_fx_mutate_impl(
+            track_index, device_index, mutate_fn, reload=reload,
+            save_impl=lambda: _save_set_impl(name=""),
+            reload_impl=lambda p, n: _reload_set(p, n))
+        if not result.get("ok"):
+            return _err(result.get("error", "reorder_serum_fx failed"))
+        return _ok(result)
+    except (ValueError, RuntimeError, FileNotFoundError) as e:
+        return _err(str(e))
+
+
+@mcp.tool()
 def set_device_parameter(
     ctx: Context,
     track_index: int,
