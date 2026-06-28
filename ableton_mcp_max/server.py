@@ -142,6 +142,9 @@ from ableton_mcp_max import stem_utils
 from ableton_mcp_max import key_detection_utils as kd
 from ableton_mcp_max import plugin_config_utils as pcu
 from ableton_mcp_max import param_map_utils as pmu
+from ableton_mcp_max import serum_state_codec as _ssc
+from ableton_mcp_max import serum_fx_utils as _sfx
+from ableton_mcp_max import serum_fx_catalog as _sfxcat
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -2840,6 +2843,276 @@ def expose_plugin_parameters(
     except Exception as e:
         logger.error("expose_plugin_parameters error: %s", e)
         return _err("expose_plugin_parameters error: %s" % e)
+
+
+def _serum_fx_resolve_path(title_fn, resolve_path):
+    title = (title_fn or _live_window_title)()
+    if is_untitled_title(title):
+        raise ValueError("Set is untitled - save it first via save_set_as, then retry.")
+    path = (resolve_path or (lambda: _current_set_path(title) or _find_saved_set(title)))()
+    if not path:
+        raise RuntimeError("Could not resolve the current set's .als path.")
+    return path
+
+
+def _serum_fx_read_impl(track_index, device_index, *, save_impl,
+                        read_als=als.read_als, find_track_span=als.find_track_span,
+                        resolve_path=None, title_fn=None):
+    """Read-only Serum 2 FX listing. Saves the set, decodes the device's
+    ProcessorState from disk, and returns the FX list (no reload).
+
+    Returns {ok, set_path, fx:[...]} or {ok:False, error:...}."""
+    save_res = save_impl()
+    if not save_res.get("saved"):
+        return {"ok": False, "error": "save_set failed: %s" % save_res.get("error", save_res)}
+    path = _serum_fx_resolve_path(title_fn, resolve_path)
+    xml = read_als(path)
+    ts, te = find_track_span(xml, track_index)
+    spans = pcu.locate_plugin_state(xml, ts, te, device_index)
+    s, e = spans["processor"]
+    if not pcu.is_serum_state(xml[s:e]):
+        return {"ok": False, "set_path": path,
+                "error": "device %d on track %d is not a Serum 2 plugin" % (device_index, track_index)}
+    blob = _ssc.from_hex(xml[s:e])
+    tree = _ssc.decode(blob).tree
+    return {"ok": True, "set_path": path, "fx": _sfx.list_fx(tree)}
+
+
+def _serum_fx_mutate_impl(track_index, device_index, mutate_fn, *, reload,
+                          save_impl, reload_impl,
+                          read_als=als.read_als, write_als=als.write_als,
+                          find_track_span=als.find_track_span,
+                          resolve_path=None, title_fn=None):
+    """Apply mutate_fn(catalog, tree) to the ProcessorState blob only, re-encode,
+    splice it back, write, and optionally reload. ControllerState is left
+    untouched (incompatible FX schema). Returns {ok, reloaded, set_path}."""
+    save_res = save_impl()
+    if not save_res.get("saved"):
+        return {"ok": False, "reloaded": False,
+                "error": "save_set failed: %s" % save_res.get("error", save_res)}
+    path = _serum_fx_resolve_path(title_fn, resolve_path)
+    xml = read_als(path)
+    ts, te = find_track_span(xml, track_index)
+    spans = pcu.locate_plugin_state(xml, ts, te, device_index)
+    if not pcu.is_serum_state(xml[spans["processor"][0]:spans["processor"][1]]):
+        return {"ok": False, "reloaded": False, "set_path": path,
+                "error": "device %d on track %d is not a Serum 2 plugin" % (device_index, track_index)}
+    catalog = _sfxcat.load_catalog()
+    # Processor-only: ControllerState uses an incompatible FX schema
+    # (defaultPlainValues, no type/wrapper); deferred to live verification (Task 7).
+    s, e = spans["processor"]
+    st = _ssc.decode(_ssc.from_hex(xml[s:e]))
+    mutate_fn(catalog, st.tree)
+    new_hex = _ssc.to_hex(_ssc.encode(st, st.tree))
+    xml = xml[:s] + new_hex + xml[e:]
+    write_als(path, xml)
+    reloaded = False
+    if reload:
+        reloaded = bool(reload_impl(path, set_name_from_path(path)))
+    return {"ok": True, "reloaded": reloaded, "set_path": path}
+
+
+@mcp.tool()
+def get_serum_fx(ctx: Context, track_index: int, device_index: int = 0) -> str:
+    """List the FX in a Serum 2 instance's three FX racks (read-only).
+
+    Saves the set, then decodes the device's plugin state from the .als on disk
+    (no reload). Returns JSON {ok, data:{set_path, fx:[{rack, slot, type, name,
+    enabled, params}]}}. params are native Serum units. State authoring only -
+    FX are NOT LOM-automatable knobs; use set_serum_fx_param etc. to change them.
+
+    Parameters:
+    - track_index: track holding the Serum 2 instance.
+    - device_index: which VST/AU plugin device on the track (0 = first plugin), not chain position."""
+    try:
+        get_ableton_connection()  # fail fast if Live is unreachable
+        result = _serum_fx_read_impl(
+            track_index, device_index,
+            save_impl=lambda: _save_set_impl(name=""))
+        if not result.get("ok"):
+            return _err(result.get("error", "get_serum_fx failed"))
+        return _ok({"set_path": result.get("set_path"), "fx": result.get("fx")})
+    except (ValueError, RuntimeError, FileNotFoundError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("get_serum_fx error: %s", e)
+        return _err("get_serum_fx error: %s" % e)
+
+
+@mcp.tool()
+def set_serum_fx_param(
+    ctx: Context,
+    track_index: int,
+    rack: int,
+    slot: int,
+    kparam: str,
+    value: float,
+    device_index: int = 0,
+    reload: bool = True,
+) -> str:
+    """Set one Serum FX parameter (native units) on rack (0-2) / slot.
+
+    Patches the plugin state in the .als and reloads the set in place. value is a
+    native Serum value (e.g. kParamWet in %, kParamFreq in Hz); validated against
+    the catalog's observed range. State authoring - not a live LOM knob.
+
+    Parameters:
+    - track_index: track holding the Serum 2 instance.
+    - rack: FX rack index (0, 1, or 2).
+    - slot: slot within the rack (0-based).
+    - kparam: Serum internal parameter key (e.g. "kParamWet").
+    - value: native Serum value; validated against catalog min/max.
+    - device_index: which VST/AU plugin device on the track (0 = first plugin), not chain position.
+    - reload: reload the set in Live after patching (default True).
+
+    Returns JSON {ok, data:{reloaded, set_path}}."""
+    try:
+        get_ableton_connection()
+        def mutate_fn(catalog, tree):
+            _sfx.set_fx_param(catalog, tree, rack, slot, kparam, value)
+        result = _serum_fx_mutate_impl(
+            track_index, device_index, mutate_fn, reload=reload,
+            save_impl=lambda: _save_set_impl(name=""),
+            reload_impl=lambda p, n: _reload_set(p, n))
+        if not result.get("ok"):
+            return _err(result.get("error", "set_serum_fx_param failed"))
+        return _ok(result)
+    except (ValueError, RuntimeError, FileNotFoundError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("set_serum_fx_param error: %s", e)
+        return _err("set_serum_fx_param error: %s" % e)
+
+
+@mcp.tool()
+def insert_serum_fx(
+    ctx: Context,
+    track_index: int,
+    rack: int,
+    index: int,
+    fx_type: int,
+    device_index: int = 0,
+    reload: bool = True,
+) -> str:
+    """Insert an FX of catalog fx_type into a Serum rack (0-2) at index.
+
+    fx_type ints come from get_serum_fx / the serum2_fx catalog. New FX uses
+    Serum defaults (empty plainParams). State authoring (not a live LOM knob);
+    patches the .als and reloads the set.
+
+    Parameters:
+    - track_index: track holding the Serum 2 instance.
+    - rack: FX rack index (0, 1, or 2).
+    - index: position to insert at (0 = before all existing FX).
+    - fx_type: integer FX type from the catalog (see get_serum_fx).
+    - device_index: which VST/AU plugin device on the track (0 = first plugin), not chain position.
+    - reload: reload the set in Live after patching (default True).
+
+    Returns JSON {ok, data:{reloaded, set_path}}."""
+    try:
+        get_ableton_connection()
+        def mutate_fn(catalog, tree):
+            _sfx.insert_fx(catalog, tree, rack, index, fx_type)
+        result = _serum_fx_mutate_impl(
+            track_index, device_index, mutate_fn, reload=reload,
+            save_impl=lambda: _save_set_impl(name=""),
+            reload_impl=lambda p, n: _reload_set(p, n))
+        if not result.get("ok"):
+            return _err(result.get("error", "insert_serum_fx failed"))
+        return _ok(result)
+    except (ValueError, RuntimeError, FileNotFoundError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("insert_serum_fx error: %s", e)
+        return _err("insert_serum_fx error: %s" % e)
+
+
+@mcp.tool()
+def remove_serum_fx(
+    ctx: Context,
+    track_index: int,
+    rack: int,
+    slot: int,
+    device_index: int = 0,
+    reload: bool = True,
+) -> str:
+    """Remove the FX at rack (0-2) / slot from a Serum instance.
+
+    State authoring (not a live LOM knob); patches the .als and reloads the set.
+
+    Parameters:
+    - track_index: track holding the Serum 2 instance.
+    - rack: FX rack index (0, 1, or 2).
+    - slot: slot within the rack to remove (0-based).
+    - device_index: which VST/AU plugin device on the track (0 = first plugin), not chain position.
+    - reload: reload the set in Live after patching (default True).
+
+    Returns JSON {ok, data:{reloaded, set_path}}."""
+    try:
+        get_ableton_connection()
+        def mutate_fn(catalog, tree):
+            _sfx.remove_fx(tree, rack, slot)
+        result = _serum_fx_mutate_impl(
+            track_index, device_index, mutate_fn, reload=reload,
+            save_impl=lambda: _save_set_impl(name=""),
+            reload_impl=lambda p, n: _reload_set(p, n))
+        if not result.get("ok"):
+            return _err(result.get("error", "remove_serum_fx failed"))
+        return _ok(result)
+    except (ValueError, RuntimeError, FileNotFoundError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("remove_serum_fx error: %s", e)
+        return _err("remove_serum_fx error: %s" % e)
+
+
+@mcp.tool()
+def reorder_serum_fx(
+    ctx: Context,
+    track_index: int,
+    rack: int,
+    from_index: int,
+    to_index: int = 0,
+    bypass: bool = None,
+    device_index: int = 0,
+    reload: bool = True,
+) -> str:
+    """Move an FX within a Serum rack (0-2), or toggle its bypass state.
+
+    If bypass is None (default), moves the FX at from_index to to_index within
+    the rack. If bypass is provided, instead toggles the FX at from_index:
+    bypass=True disables it (kParamEnable=0), bypass=False re-enables it.
+    State authoring (not a live LOM knob); patches the .als and reloads the set.
+
+    Parameters:
+    - track_index: track holding the Serum 2 instance.
+    - rack: FX rack index (0, 1, or 2).
+    - from_index: source slot (or slot to bypass when bypass is not None).
+    - to_index: destination slot for reorder (ignored when bypass is provided).
+    - bypass: if not None, enable/disable the FX instead of reordering.
+    - device_index: which VST/AU plugin device on the track (0 = first plugin), not chain position.
+    - reload: reload the set in Live after patching (default True).
+
+    Returns JSON {ok, data:{reloaded, set_path}}."""
+    try:
+        get_ableton_connection()
+        def mutate_fn(catalog, tree):
+            if bypass is not None:
+                _sfx.set_fx_enabled(tree, rack, from_index, not bypass)
+            else:
+                _sfx.reorder_fx(tree, rack, from_index, to_index)
+        result = _serum_fx_mutate_impl(
+            track_index, device_index, mutate_fn, reload=reload,
+            save_impl=lambda: _save_set_impl(name=""),
+            reload_impl=lambda p, n: _reload_set(p, n))
+        if not result.get("ok"):
+            return _err(result.get("error", "reorder_serum_fx failed"))
+        return _ok(result)
+    except (ValueError, RuntimeError, FileNotFoundError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("reorder_serum_fx error: %s", e)
+        return _err("reorder_serum_fx error: %s" % e)
 
 
 @mcp.tool()

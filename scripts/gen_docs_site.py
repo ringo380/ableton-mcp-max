@@ -39,8 +39,10 @@ CATEGORIES = [
         "get_device_parameters", "set_device_parameter", "get_device_info", "delete_device", "set_device_on",
         "get_rack_macros", "set_rack_macro", "get_rack_chains", "set_chain_property", "load_instrument_or_effect",
     ]),
-    ("plugins", "Plugins (VST/AU)", "Expose and control third-party VST3/AU plugin parameters via the Configure-slot backdoor: probe a plugin's full parameter list, then Configure a curated param-map pack so its knobs become settable, automatable LOM parameters.", [
+    ("plugins", "Plugins (VST/AU)", "Expose and control third-party VST3/AU plugin parameters via the Configure-slot backdoor: probe a plugin's full parameter list, then Configure a curated param-map pack so its knobs become settable, automatable LOM parameters. For Serum 2, also author the FX racks (read, set params, bypass, insert, remove, reorder) by patching the plugin-state blob in the .als.", [
         "probe_plugin_parameters", "expose_plugin_parameters",
+        "get_serum_fx", "set_serum_fx_param", "insert_serum_fx",
+        "remove_serum_fx", "reorder_serum_fx",
     ]),
     ("mixer-routing", "Mixer & Routing", "Volume, pan, sends, and input/output routing for every track type.", [
         "get_mixer", "set_mixer_property", "get_routing", "set_routing",

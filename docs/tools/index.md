@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **150 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **155 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -41,9 +41,9 @@ Inspect and drive devices, rack macros, and chains; load instruments and effects
 
 ## [Plugins (VST/AU)](./plugins.html)
 
-Expose and control third-party VST3/AU plugin parameters via the Configure-slot backdoor: probe a plugin's full parameter list, then Configure a curated param-map pack so its knobs become settable, automatable LOM parameters.
+Expose and control third-party VST3/AU plugin parameters via the Configure-slot backdoor: probe a plugin's full parameter list, then Configure a curated param-map pack so its knobs become settable, automatable LOM parameters. For Serum 2, also author the FX racks (read, set params, bypass, insert, remove, reorder) by patching the plugin-state blob in the .als.
 
-`probe_plugin_parameters`, `expose_plugin_parameters`
+`probe_plugin_parameters`, `expose_plugin_parameters`, `get_serum_fx`, `set_serum_fx_param`, `insert_serum_fx`, `remove_serum_fx`, `reorder_serum_fx`
 
 ## [Mixer & Routing](./mixer-routing.html)
 

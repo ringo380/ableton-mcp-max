@@ -1,5 +1,23 @@
 # ableton-mcp-max — Progress
 
+## Serum 2 FX control (Release 2) - SHIPPING v0.25.0 (2026-06-28)
+Author Serum 2's FX racks by patching the plugin-state blob in the live `.als` and reloading in place
+(same Option-A delivery as Release 1). 5 new tools (150 -> **155**, "Plugins (VST/AU)" category):
+`get_serum_fx`, `set_serum_fx_param`, `insert_serum_fx`, `remove_serum_fx`, `reorder_serum_fx`. Branch
+`feat/serum-fx-path` (SDD-executed; spec+plan under docs/superpowers/). Codec `serum_state_codec.py`
+(XferJson = magic+uint64 meta-len+JSON+8-byte `<II` header+zstd-CBOR; md5(zstd)=hash, recomputed on encode;
+roundtrip-gated over all 791 factory presets), catalog `serum2_fx.json` (16 FX types from factory scan),
+pure `serum_fx_utils.py`, navigator `plugin_config_utils.locate_plugin_state`/`is_serum_state`.
+**KEY: mutate patches ProcessorState ONLY** - ControllerState uses an incompatible FX schema
+(`defaultPlainValues`, no type/wrapper). **LIVE-VERIFIED 2026-06-28 (Live 12.4): all 5 tools PASS;
+set_serum_fx_param Wet 96.7->30 survived a real reload = processor-only reaches the live plugin and Serum
+does NOT override from the unpatched controller (processor-only SUFFICIENT); insert/remove/reorder/bypass all
+reloaded clean (no structural-desync corruption).** State authoring, NOT LOM-automatable (FX aren't host
+params). 942 offline tests pass; server import clean.
+
+**>>> RESUME HERE (2026-06-28): Release 2 offline+live COMPLETE, shipping v0.25.0 (155 tools). After ship,
+nothing else queued.**
+
 ## VST/AU plugin support (Serum 2) - RELEASE 1 SHIPPED v0.24.0 (2026-06-27)
 Merged via PR #45 (squash @7abdc0a); docs regen @4f33568; tag **v0.24.0** = main @4f33568 (150 tools,
 21 categories - new "Plugins (VST/AU)" category); marketplace `ableton` ref bumped v0.23.0 -> **v0.24.0**

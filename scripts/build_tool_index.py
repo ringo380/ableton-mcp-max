@@ -38,6 +38,8 @@ GROUPS = [
     ]),
     ("Plugins (VST/AU)", [
         "probe_plugin_parameters", "expose_plugin_parameters",
+        "get_serum_fx", "set_serum_fx_param", "insert_serum_fx",
+        "remove_serum_fx", "reorder_serum_fx",
     ]),
     ("Clips & MIDI notes", [
         "create_clip", "get_clip_info", "set_clip_name", "set_clip_property",
