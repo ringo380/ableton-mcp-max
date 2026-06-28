@@ -164,3 +164,43 @@ def index_grooves(conn, roots):
         record_root(conn, root, "groove", source, fingerprint_root(root))
     conn.commit()
     return count
+
+
+def index_device_presets(conn, browser_reader, paths):
+    """Index device presets from Live's browser via an injected reader callable.
+
+    browser_reader(path) -> {"presets": [{"name","relative_path","uri"}], "count":int}
+    A reader call that raises or returns {"error":...} is skipped silently.
+    Deletes all existing device_preset rows first (full replace semantics).
+    Returns the number of presets indexed.
+    """
+    conn.execute("DELETE FROM items WHERE domain='device_preset'")
+    count = 0
+    for path in paths:
+        try:
+            result = browser_reader(path)
+        except Exception:
+            continue
+        if not result or result.get("error"):
+            continue
+        for p in result.get("presets", []):
+            uri = p.get("uri")
+            if not uri:
+                continue
+            rel = p.get("relative_path", "") or ""
+            name = os.path.splitext(os.path.basename(p.get("name", "")))[0]
+            folder = os.path.dirname(rel)
+            tags = _folder_words(folder)
+            # INSERT OR REPLACE: the unique index on (domain,uri) is partial
+            # (WHERE uri IS NOT NULL), which SQLite forbids as an ON CONFLICT
+            # target; INSERT OR REPLACE handles it correctly (same pattern as
+            # _upsert_fs).
+            conn.execute(
+                "INSERT OR REPLACE INTO items(domain,name,path,uri,source,"
+                "folder,kind,loadable,mtime,tags,extra,indexed_at)"
+                " VALUES('device_preset',?,?,?,'factory',?,?,1,?,?,?,?)",
+                (name, None, uri, folder, None, None, tags, None, time.time()))
+            count += 1
+    record_root(conn, "lom:device_presets", "device_preset", "factory", "live")
+    conn.commit()
+    return count
