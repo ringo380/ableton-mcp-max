@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_150 tools._
+_155 tools._
 
 ## Session & view
 
@@ -85,6 +85,11 @@ _150 tools._
 
 - **`probe_plugin_parameters`** - Read the FULL parameter-name list of a third-party VST/AU plugin device
 - **`expose_plugin_parameters`** - Expose a third-party VST/AU plugin's parameters as live, settable LOM
+- **`get_serum_fx`** - List the FX in a Serum 2 instance's three FX racks (read-only).
+- **`set_serum_fx_param`** - Set one Serum FX parameter (native units) on rack (0-2) / slot.
+- **`insert_serum_fx`** - Insert an FX of catalog fx_type into a Serum rack (0-2) at index.
+- **`remove_serum_fx`** - Remove the FX at rack (0-2) / slot from a Serum instance.
+- **`reorder_serum_fx`** - Move an FX within a Serum rack (0-2), or toggle its bypass state.
 
 ## Clips & MIDI notes
 
