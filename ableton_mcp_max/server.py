@@ -2919,7 +2919,11 @@ def get_serum_fx(ctx: Context, track_index: int, device_index: int = 0) -> str:
     Saves the set, then decodes the device's plugin state from the .als on disk
     (no reload). Returns JSON {ok, data:{set_path, fx:[{rack, slot, type, name,
     enabled, params}]}}. params are native Serum units. State authoring only -
-    FX are NOT LOM-automatable knobs; use set_serum_fx_param etc. to change them."""
+    FX are NOT LOM-automatable knobs; use set_serum_fx_param etc. to change them.
+
+    Parameters:
+    - track_index: track holding the Serum 2 instance.
+    - device_index: which VST/AU plugin device on the track (0 = first plugin), not chain position."""
     try:
         get_ableton_connection()  # fail fast if Live is unreachable
         result = _serum_fx_read_impl(
@@ -2930,6 +2934,9 @@ def get_serum_fx(ctx: Context, track_index: int, device_index: int = 0) -> str:
         return _ok({"set_path": result.get("set_path"), "fx": result.get("fx")})
     except (ValueError, RuntimeError, FileNotFoundError) as e:
         return _err(str(e))
+    except Exception as e:
+        logger.error("get_serum_fx error: %s", e)
+        return _err("get_serum_fx error: %s" % e)
 
 
 @mcp.tool()
@@ -2955,7 +2962,7 @@ def set_serum_fx_param(
     - slot: slot within the rack (0-based).
     - kparam: Serum internal parameter key (e.g. "kParamWet").
     - value: native Serum value; validated against catalog min/max.
-    - device_index: device position on the track (default 0).
+    - device_index: which VST/AU plugin device on the track (0 = first plugin), not chain position.
     - reload: reload the set in Live after patching (default True).
 
     Returns JSON {ok, data:{reloaded, set_path}}."""
@@ -2972,6 +2979,9 @@ def set_serum_fx_param(
         return _ok(result)
     except (ValueError, RuntimeError, FileNotFoundError) as e:
         return _err(str(e))
+    except Exception as e:
+        logger.error("set_serum_fx_param error: %s", e)
+        return _err("set_serum_fx_param error: %s" % e)
 
 
 @mcp.tool()
@@ -2995,7 +3005,7 @@ def insert_serum_fx(
     - rack: FX rack index (0, 1, or 2).
     - index: position to insert at (0 = before all existing FX).
     - fx_type: integer FX type from the catalog (see get_serum_fx).
-    - device_index: device position on the track (default 0).
+    - device_index: which VST/AU plugin device on the track (0 = first plugin), not chain position.
     - reload: reload the set in Live after patching (default True).
 
     Returns JSON {ok, data:{reloaded, set_path}}."""
@@ -3012,6 +3022,9 @@ def insert_serum_fx(
         return _ok(result)
     except (ValueError, RuntimeError, FileNotFoundError) as e:
         return _err(str(e))
+    except Exception as e:
+        logger.error("insert_serum_fx error: %s", e)
+        return _err("insert_serum_fx error: %s" % e)
 
 
 @mcp.tool()
@@ -3031,7 +3044,7 @@ def remove_serum_fx(
     - track_index: track holding the Serum 2 instance.
     - rack: FX rack index (0, 1, or 2).
     - slot: slot within the rack to remove (0-based).
-    - device_index: device position on the track (default 0).
+    - device_index: which VST/AU plugin device on the track (0 = first plugin), not chain position.
     - reload: reload the set in Live after patching (default True).
 
     Returns JSON {ok, data:{reloaded, set_path}}."""
@@ -3048,6 +3061,9 @@ def remove_serum_fx(
         return _ok(result)
     except (ValueError, RuntimeError, FileNotFoundError) as e:
         return _err(str(e))
+    except Exception as e:
+        logger.error("remove_serum_fx error: %s", e)
+        return _err("remove_serum_fx error: %s" % e)
 
 
 @mcp.tool()
@@ -3074,7 +3090,7 @@ def reorder_serum_fx(
     - from_index: source slot (or slot to bypass when bypass is not None).
     - to_index: destination slot for reorder (ignored when bypass is provided).
     - bypass: if not None, enable/disable the FX instead of reordering.
-    - device_index: device position on the track (default 0).
+    - device_index: which VST/AU plugin device on the track (0 = first plugin), not chain position.
     - reload: reload the set in Live after patching (default True).
 
     Returns JSON {ok, data:{reloaded, set_path}}."""
@@ -3094,6 +3110,9 @@ def reorder_serum_fx(
         return _ok(result)
     except (ValueError, RuntimeError, FileNotFoundError) as e:
         return _err(str(e))
+    except Exception as e:
+        logger.error("reorder_serum_fx error: %s", e)
+        return _err("reorder_serum_fx error: %s" % e)
 
 
 @mcp.tool()
