@@ -3,16 +3,20 @@ import pytest
 from ableton_mcp_max import server
 from ableton_mcp_max import serum_state_codec as ssc
 from ableton_mcp_max import serum_fx_utils as fxu
+from ableton_mcp_max import als_automation_utils as als
 
 TEST_ALS = "/Users/ryanrobson/Desktop/serum2_test Project/serum2_idtest.als"
 
 
-def _state_hex(xml, tag, device_index=0):
-    """Re-extract the inner hex of the device_index-th <tag> in xml."""
-    opens = list(re.finditer(r"<%s[^>]*>" % tag, xml))
+def _state_hex(xml, tag, track_index=0, device_index=0):
+    """Re-extract the inner hex of the device_index-th <tag> within the
+    track_index-th track span (scoped so it cannot match a sibling track)."""
+    ts, te = als.find_track_span(xml, track_index)
+    span = xml[ts:te]
+    opens = list(re.finditer(r"<%s[^>]*>" % tag, span))
     o = opens[device_index]
-    close = xml.index("</%s>" % tag, o.end())
-    return xml[o.end():close]
+    close = span.index("</%s>" % tag, o.end())
+    return span[o.end():close]
 
 
 @pytest.mark.skipif(not os.path.exists(TEST_ALS), reason="live test set absent")
@@ -27,6 +31,7 @@ def test_read_impl_lists_fx(tmp_path):
         title_fn=lambda: "serum2_idtest")
     assert res["ok"] is True
     assert isinstance(res["fx"], list)
+    assert len(res["fx"]) > 0  # the live set has FX; empty = silent decode failure
 
 
 @pytest.mark.skipif(not os.path.exists(TEST_ALS), reason="live test set absent")

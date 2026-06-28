@@ -2913,15 +2913,23 @@ def _serum_fx_mutate_impl(track_index, device_index, mutate_fn, *, reload,
 
 
 @mcp.tool()
-def get_serum_fx(track_index: int, device_index: int = 0) -> dict:
+def get_serum_fx(ctx: Context, track_index: int, device_index: int = 0) -> str:
     """List the FX in a Serum 2 instance's three FX racks (read-only).
 
     Saves the set, then decodes the device's plugin state from the .als on disk
-    (no reload). Returns {ok, set_path, fx:[{rack, slot, type, name, enabled,
-    params}]}. params are native Serum units. State authoring only - FX are NOT
-    LOM-automatable knobs; use set_serum_fx_param etc. to change them."""
-    return _serum_fx_read_impl(track_index, device_index,
-                               save_impl=lambda: _save_set_impl(name=""))
+    (no reload). Returns JSON {ok, data:{set_path, fx:[{rack, slot, type, name,
+    enabled, params}]}}. params are native Serum units. State authoring only -
+    FX are NOT LOM-automatable knobs; use set_serum_fx_param etc. to change them."""
+    try:
+        get_ableton_connection()  # fail fast if Live is unreachable
+        result = _serum_fx_read_impl(
+            track_index, device_index,
+            save_impl=lambda: _save_set_impl(name=""))
+        if not result.get("ok"):
+            return _err(result.get("error", "get_serum_fx failed"))
+        return _ok({"set_path": result.get("set_path"), "fx": result.get("fx")})
+    except (ValueError, RuntimeError, FileNotFoundError) as e:
+        return _err(str(e))
 
 
 @mcp.tool()
