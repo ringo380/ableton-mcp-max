@@ -44,7 +44,7 @@ def _candidate_rows(conn, query, domains, kinds, sources):
         args += list(sources)
     fts = _fts_query(query)
     if fts:
-        sql = ("SELECT items.*, items.tags AS _tags FROM items_fts"
+        sql = ("SELECT items.* FROM items_fts"
                " JOIN items ON items.id=items_fts.rowid"
                " WHERE items_fts MATCH ?")
         a = [fts]
@@ -52,7 +52,7 @@ def _candidate_rows(conn, query, domains, kinds, sources):
             sql += " AND " + " AND ".join(where)
             a += args
     else:
-        sql = "SELECT items.*, items.tags AS _tags FROM items"
+        sql = "SELECT items.* FROM items"
         if where:
             sql += " WHERE " + " AND ".join(where)
         a = args
@@ -97,11 +97,13 @@ def find_similar(conn, intent, domain, limit=10):
 
 
 def catalog_stats(conn):
-    def counts(col):
-        return {row[0]: row[1] for row in conn.execute(
-            "SELECT %s, count(*) FROM items GROUP BY %s" % (col, col))
-            if row[0] is not None}
+    def _group(col_sql):
+        return {row[0]: row[1] for row in conn.execute(col_sql)
+                if row[0] is not None}
     total = conn.execute("SELECT count(*) FROM items").fetchone()[0]
+    by_domain = _group("SELECT domain, count(*) FROM items GROUP BY domain")
+    by_source = _group("SELECT source, count(*) FROM items GROUP BY source")
+    by_kind = _group("SELECT kind, count(*) FROM items GROUP BY kind")
     roots = [{"root_path": r["root_path"], "domain": r["domain"],
               "source": r["source"], "last_indexed": r["last_indexed"]}
              for r in conn.execute("SELECT * FROM roots")]
@@ -109,9 +111,9 @@ def catalog_stats(conn):
         "SELECT last_indexed FROM roots WHERE domain='device_preset'").fetchone()
     return {
         "total": total,
-        "by_domain": counts("domain"),
-        "by_source": counts("source"),
-        "by_kind": counts("kind"),
+        "by_domain": by_domain,
+        "by_source": by_source,
+        "by_kind": by_kind,
         "roots": roots,
         "device_presets_last_indexed": dp["last_indexed"] if dp else None,
     }
