@@ -9,6 +9,8 @@ def _fresh_server(tmp_path, monkeypatch):
     importlib.reload(server)
     # reset cached connection so the env-var path is picked up
     server._catalog_db_conn = None
+    server._catalog_device_indexed = False
+    server._catalog_live_disconnected = False
     # prevent freshness checks from indexing real filesystem content during tests
     monkeypatch.setattr(server, "_serum_roots", lambda: [])
     monkeypatch.setattr(server, "_sample_search_roots", lambda sources: [])
@@ -36,3 +38,15 @@ def test_catalog_stats_tool(tmp_path, monkeypatch):
     out = json.loads(server.catalog_stats(None))
     assert out["ok"] is True
     assert "by_domain" in out["data"]
+
+
+def test_search_catalog_device_live_disconnected(tmp_path, monkeypatch):
+    server = _fresh_server(tmp_path, monkeypatch)
+
+    def dead(_path):
+        raise RuntimeError("Live not connected")
+
+    monkeypatch.setattr(server, "_browser_reader", dead)
+    out = json.loads(server.search_catalog(None, "pad", domains=["device_preset"]))
+    assert out["ok"] is True
+    assert out["data"]["live_disconnected"] is True

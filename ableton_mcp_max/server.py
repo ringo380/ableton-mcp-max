@@ -4670,8 +4670,9 @@ def search_grooves(ctx: Context, query: str = "", limit: int = 50,
                                         sources=sources, limit=limit)
         if res["count"] > 0:
             items = catalog_adapt.rows_to_groove_items(res["items"])
-            return _ok({"count": res["count"], "returned": len(items),
-                        "truncated": res["truncated"], "items": items})
+            if items:
+                return _ok({"count": len(items), "returned": len(items),
+                            "items": items})
     except Exception as e:
         logger.error("search_grooves catalog path failed, falling back: %s", e)
     try:
@@ -7691,6 +7692,8 @@ _catalog_db_conn = None
 _catalog_checked = {}
 _CATALOG_THROTTLE_S = 60
 _SERUM_FACTORY = "/Library/Audio/Presets/Xfer Records/Serum 2 Presets/Presets"
+_catalog_device_indexed = False
+_catalog_live_disconnected = False
 
 
 def _catalog_conn():
@@ -7713,6 +7716,24 @@ def _serum_roots():
 def _browser_reader(path):
     return get_ableton_connection().send_command(
         "get_browser_presets", {"path": path, "max_depth": 6})
+
+
+def _ensure_device_index(conn, force=False):
+    """Index device presets once per session (or force). Sets
+    _catalog_live_disconnected when Live is unreachable. Never raises."""
+    global _catalog_device_indexed, _catalog_live_disconnected
+    if _catalog_device_indexed and not force:
+        return
+    try:
+        _cat_index.index_device_presets(
+            conn, _browser_reader, ["instruments", "audio_effects"])
+        _catalog_device_indexed = True
+        _catalog_live_disconnected = False
+    except _cat_index.DeviceLiveUnavailable:
+        _catalog_live_disconnected = True
+    except Exception as e:
+        _catalog_live_disconnected = True
+        logger.error("device-preset auto-index failed: %s", e)
 
 
 def _ensure_catalog_fresh(conn, domains):
@@ -7760,8 +7781,12 @@ def search_catalog(ctx: Context, query: str, domains: list = None,
         want = domains or ["serum", "sample", "groove", "device_preset"]
         _ensure_catalog_fresh(conn, [d for d in want
                                      if d in ("serum", "sample", "groove")])
+        if domains is None or "device_preset" in domains:
+            _ensure_device_index(conn)
         data = _cat_query.search_catalog(conn, query, domains=domains,
                                          kinds=kinds, sources=sources, limit=limit)
+        if domains is None or "device_preset" in domains:
+            data["live_disconnected"] = _catalog_live_disconnected
         return _ok(data)
     except Exception as e:
         logger.error("search_catalog error: %s", e)
@@ -7790,8 +7815,13 @@ def find_similar(ctx: Context, intent: str, domain: str, limit: int = 10) -> str
         conn = _catalog_conn()
         if domain in ("serum", "sample", "groove"):
             _ensure_catalog_fresh(conn, [domain])
+        if domain == "device_preset":
+            _ensure_device_index(conn)
         hits = _cat_query.find_similar(conn, intent, domain, limit=limit)
-        return _ok({"count": len(hits), "items": hits})
+        data = {"count": len(hits), "items": hits}
+        if domain == "device_preset":
+            data["live_disconnected"] = _catalog_live_disconnected
+        return _ok(data)
     except Exception as e:
         logger.error("find_similar error: %s", e)
         return _err("find_similar error: %s" % e)
@@ -7819,11 +7849,17 @@ def reindex_catalog(ctx: Context, domains: list = None,
             indexed["groove"] = _cat_index.index_grooves(
                 conn, _groove_search_roots(["factory", "user"]))
         if "device_preset" in want:
+            global _catalog_device_indexed, _catalog_live_disconnected
             try:
                 indexed["device_preset"] = _cat_index.index_device_presets(
                     conn, _browser_reader, ["instruments", "audio_effects"])
+                _catalog_device_indexed = True
+                _catalog_live_disconnected = False
+            except _cat_index.DeviceLiveUnavailable as e:
+                _catalog_live_disconnected = True
+                errors.append("device_preset: %s" % e)
             except Exception as e:
-                errors.append("device_preset: %s (Live connected?)" % e)
+                errors.append("device_preset: %s" % e)
         return _ok({"indexed": indexed, "errors": errors})
     except Exception as e:
         logger.error("reindex_catalog error: %s", e)
@@ -7875,7 +7911,12 @@ def recommend_asset(ctx: Context, intent: str, domain: str) -> str:
                                   "device_preset") else "device_preset"
         if qd in ("serum", "sample", "groove"):
             _ensure_catalog_fresh(conn, [qd])
-        return _ok(_cat_decide.recommend(conn, intent, domain))
+        if qd == "device_preset":
+            _ensure_device_index(conn)
+        result = _cat_decide.recommend(conn, intent, domain)
+        if qd == "device_preset":
+            result["live_disconnected"] = _catalog_live_disconnected
+        return _ok(result)
     except Exception as e:
         logger.error("recommend_asset error: %s", e)
         return _err("recommend_asset error: %s" % e)
