@@ -128,6 +128,12 @@ CATEGORIES = [
         "populate_drum_rack",
         "separate_stems_to_arrangement",
     ]),
+    ("catalog", "Catalog", "Persistent local index of Serum presets, samples, "
+     "grooves, and device presets, with similarity search and reuse-vs-create "
+     "recommendation that can orchestrate the existing create tools.", [
+        "search_catalog", "find_similar", "catalog_stats", "reindex_catalog",
+        "recommend_asset", "create_from_plan",
+    ]),
 ]
 
 SKIP_PARAMS = {"self", "ctx", "context"}

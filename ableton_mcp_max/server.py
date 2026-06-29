@@ -145,6 +145,11 @@ from ableton_mcp_max import param_map_utils as pmu
 from ableton_mcp_max import serum_state_codec as _ssc
 from ableton_mcp_max import serum_fx_utils as _sfx
 from ableton_mcp_max import serum_fx_catalog as _sfxcat
+from ableton_mcp_max import catalog_db as _cat_db
+from ableton_mcp_max import catalog_index as _cat_index
+from ableton_mcp_max import catalog_query as _cat_query
+from ableton_mcp_max import catalog_decide as _cat_decide
+from ableton_mcp_max import catalog_adapt
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -4630,6 +4635,13 @@ def _groove_search_roots(sources):
     return roots
 
 
+def _search_grooves_live(query, limit, sources):
+    """Live filesystem walk fallback for search_grooves."""
+    roots = _groove_search_roots(sources)
+    rows = groovep.list_grooves(roots, query=query, limit=limit)
+    return _ok({"count": len(rows), "returned": len(rows), "items": rows})
+
+
 @mcp.tool()
 def search_grooves(ctx: Context, query: str = "", limit: int = 50,
                    sources: list = None) -> str:
@@ -4650,14 +4662,24 @@ def search_grooves(ctx: Context, query: str = "", limit: int = 50,
     grooves stored in a binary .agr format that `load_groove_to_pool` cannot
     add (drag those in by hand); True grooves load fine.
     """
+    sources = sources or ["factory", "user"]
     try:
-        sources = sources or ["factory", "user"]
-        roots = _groove_search_roots(sources)
-        rows = groovep.list_grooves(roots, query=query, limit=limit)
-        return _ok({"count": len(rows), "returned": len(rows), "items": rows})
+        conn = _catalog_conn()
+        _ensure_catalog_fresh(conn, ["groove"])
+        res = _cat_query.search_catalog(conn, query, domains=["groove"],
+                                        sources=sources, limit=limit)
+        if res["count"] > 0:
+            items = catalog_adapt.rows_to_groove_items(res["items"])
+            if items:
+                return _ok({"count": len(items), "returned": len(items),
+                            "items": items})
     except Exception as e:
-        logger.error(f"Error searching grooves: {str(e)}")
-        return _err(f"Error searching grooves: {str(e)}")
+        logger.error("search_grooves catalog path failed, falling back: %s", e)
+    try:
+        return _search_grooves_live(query, limit, sources)
+    except Exception as e:
+        logger.error("Error searching grooves: %s", e)
+        return _err("Error searching grooves: %s" % e)
 
 
 def _factory_clip_wrapper():
@@ -6022,6 +6044,57 @@ def _sample_search_roots(sources):
     return roots
 
 
+def _search_samples_live(query, kinds, limit, sources):
+    """Live filesystem walk fallback for search_samples."""
+    kind_set = set(kinds)
+    hits = []
+    for root, source in _sample_search_roots(sources):
+        for dirpath, _dirs, filenames in os.walk(root):
+            for fn in filenames:
+                # iCloud stubs are hidden ".<name>.icloud" files; recover the
+                # real sample name + path from the stub so placeholders surface.
+                is_stub = fn.startswith(".") and fn.endswith(".icloud")
+                if is_stub:
+                    real_name = fn[1:-len(".icloud")]
+                else:
+                    real_name = fn
+                ext = os.path.splitext(real_name)[1].lower()
+                if ext not in _SAMPLE_EXTS:
+                    continue
+                real_path = os.path.join(dirpath, real_name)
+                rel_folder = os.path.relpath(dirpath, root)
+                matched, score = name_match(query, real_name, rel_folder)
+                if not matched:
+                    continue
+                kind = classify_sample(real_name, os.path.join(rel_folder, real_name))
+                if kind not in kind_set:
+                    continue
+                hits.append({
+                    "name": real_name,
+                    "path": real_path,
+                    "uri": None,
+                    "kind": kind,
+                    "source": source,
+                    "folder": rel_folder,
+                    "is_icloud_placeholder": icloud_placeholder_path(real_path) is not None,
+                    "_score": score,
+                })
+
+    hits.sort(key=lambda h: h["_score"], reverse=True)
+    total = len(hits)
+    shown = hits[:limit] if limit and limit > 0 else hits
+    for h in shown:
+        h.pop("_score", None)
+    for h in hits[len(shown):]:
+        h.pop("_score", None)
+    return _ok({
+        "count": total,
+        "returned": len(shown),
+        "truncated": len(shown) < total,
+        "items": shown,
+    })
+
+
 @mcp.tool()
 def search_samples(
     ctx: Context,
@@ -6051,57 +6124,21 @@ def search_samples(
     matches; `items` holds at most `limit`, highest score first. `uri` is None
     (loaders take `sample_path`, not a browser URI).
     """
+    kinds = kinds or ["loop", "one_shot", "kit", "instrument"]
+    sources = sources or ["factory", "user"]
     try:
-        kinds = kinds or ["loop", "one_shot", "kit", "instrument"]
-        sources = sources or ["factory", "user"]
-        kind_set = set(kinds)
-
-        hits = []
-        for root, source in _sample_search_roots(sources):
-            for dirpath, _dirs, filenames in os.walk(root):
-                for fn in filenames:
-                    # iCloud stubs are hidden ".<name>.icloud" files; recover the
-                    # real sample name + path from the stub so placeholders surface.
-                    is_stub = fn.startswith(".") and fn.endswith(".icloud")
-                    if is_stub:
-                        real_name = fn[1:-len(".icloud")]
-                    else:
-                        real_name = fn
-                    ext = os.path.splitext(real_name)[1].lower()
-                    if ext not in _SAMPLE_EXTS:
-                        continue
-                    real_path = os.path.join(dirpath, real_name)
-                    rel_folder = os.path.relpath(dirpath, root)
-                    matched, score = name_match(query, real_name, rel_folder)
-                    if not matched:
-                        continue
-                    kind = classify_sample(real_name, os.path.join(rel_folder, real_name))
-                    if kind not in kind_set:
-                        continue
-                    hits.append({
-                        "name": real_name,
-                        "path": real_path,
-                        "uri": None,
-                        "kind": kind,
-                        "source": source,
-                        "folder": rel_folder,
-                        "is_icloud_placeholder": icloud_placeholder_path(real_path) is not None,
-                        "_score": score,
-                    })
-
-        hits.sort(key=lambda h: h["_score"], reverse=True)
-        total = len(hits)
-        shown = hits[:limit] if limit and limit > 0 else hits
-        for h in shown:
-            h.pop("_score", None)
-        for h in hits[len(shown):]:
-            h.pop("_score", None)
-        return _ok({
-            "count": total,
-            "returned": len(shown),
-            "truncated": len(shown) < total,
-            "items": shown,
-        })
+        conn = _catalog_conn()
+        _ensure_catalog_fresh(conn, ["sample"])
+        res = _cat_query.search_catalog(conn, query, domains=["sample"],
+                                        kinds=kinds, sources=sources, limit=limit)
+        if res["count"] > 0:
+            items = catalog_adapt.rows_to_sample_items(res["items"])
+            return _ok({"count": res["count"], "returned": len(items),
+                        "truncated": res["truncated"], "items": items})
+    except Exception as e:
+        logger.error("search_samples catalog path failed, falling back: %s", e)
+    try:
+        return _search_samples_live(query, kinds, limit, sources)
     except Exception as e:
         logger.error("Error searching samples: %s", e)
         return _err("Error searching samples: %s" % e)
@@ -7648,6 +7685,270 @@ def detect_key(ctx: Context, source: str = "auto",
     except Exception as e:
         logger.error("Error detecting key: %s", e)
         return _err("Error detecting key: %s" % e)
+
+
+# --- Local catalog -------------------------------------------------------
+_catalog_db_conn = None
+_catalog_checked = {}
+_CATALOG_THROTTLE_S = 60
+_SERUM_FACTORY = "/Library/Audio/Presets/Xfer Records/Serum 2 Presets/Presets"
+_catalog_device_indexed = False
+_catalog_live_disconnected = False
+
+
+def _catalog_conn():
+    global _catalog_db_conn
+    if _catalog_db_conn is None:
+        _catalog_db_conn = _cat_db.open_db()
+    return _catalog_db_conn
+
+
+def _serum_roots():
+    roots = []
+    if os.path.isdir(_SERUM_FACTORY):
+        roots.append((_SERUM_FACTORY, "factory"))
+    user = os.path.expanduser("~/Music/Serum/Presets")
+    if os.path.isdir(user):
+        roots.append((user, "user"))
+    return roots
+
+
+def _browser_reader(path):
+    return get_ableton_connection().send_command(
+        "get_browser_presets", {"path": path, "max_depth": 6})
+
+
+def _ensure_device_index(conn, force=False):
+    """Index device presets once per session (or force). Sets
+    _catalog_live_disconnected when Live is unreachable. Never raises."""
+    global _catalog_device_indexed, _catalog_live_disconnected
+    if _catalog_device_indexed and not force:
+        return
+    try:
+        _cat_index.index_device_presets(
+            conn, _browser_reader, ["instruments", "audio_effects"])
+        _catalog_device_indexed = True
+        _catalog_live_disconnected = False
+    except _cat_index.DeviceLiveUnavailable:
+        _catalog_live_disconnected = True
+    except Exception as e:
+        _catalog_live_disconnected = True
+        logger.error("device-preset auto-index failed: %s", e)
+
+
+def _ensure_catalog_fresh(conn, domains):
+    """Reindex any changed roots for the given domains, honoring a per-root
+    in-process throttle. Never raises - freshness is best-effort."""
+    now = time.time()
+    try:
+        if "serum" in domains:
+            for root, src in _serum_roots():
+                key = ("serum", root, src)
+                if now - _catalog_checked.get(key, 0) < _CATALOG_THROTTLE_S:
+                    continue
+                _catalog_checked[key] = now
+                if _cat_index.root_changed(conn, root, "serum", src):
+                    _cat_index.index_serum(conn, [(root, src)])
+        if "sample" in domains:
+            for root, src in _sample_search_roots(["factory", "user"]):
+                key = ("sample", root, src)
+                if now - _catalog_checked.get(key, 0) < _CATALOG_THROTTLE_S:
+                    continue
+                _catalog_checked[key] = now
+                if _cat_index.root_changed(conn, root, "sample", src):
+                    _cat_index.index_samples(conn, [(root, src)])
+        if "groove" in domains:
+            for root, src in _groove_search_roots(["factory", "user"]):
+                key = ("groove", root, src)
+                if now - _catalog_checked.get(key, 0) < _CATALOG_THROTTLE_S:
+                    continue
+                _catalog_checked[key] = now
+                if _cat_index.root_changed(conn, root, "groove", src):
+                    _cat_index.index_grooves(conn, [(root, src)])
+    except Exception as e:
+        logger.error("catalog freshness check failed: %s", e)
+
+
+@mcp.tool()
+def search_catalog(ctx: Context, query: str, domains: list = None,
+                   kinds: list = None, sources: list = None,
+                   limit: int = 50) -> str:
+    """Search the local content catalog (Serum presets, samples, grooves, device
+    presets) by name/folder/tags. Fast persistent index; auto-refreshes changed
+    filesystem roots. Returns {ok, data:{count, returned, truncated, items}}."""
+    try:
+        conn = _catalog_conn()
+        want = domains or ["serum", "sample", "groove", "device_preset"]
+        _ensure_catalog_fresh(conn, [d for d in want
+                                     if d in ("serum", "sample", "groove")])
+        if domains is None or "device_preset" in domains:
+            _ensure_device_index(conn)
+        data = _cat_query.search_catalog(conn, query, domains=domains,
+                                         kinds=kinds, sources=sources, limit=limit)
+        if domains is None or "device_preset" in domains:
+            data["live_disconnected"] = _catalog_live_disconnected
+        return _ok(data)
+    except Exception as e:
+        logger.error("search_catalog error: %s", e)
+        return _err("search_catalog error: %s" % e)
+
+
+@mcp.tool()
+def catalog_stats(ctx: Context) -> str:
+    """Counts and freshness for the local catalog by domain/source/kind, plus
+    per-root last-indexed times. Returns {ok, data:{total, by_domain, by_source,
+    by_kind, roots, device_presets_last_indexed}}."""
+    try:
+        conn = _catalog_conn()
+        return _ok(_cat_query.catalog_stats(conn))
+    except Exception as e:
+        logger.error("catalog_stats error: %s", e)
+        return _err("catalog_stats error: %s" % e)
+
+
+@mcp.tool()
+def find_similar(ctx: Context, intent: str, domain: str, limit: int = 10) -> str:
+    """Rank catalog assets in one domain by lexical similarity to an intent
+    string, with scores. domain in serum|sample|groove|device_preset. Returns
+    {ok, data:{items:[{name, path, uri, source, folder, kind, score}]}}."""
+    try:
+        conn = _catalog_conn()
+        if domain in ("serum", "sample", "groove"):
+            _ensure_catalog_fresh(conn, [domain])
+        if domain == "device_preset":
+            _ensure_device_index(conn)
+        hits = _cat_query.find_similar(conn, intent, domain, limit=limit)
+        data = {"count": len(hits), "items": hits}
+        if domain == "device_preset":
+            data["live_disconnected"] = _catalog_live_disconnected
+        return _ok(data)
+    except Exception as e:
+        logger.error("find_similar error: %s", e)
+        return _err("find_similar error: %s" % e)
+
+
+@mcp.tool()
+def reindex_catalog(ctx: Context, domains: list = None,
+                    full: bool = False) -> str:
+    """Rebuild the catalog. domains defaults to all. full=True drops and rebuilds
+    from scratch. Device presets reindex only when Live is connected. Returns
+    {ok, data:{indexed:{domain:count}, errors:[...]}}."""
+    try:
+        conn = _catalog_conn()
+        want = domains or ["serum", "sample", "groove", "device_preset"]
+        if full:
+            _cat_db.rebuild(conn)
+            _catalog_checked.clear()
+        indexed, errors = {}, []
+        if "serum" in want:
+            indexed["serum"] = _cat_index.index_serum(conn, _serum_roots())
+        if "sample" in want:
+            indexed["sample"] = _cat_index.index_samples(
+                conn, _sample_search_roots(["factory", "user"]))
+        if "groove" in want:
+            indexed["groove"] = _cat_index.index_grooves(
+                conn, _groove_search_roots(["factory", "user"]))
+        if "device_preset" in want:
+            global _catalog_device_indexed, _catalog_live_disconnected
+            try:
+                indexed["device_preset"] = _cat_index.index_device_presets(
+                    conn, _browser_reader, ["instruments", "audio_effects"])
+                _catalog_device_indexed = True
+                _catalog_live_disconnected = False
+            except _cat_index.DeviceLiveUnavailable as e:
+                _catalog_live_disconnected = True
+                errors.append("device_preset: %s" % e)
+            except Exception as e:
+                errors.append("device_preset: %s" % e)
+        return _ok({"indexed": indexed, "errors": errors})
+    except Exception as e:
+        logger.error("reindex_catalog error: %s", e)
+        return _err("reindex_catalog error: %s" % e)
+
+
+def _user_serum_presets_dir():
+    """Where serum_clone writes new presets. Prefer ~/Music/Serum/Presets/User,
+    creating it if the Serum tree exists; else the User Library."""
+    base = os.path.expanduser("~/Music/Serum/Presets")
+    dest = os.path.join(base, "User") if os.path.isdir(base) else \
+        os.path.join(_user_library_dir(), "Serum Presets")
+    return dest
+
+
+def _serum_clone_impl(base_preset, name, fx_edits=None):
+    if not base_preset or not os.path.isfile(base_preset):
+        raise FileNotFoundError("base preset not found: %r" % base_preset)
+    out_dir = _user_serum_presets_dir()
+    os.makedirs(out_dir, exist_ok=True)
+    safe = re.sub(r'[\\/:*?"<>|]', "_", name or "Untitled").strip() or "Untitled"
+    dest = os.path.join(out_dir, safe + ".SerumPreset")
+    blob = open(base_preset, "rb").read()
+    applied = 0
+    if fx_edits:
+        catalog = _sfxcat.load_catalog()
+        state = _ssc.decode(blob)
+        tree = state.tree
+        for e in fx_edits:
+            _sfx.set_fx_param(catalog, tree, e["rack"], e["slot"],
+                              e["kparam"], e["native"])
+            applied += 1
+        blob = _ssc.encode(state, tree)
+    with open(dest, "wb") as f:
+        f.write(blob)
+    return {"written": True, "path": dest, "base": base_preset,
+            "fx_edits_applied": applied}
+
+
+@mcp.tool()
+def recommend_asset(ctx: Context, intent: str, domain: str) -> str:
+    """Propose reuse-vs-create for a described asset. domain in
+    serum|sample|groove|device_preset|wavetable|simpler. Returns {ok, data:
+    {decision, top_matches, create_plan, reason}}. PROPOSE ONLY - never writes;
+    pass create_plan to create_from_plan(confirm=True) to act on a 'create'."""
+    try:
+        conn = _catalog_conn()
+        qd = domain if domain in ("serum", "sample", "groove",
+                                  "device_preset") else "device_preset"
+        if qd in ("serum", "sample", "groove"):
+            _ensure_catalog_fresh(conn, [qd])
+        if qd == "device_preset":
+            _ensure_device_index(conn)
+        result = _cat_decide.recommend(conn, intent, domain)
+        if qd == "device_preset":
+            result["live_disconnected"] = _catalog_live_disconnected
+        return _ok(result)
+    except Exception as e:
+        logger.error("recommend_asset error: %s", e)
+        return _err("recommend_asset error: %s" % e)
+
+
+@mcp.tool()
+def create_from_plan(ctx: Context, plan: dict, confirm: bool = False) -> str:
+    """Execute a create_plan from recommend_asset. confirm=False (default)
+    returns a dry-run describing what would be created and writes nothing.
+    confirm=True invokes the matching creator (Wavetable, Simpler, or a Serum
+    base-preset clone). Returns {ok, data:{...}}."""
+    try:
+        dispatch = _cat_decide.resolve_dispatch(plan)
+    except ValueError as e:
+        return _err("invalid plan: %s" % e)
+    creator, kwargs = dispatch["creator"], dispatch["kwargs"]
+    if not confirm:
+        return _ok({"dry_run": True, "would_call": creator, "kwargs": kwargs})
+    try:
+        if creator == "create_wavetable_preset":
+            return create_wavetable_preset(ctx, **kwargs)
+        if creator == "create_simpler_instrument":
+            return create_simpler_instrument(ctx, **kwargs)
+        if creator == "serum_clone":
+            res = _serum_clone_impl(kwargs.get("base_preset"),
+                                    kwargs.get("name"),
+                                    fx_edits=kwargs.get("fx_edits"))
+            return _ok(res)
+        return _err("unhandled creator: %s" % creator)
+    except Exception as e:
+        logger.error("create_from_plan error: %s", e)
+        return _err("create_from_plan error: %s" % e)
 
 
 # Main execution

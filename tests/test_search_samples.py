@@ -1,7 +1,20 @@
 # tests/test_search_samples.py
 import json
 import os
+import pytest
 import ableton_mcp_max.server as server
+
+
+@pytest.fixture(autouse=True)
+def _isolate_catalog(tmp_path, monkeypatch):
+    # Each test gets its own empty catalog DB so the catalog-backed
+    # search_samples indexes only the monkeypatched root, not the real
+    # ~/.ableton-mcp/catalog.db.
+    monkeypatch.setenv("ABLETON_MCP_CATALOG_DB", str(tmp_path / "catalog.db"))
+    server._catalog_db_conn = None
+    server._catalog_checked = {}
+    yield
+    server._catalog_db_conn = None
 
 
 def _make_tree(root):
