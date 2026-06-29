@@ -133,6 +133,10 @@ GROUPS = [
         "populate_drum_rack",
         "separate_stems_to_arrangement",
     ]),
+    ("Catalog", [
+        "search_catalog", "find_similar", "catalog_stats", "reindex_catalog",
+        "recommend_asset", "create_from_plan",
+    ]),
 ]
 
 PREAMBLE = """# Ableton MCP tool index

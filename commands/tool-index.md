@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_155 tools._
+_161 tools._
 
 ## Session & view
 
@@ -249,3 +249,12 @@ _155 tools._
 - **`load_sample_to_drum_pad`** - Load a one-shot sample onto a single Drum Rack pad.
 - **`populate_drum_rack`** - Load many one-shot samples onto many Drum Rack pads in one call.
 - **`separate_stems_to_arrangement`** - Split an audio file into stems and lay each onto its own Arrangement track.
+
+## Catalog
+
+- **`search_catalog`** - Search the local content catalog (Serum presets, samples, grooves, device
+- **`find_similar`** - Rank catalog assets in one domain by lexical similarity to an intent
+- **`catalog_stats`** - Counts and freshness for the local catalog by domain/source/kind, plus
+- **`reindex_catalog`** - Rebuild the catalog. domains defaults to all. full=True drops and rebuilds
+- **`recommend_asset`** - Propose reuse-vs-create for a described asset. domain in
+- **`create_from_plan`** - Execute a create_plan from recommend_asset. confirm=False (default)
