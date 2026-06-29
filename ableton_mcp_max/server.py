@@ -7798,6 +7798,86 @@ def reindex_catalog(ctx: Context, domains: list = None,
         return _err("reindex_catalog error: %s" % e)
 
 
+def _user_serum_presets_dir():
+    """Where serum_clone writes new presets. Prefer ~/Music/Serum/Presets/User,
+    creating it if the Serum tree exists; else the User Library."""
+    base = os.path.expanduser("~/Music/Serum/Presets")
+    dest = os.path.join(base, "User") if os.path.isdir(base) else \
+        os.path.join(_user_library_dir(), "Serum Presets")
+    return dest
+
+
+def _serum_clone_impl(base_preset, name, fx_edits=None):
+    if not base_preset or not os.path.isfile(base_preset):
+        raise FileNotFoundError("base preset not found: %r" % base_preset)
+    out_dir = _user_serum_presets_dir()
+    os.makedirs(out_dir, exist_ok=True)
+    safe = re.sub(r'[\\/:*?"<>|]', "_", name or "Untitled").strip() or "Untitled"
+    dest = os.path.join(out_dir, safe + ".SerumPreset")
+    blob = open(base_preset, "rb").read()
+    applied = 0
+    if fx_edits:
+        catalog = _sfxcat.load_catalog()
+        state = _ssc.decode(blob)
+        tree = state.tree
+        for e in fx_edits:
+            _sfx.set_fx_param(catalog, tree, e["rack"], e["slot"],
+                              e["kparam"], e["native"])
+            applied += 1
+        blob = _ssc.encode(state, tree)
+    with open(dest, "wb") as f:
+        f.write(blob)
+    return {"written": True, "path": dest, "base": base_preset,
+            "fx_edits_applied": applied}
+
+
+@mcp.tool()
+def recommend_asset(ctx: Context, intent: str, domain: str) -> str:
+    """Propose reuse-vs-create for a described asset. domain in
+    serum|sample|groove|device_preset|wavetable|simpler. Returns {ok, data:
+    {decision, top_matches, create_plan, reason}}. PROPOSE ONLY - never writes;
+    pass create_plan to create_from_plan(confirm=True) to act on a 'create'."""
+    try:
+        conn = _catalog_conn()
+        qd = domain if domain in ("serum", "sample", "groove",
+                                  "device_preset") else "device_preset"
+        if qd in ("serum", "sample", "groove"):
+            _ensure_catalog_fresh(conn, [qd])
+        return _ok(_cat_decide.recommend(conn, intent, domain))
+    except Exception as e:
+        logger.error("recommend_asset error: %s", e)
+        return _err("recommend_asset error: %s" % e)
+
+
+@mcp.tool()
+def create_from_plan(ctx: Context, plan: dict, confirm: bool = False) -> str:
+    """Execute a create_plan from recommend_asset. confirm=False (default)
+    returns a dry-run describing what would be created and writes nothing.
+    confirm=True invokes the matching creator (Wavetable, Simpler, or a Serum
+    base-preset clone). Returns {ok, data:{...}}."""
+    try:
+        dispatch = _cat_decide.resolve_dispatch(plan)
+    except ValueError as e:
+        return _err("invalid plan: %s" % e)
+    creator, kwargs = dispatch["creator"], dispatch["kwargs"]
+    if not confirm:
+        return _ok({"dry_run": True, "would_call": creator, "kwargs": kwargs})
+    try:
+        if creator == "create_wavetable_preset":
+            return create_wavetable_preset(ctx, **kwargs)
+        if creator == "create_simpler_instrument":
+            return create_simpler_instrument(ctx, **kwargs)
+        if creator == "serum_clone":
+            res = _serum_clone_impl(kwargs.get("base_preset"),
+                                    kwargs.get("name"),
+                                    fx_edits=kwargs.get("fx_edits"))
+            return _ok(res)
+        return _err("unhandled creator: %s" % creator)
+    except Exception as e:
+        logger.error("create_from_plan error: %s", e)
+        return _err("create_from_plan error: %s" % e)
+
+
 # Main execution
 def main():
     """Run the MCP server"""
