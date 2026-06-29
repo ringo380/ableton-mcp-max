@@ -1,15 +1,19 @@
 # ableton-mcp-max — Progress
 
-## Local catalog - SHIPPING v0.26.0 (2026-06-28)
-Persistent local index of Serum presets, samples, grooves, and device presets with similarity
+## Local catalog - SHIPPED v0.26.0 (2026-06-29)
+Persistent local index of Serum presets, samples, grooves, and device presets with lexical
 search and reuse-vs-create recommendation. 6 new tools (155 -> **161**, new "Catalog" category = 22 total):
 `search_catalog`, `find_similar`, `catalog_stats`, `reindex_catalog`, `recommend_asset`,
-`create_from_plan`. Branch `feat/local-catalog` (SDD-executed). SQLite-backed catalog DB
-(`catalog_db.py`), SHA-1 fingerprint indexers for all 4 domains, TF-IDF + cosine similarity
-query engine (`catalog_query.py`), decide layer (`catalog_decide.py`), server tools + delegated
-`search_samples`/`search_grooves` backed by catalog. 942+ offline tests pass.
+`create_from_plan`. SQLite-backed catalog DB (`catalog_db.py`, stdlib sqlite3 + FTS5, no new dep),
+directory-mtime fingerprint indexers for all 4 domains, FTS5-narrowed token-overlap query engine
+(`catalog_query.py`), decide layer (`catalog_decide.py`), server tools + delegated
+`search_samples`/`search_grooves` backed by catalog. 974 offline tests pass.
 
-**Next action: live verification then ship v0.26.0.**
+PR #47 squash-merged @6de75a3; tag v0.26.0 = main = origin; release published; marketplace `ableton`
+ref bumped v0.25.0 -> v0.26.0 @13f737b. Live-verified (Live 12: full reindex serum 791 / sample 4627 /
+groove 219 / device_preset 3539, all 6 tools pass).
+
+**Next action: nothing functional queued.**
 
 ## Serum 2 FX control (Release 2) - SHIPPING v0.25.0 (2026-06-28)
 Author Serum 2's FX racks by patching the plugin-state blob in the live `.als` and reloading in place
