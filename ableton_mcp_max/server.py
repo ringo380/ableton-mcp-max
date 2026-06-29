@@ -4637,7 +4637,6 @@ def _groove_search_roots(sources):
 
 def _search_grooves_live(query, limit, sources):
     """Live filesystem walk fallback for search_grooves."""
-    sources = sources or ["factory", "user"]
     roots = _groove_search_roots(sources)
     rows = groovep.list_grooves(roots, query=query, limit=limit)
     return _ok({"count": len(rows), "returned": len(rows), "items": rows})
