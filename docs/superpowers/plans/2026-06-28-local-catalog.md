@@ -1066,7 +1066,6 @@ Serum intent, `create_plan.base_preset` is `None`. `resolve_dispatch` then raise
 `serum_clone requires base_preset`, which `create_from_plan` surfaces as a clear
 error (in both dry-run and confirm) telling the caller to pick a base via
 `search_catalog` and fill `base_preset` in. This is intended v1 behavior, not a bug.
-```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
