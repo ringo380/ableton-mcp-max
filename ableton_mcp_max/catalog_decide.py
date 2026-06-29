@@ -88,7 +88,7 @@ def resolve_dispatch(plan):
     if tool not in _VALID_CREATORS:
         raise ValueError("unknown create tool: %r (valid: %s)"
                          % (tool, ", ".join(sorted(_VALID_CREATORS))))
-    params = plan.get("params") or {}
+    params = plan.get("params", {})
     if not isinstance(params, dict):
         raise ValueError("plan.params must be an object")
     out = {"creator": tool, "kwargs": dict(params)}

@@ -42,3 +42,35 @@ def test_resolve_dispatch():
     assert d["kwargs"]["name"] == "X"
     with pytest.raises(ValueError):
         catalog_decide.resolve_dispatch({"tool": "nope", "params": {}})
+
+
+def test_resolve_dispatch_serum_clone_with_base_and_fx_edits():
+    plan = {"tool": "serum_clone", "params": {"name": "Clone"},
+            "base_preset": "/s/Base.SerumPreset",
+            "fx_edits": [{"rack": 0, "slot": 0, "kparam": "kParamWet",
+                          "native": 30.0}]}
+    d = catalog_decide.resolve_dispatch(plan)
+    assert d["creator"] == "serum_clone"
+    assert d["kwargs"]["base_preset"] == "/s/Base.SerumPreset"
+    assert d["kwargs"]["name"] == "Clone"
+    assert d["kwargs"]["fx_edits"] == plan["fx_edits"]
+
+
+def test_resolve_dispatch_serum_clone_requires_base():
+    with pytest.raises(ValueError):
+        catalog_decide.resolve_dispatch(
+            {"tool": "serum_clone", "params": {"name": "X"}})
+
+
+def test_resolve_dispatch_rejects_none_params():
+    with pytest.raises(ValueError):
+        catalog_decide.resolve_dispatch(
+            {"tool": "create_wavetable_preset", "params": None})
+
+
+def test_recommend_create_wavetable_when_no_match(tmp_path):
+    conn = catalog_db.open_db(str(tmp_path / "c.db"))
+    r = catalog_decide.recommend(conn, "totally novel pad xyzzy", "wavetable")
+    assert r["decision"] == "create"
+    assert r["create_plan"]["tool"] == "create_wavetable_preset"
+    assert r["create_plan"]["params"]["table1"] == "Basics"
