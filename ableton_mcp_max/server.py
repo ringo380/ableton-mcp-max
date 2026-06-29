@@ -149,6 +149,7 @@ from ableton_mcp_max import catalog_db as _cat_db
 from ableton_mcp_max import catalog_index as _cat_index
 from ableton_mcp_max import catalog_query as _cat_query
 from ableton_mcp_max import catalog_decide as _cat_decide
+from ableton_mcp_max import catalog_adapt
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -4634,6 +4635,14 @@ def _groove_search_roots(sources):
     return roots
 
 
+def _search_grooves_live(query, limit, sources):
+    """Live filesystem walk fallback for search_grooves."""
+    sources = sources or ["factory", "user"]
+    roots = _groove_search_roots(sources)
+    rows = groovep.list_grooves(roots, query=query, limit=limit)
+    return _ok({"count": len(rows), "returned": len(rows), "items": rows})
+
+
 @mcp.tool()
 def search_grooves(ctx: Context, query: str = "", limit: int = 50,
                    sources: list = None) -> str:
@@ -4654,14 +4663,23 @@ def search_grooves(ctx: Context, query: str = "", limit: int = 50,
     grooves stored in a binary .agr format that `load_groove_to_pool` cannot
     add (drag those in by hand); True grooves load fine.
     """
+    sources = sources or ["factory", "user"]
     try:
-        sources = sources or ["factory", "user"]
-        roots = _groove_search_roots(sources)
-        rows = groovep.list_grooves(roots, query=query, limit=limit)
-        return _ok({"count": len(rows), "returned": len(rows), "items": rows})
+        conn = _catalog_conn()
+        _ensure_catalog_fresh(conn, ["groove"])
+        res = _cat_query.search_catalog(conn, query, domains=["groove"],
+                                        sources=sources, limit=limit)
+        if res["count"] > 0:
+            items = catalog_adapt.rows_to_groove_items(res["items"])
+            return _ok({"count": res["count"], "returned": len(items),
+                        "truncated": res["truncated"], "items": items})
     except Exception as e:
-        logger.error(f"Error searching grooves: {str(e)}")
-        return _err(f"Error searching grooves: {str(e)}")
+        logger.error("search_grooves catalog path failed, falling back: %s", e)
+    try:
+        return _search_grooves_live(query, limit, sources)
+    except Exception as e:
+        logger.error("Error searching grooves: %s", e)
+        return _err("Error searching grooves: %s" % e)
 
 
 def _factory_clip_wrapper():
@@ -6026,6 +6044,57 @@ def _sample_search_roots(sources):
     return roots
 
 
+def _search_samples_live(query, kinds, limit, sources):
+    """Live filesystem walk fallback for search_samples."""
+    kind_set = set(kinds)
+    hits = []
+    for root, source in _sample_search_roots(sources):
+        for dirpath, _dirs, filenames in os.walk(root):
+            for fn in filenames:
+                # iCloud stubs are hidden ".<name>.icloud" files; recover the
+                # real sample name + path from the stub so placeholders surface.
+                is_stub = fn.startswith(".") and fn.endswith(".icloud")
+                if is_stub:
+                    real_name = fn[1:-len(".icloud")]
+                else:
+                    real_name = fn
+                ext = os.path.splitext(real_name)[1].lower()
+                if ext not in _SAMPLE_EXTS:
+                    continue
+                real_path = os.path.join(dirpath, real_name)
+                rel_folder = os.path.relpath(dirpath, root)
+                matched, score = name_match(query, real_name, rel_folder)
+                if not matched:
+                    continue
+                kind = classify_sample(real_name, os.path.join(rel_folder, real_name))
+                if kind not in kind_set:
+                    continue
+                hits.append({
+                    "name": real_name,
+                    "path": real_path,
+                    "uri": None,
+                    "kind": kind,
+                    "source": source,
+                    "folder": rel_folder,
+                    "is_icloud_placeholder": icloud_placeholder_path(real_path) is not None,
+                    "_score": score,
+                })
+
+    hits.sort(key=lambda h: h["_score"], reverse=True)
+    total = len(hits)
+    shown = hits[:limit] if limit and limit > 0 else hits
+    for h in shown:
+        h.pop("_score", None)
+    for h in hits[len(shown):]:
+        h.pop("_score", None)
+    return _ok({
+        "count": total,
+        "returned": len(shown),
+        "truncated": len(shown) < total,
+        "items": shown,
+    })
+
+
 @mcp.tool()
 def search_samples(
     ctx: Context,
@@ -6055,57 +6124,21 @@ def search_samples(
     matches; `items` holds at most `limit`, highest score first. `uri` is None
     (loaders take `sample_path`, not a browser URI).
     """
+    kinds = kinds or ["loop", "one_shot", "kit", "instrument"]
+    sources = sources or ["factory", "user"]
     try:
-        kinds = kinds or ["loop", "one_shot", "kit", "instrument"]
-        sources = sources or ["factory", "user"]
-        kind_set = set(kinds)
-
-        hits = []
-        for root, source in _sample_search_roots(sources):
-            for dirpath, _dirs, filenames in os.walk(root):
-                for fn in filenames:
-                    # iCloud stubs are hidden ".<name>.icloud" files; recover the
-                    # real sample name + path from the stub so placeholders surface.
-                    is_stub = fn.startswith(".") and fn.endswith(".icloud")
-                    if is_stub:
-                        real_name = fn[1:-len(".icloud")]
-                    else:
-                        real_name = fn
-                    ext = os.path.splitext(real_name)[1].lower()
-                    if ext not in _SAMPLE_EXTS:
-                        continue
-                    real_path = os.path.join(dirpath, real_name)
-                    rel_folder = os.path.relpath(dirpath, root)
-                    matched, score = name_match(query, real_name, rel_folder)
-                    if not matched:
-                        continue
-                    kind = classify_sample(real_name, os.path.join(rel_folder, real_name))
-                    if kind not in kind_set:
-                        continue
-                    hits.append({
-                        "name": real_name,
-                        "path": real_path,
-                        "uri": None,
-                        "kind": kind,
-                        "source": source,
-                        "folder": rel_folder,
-                        "is_icloud_placeholder": icloud_placeholder_path(real_path) is not None,
-                        "_score": score,
-                    })
-
-        hits.sort(key=lambda h: h["_score"], reverse=True)
-        total = len(hits)
-        shown = hits[:limit] if limit and limit > 0 else hits
-        for h in shown:
-            h.pop("_score", None)
-        for h in hits[len(shown):]:
-            h.pop("_score", None)
-        return _ok({
-            "count": total,
-            "returned": len(shown),
-            "truncated": len(shown) < total,
-            "items": shown,
-        })
+        conn = _catalog_conn()
+        _ensure_catalog_fresh(conn, ["sample"])
+        res = _cat_query.search_catalog(conn, query, domains=["sample"],
+                                        kinds=kinds, sources=sources, limit=limit)
+        if res["count"] > 0:
+            items = catalog_adapt.rows_to_sample_items(res["items"])
+            return _ok({"count": res["count"], "returned": len(items),
+                        "truncated": res["truncated"], "items": items})
+    except Exception as e:
+        logger.error("search_samples catalog path failed, falling back: %s", e)
+    try:
+        return _search_samples_live(query, kinds, limit, sources)
     except Exception as e:
         logger.error("Error searching samples: %s", e)
         return _err("Error searching samples: %s" % e)
