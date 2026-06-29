@@ -145,6 +145,10 @@ from ableton_mcp_max import param_map_utils as pmu
 from ableton_mcp_max import serum_state_codec as _ssc
 from ableton_mcp_max import serum_fx_utils as _sfx
 from ableton_mcp_max import serum_fx_catalog as _sfxcat
+from ableton_mcp_max import catalog_db as _cat_db
+from ableton_mcp_max import catalog_index as _cat_index
+from ableton_mcp_max import catalog_query as _cat_query
+from ableton_mcp_max import catalog_decide as _cat_decide
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -7648,6 +7652,150 @@ def detect_key(ctx: Context, source: str = "auto",
     except Exception as e:
         logger.error("Error detecting key: %s", e)
         return _err("Error detecting key: %s" % e)
+
+
+# --- Local catalog -------------------------------------------------------
+_catalog_db_conn = None
+_catalog_checked = {}
+_CATALOG_THROTTLE_S = 60
+_SERUM_FACTORY = "/Library/Audio/Presets/Xfer Records/Serum 2 Presets/Presets"
+
+
+def _catalog_conn():
+    global _catalog_db_conn
+    if _catalog_db_conn is None:
+        _catalog_db_conn = _cat_db.open_db()
+    return _catalog_db_conn
+
+
+def _serum_roots():
+    roots = []
+    if os.path.isdir(_SERUM_FACTORY):
+        roots.append((_SERUM_FACTORY, "factory"))
+    user = os.path.expanduser("~/Music/Serum/Presets")
+    if os.path.isdir(user):
+        roots.append((user, "user"))
+    return roots
+
+
+def _browser_reader(path):
+    return get_ableton_connection().send_command(
+        "get_browser_presets", {"path": path, "max_depth": 6})
+
+
+def _ensure_catalog_fresh(conn, domains):
+    """Reindex any changed roots for the given domains, honoring a per-root
+    in-process throttle. Never raises - freshness is best-effort."""
+    now = time.time()
+    try:
+        if "serum" in domains:
+            for root, src in _serum_roots():
+                key = ("serum", root, src)
+                if now - _catalog_checked.get(key, 0) < _CATALOG_THROTTLE_S:
+                    continue
+                _catalog_checked[key] = now
+                if _cat_index.root_changed(conn, root, "serum", src):
+                    _cat_index.index_serum(conn, [(root, src)])
+        if "sample" in domains:
+            for root, src in _sample_search_roots(["factory", "user"]):
+                key = ("sample", root, src)
+                if now - _catalog_checked.get(key, 0) < _CATALOG_THROTTLE_S:
+                    continue
+                _catalog_checked[key] = now
+                if _cat_index.root_changed(conn, root, "sample", src):
+                    _cat_index.index_samples(conn, [(root, src)])
+        if "groove" in domains:
+            for root, src in _groove_search_roots(["factory", "user"]):
+                key = ("groove", root, src)
+                if now - _catalog_checked.get(key, 0) < _CATALOG_THROTTLE_S:
+                    continue
+                _catalog_checked[key] = now
+                if _cat_index.root_changed(conn, root, "groove", src):
+                    _cat_index.index_grooves(conn, [(root, src)])
+    except Exception as e:
+        logger.error("catalog freshness check failed: %s", e)
+
+
+@mcp.tool()
+def search_catalog(ctx: Context, query: str, domains: list = None,
+                   kinds: list = None, sources: list = None,
+                   limit: int = 50) -> str:
+    """Search the local content catalog (Serum presets, samples, grooves, device
+    presets) by name/folder/tags. Fast persistent index; auto-refreshes changed
+    filesystem roots. Returns {ok, data:{count, returned, truncated, items}}."""
+    try:
+        conn = _catalog_conn()
+        want = domains or ["serum", "sample", "groove", "device_preset"]
+        _ensure_catalog_fresh(conn, [d for d in want
+                                     if d in ("serum", "sample", "groove")])
+        data = _cat_query.search_catalog(conn, query, domains=domains,
+                                         kinds=kinds, sources=sources, limit=limit)
+        return _ok(data)
+    except Exception as e:
+        logger.error("search_catalog error: %s", e)
+        return _err("search_catalog error: %s" % e)
+
+
+@mcp.tool()
+def catalog_stats(ctx: Context) -> str:
+    """Counts and freshness for the local catalog by domain/source/kind, plus
+    per-root last-indexed times. Returns {ok, data:{total, by_domain, by_source,
+    by_kind, roots, device_presets_last_indexed}}."""
+    try:
+        conn = _catalog_conn()
+        return _ok(_cat_query.catalog_stats(conn))
+    except Exception as e:
+        logger.error("catalog_stats error: %s", e)
+        return _err("catalog_stats error: %s" % e)
+
+
+@mcp.tool()
+def find_similar(ctx: Context, intent: str, domain: str, limit: int = 10) -> str:
+    """Rank catalog assets in one domain by lexical similarity to an intent
+    string, with scores. domain in serum|sample|groove|device_preset. Returns
+    {ok, data:{items:[{name, path, uri, source, folder, kind, score}]}}."""
+    try:
+        conn = _catalog_conn()
+        if domain in ("serum", "sample", "groove"):
+            _ensure_catalog_fresh(conn, [domain])
+        hits = _cat_query.find_similar(conn, intent, domain, limit=limit)
+        return _ok({"count": len(hits), "items": hits})
+    except Exception as e:
+        logger.error("find_similar error: %s", e)
+        return _err("find_similar error: %s" % e)
+
+
+@mcp.tool()
+def reindex_catalog(ctx: Context, domains: list = None,
+                    full: bool = False) -> str:
+    """Rebuild the catalog. domains defaults to all. full=True drops and rebuilds
+    from scratch. Device presets reindex only when Live is connected. Returns
+    {ok, data:{indexed:{domain:count}, errors:[...]}}."""
+    try:
+        conn = _catalog_conn()
+        want = domains or ["serum", "sample", "groove", "device_preset"]
+        if full:
+            _cat_db.rebuild(conn)
+            _catalog_checked.clear()
+        indexed, errors = {}, []
+        if "serum" in want:
+            indexed["serum"] = _cat_index.index_serum(conn, _serum_roots())
+        if "sample" in want:
+            indexed["sample"] = _cat_index.index_samples(
+                conn, _sample_search_roots(["factory", "user"]))
+        if "groove" in want:
+            indexed["groove"] = _cat_index.index_grooves(
+                conn, _groove_search_roots(["factory", "user"]))
+        if "device_preset" in want:
+            try:
+                indexed["device_preset"] = _cat_index.index_device_presets(
+                    conn, _browser_reader, ["instruments", "audio_effects"])
+            except Exception as e:
+                errors.append("device_preset: %s (Live connected?)" % e)
+        return _ok({"indexed": indexed, "errors": errors})
+    except Exception as e:
+        logger.error("reindex_catalog error: %s", e)
+        return _err("reindex_catalog error: %s" % e)
 
 
 # Main execution
