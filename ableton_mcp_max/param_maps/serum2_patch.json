@@ -1,0 +1,776 @@
+{
+ "mod_dest_params": {
+  "Arp": {
+   "kParamChance": 7,
+   "kParamGate": 6,
+   "kParamRate": 1,
+   "kParamTransposeRange": 3,
+   "kParamVeloTarget": 10,
+   "kParamWrapPhantomNote": 14
+  },
+  "Env": {
+   "kParamAttack": 0,
+   "kParamCurve1": 5,
+   "kParamCurve2": 6,
+   "kParamCurve3": 7,
+   "kParamDecay": 2,
+   "kParamHold": 1,
+   "kParamRelease": 4,
+   "kParamSustain": 3
+  },
+  "FXBode": {
+   "kParamBlur": 12,
+   "kParamDelayTime": 6,
+   "kParamFeedback": 7,
+   "kParamLevelOut": 5,
+   "kParamOutputMix": 10,
+   "kParamOutputWidth": 11,
+   "kParamRange": 4,
+   "kParamShift": 3,
+   "kParamWet": 1
+  },
+  "FXChorus": {
+   "kParamDelay": 4,
+   "kParamDelay2": 5,
+   "kParamDepth": 6,
+   "kParamFeedback": 7,
+   "kParamFilt": 8,
+   "kParamLevelOut": 9,
+   "kParamRate": 3,
+   "kParamWet": 1
+  },
+  "FXComp": {
+   "kParamAttack": 4,
+   "kParamGain0": 14,
+   "kParamGain1": 15,
+   "kParamGain2": 16,
+   "kParamLevelOut": 11,
+   "kParamMakeup": 6,
+   "kParamRatio": 3,
+   "kParamRatio2": 20,
+   "kParamRatioBelow": 17,
+   "kParamRatioBelow1": 22,
+   "kParamRatioBelow2": 23,
+   "kParamRelease": 5,
+   "kParamThresh": 2,
+   "kParamThreshUD2": 10,
+   "kParamWet": 1,
+   "kParamXoverHi": 13
+  },
+  "FXConv": {
+   "kParamDecay": 6,
+   "kParamIpTrim": 7,
+   "kParamLevelOut": 3,
+   "kParamPredelay": 9,
+   "kParamSize": 4,
+   "kParamTone": 8,
+   "kParamWet": 1
+  },
+  "FXDelay": {
+   "kParamBW": 3,
+   "kParamFeedback": 9,
+   "kParamFreq": 2,
+   "kParamLevelOut": 12,
+   "kParamLink": 5,
+   "kParamOffsetL": 10,
+   "kParamOffsetR": 11,
+   "kParamTimeL": 6,
+   "kParamTimeR": 7,
+   "kParamWet": 1
+  },
+  "FXDistortion": {
+   "kParamBW": 6,
+   "kParamDrive": 2,
+   "kParamFreq": 5,
+   "kParamLPHP": 3,
+   "kParamLevelOut": 8,
+   "kParamNumStages": 9,
+   "kParamWet": 1
+  },
+  "FXEQ": {
+   "kParamFreq1": 1,
+   "kParamFreq2": 2,
+   "kParamGain1": 5,
+   "kParamGain2": 6,
+   "kParamLevelOut": 9,
+   "kParamReso1": 3,
+   "kParamReso2": 4
+  },
+  "FXFilter": {
+   "kParamDrive": 5,
+   "kParamFreq": 3,
+   "kParamLevelOut": 8,
+   "kParamReso": 4,
+   "kParamStereo": 7,
+   "kParamVar": 6,
+   "kParamWet": 1,
+   "kParamX": 9,
+   "kParamY": 10
+  },
+  "FXFlanger": {
+   "kParamDepth": 4,
+   "kParamFeedback": 5,
+   "kParamLevelOut": 7,
+   "kParamRate": 3,
+   "kParamWet": 1,
+   "kParamWidth": 6
+  },
+  "FXHyperD": {
+   "kParamDetune": 3,
+   "kParamDimESize": 7,
+   "kParamDimEWet": 8,
+   "kParamLevelOut": 6,
+   "kParamRate": 2,
+   "kParamWet": 1
+  },
+  "FXPhaser": {
+   "kParamDepth": 4,
+   "kParamDepth2": 5,
+   "kParamFeedback": 7,
+   "kParamFreq": 6,
+   "kParamLevelOut": 9,
+   "kParamRate": 3,
+   "kParamWet": 1
+  },
+  "FXReverb": {
+   "kParamDelay": 3,
+   "kParamFeedback": 5,
+   "kParamFreq": 4,
+   "kParamFreqB": 6,
+   "kParamLevelOut": 10,
+   "kParamSize": 2,
+   "kParamVintageScale": 11,
+   "kParamWet": 1,
+   "kParamWidth": 7
+  },
+  "FXSplit": {
+   "kParamFreq": 1
+  },
+  "FXSplit3": {
+   "kParamFreq": 1,
+   "kParamFreq2": 2
+  },
+  "FXUtils": {
+   "kParamBalance": 4,
+   "kParamHPF": 7,
+   "kParamLFXover": 6,
+   "kParamLPF": 8,
+   "kParamLevelOut": 2,
+   "kParamWet": 1,
+   "kParamWidth": 3
+  },
+  "Global": {
+   "kParamMasterTuning": 1,
+   "kParamPortamentoTime": 3,
+   "kParamSwing": 14,
+   "kParamTranspose": 16,
+   "kParamVoiceAmp": 2
+  },
+  "GranularOsc": {
+   "kParamDensity": 6,
+   "kParamDensityMode": 23,
+   "kParamGrainLength": 7,
+   "kParamRandomDir": 13,
+   "kParamRandomGain": 17,
+   "kParamRandomGrainLength": 15,
+   "kParamRandomOffset": 12,
+   "kParamRandomPan": 16,
+   "kParamRandomPitch": 14,
+   "kParamRandomWarp": 20,
+   "kParamWarp": 0,
+   "kParamWarp2": 3,
+   "kParamWindowParam": 9
+  },
+  "LFO": {
+   "kParamDelay": 3,
+   "kParamPhase": 4,
+   "kParamRate": 0,
+   "kParamRise": 2,
+   "kParamSmooth": 1
+  },
+  "LFOPointModBus": {
+   "kParamValue": 0
+  },
+  "Macro": {
+   "kParamValue": 0
+  },
+  "MidiClip": {
+   "kParamRate": 8
+  },
+  "ModSlot": {
+   "kParamSmoothFall": 12
+  },
+  "MultiSampleOsc": {
+   "kParamEnvDecay": 12,
+   "kParamEnvRelease": 14,
+   "kParamEnvSustain": 13,
+   "kParamTimbreShift": 6,
+   "kParamWarp": 0,
+   "kParamWarp2": 3
+  },
+  "NoiseOsc": {
+   "kParamColor": 0,
+   "kParamFine": 1,
+   "kParamInitialPhase": 2,
+   "kParamRandomPhase": 3
+  },
+  "Oscillator": {
+   "kParamCoarsePit": 6,
+   "kParamDetune": 26,
+   "kParamDetuneWid": 27,
+   "kParamFine": 5,
+   "kParamHzOffset": 8,
+   "kParamLoopEnd": 18,
+   "kParamOctave": 3,
+   "kParamPan": 2,
+   "kParamPitch": 4,
+   "kParamPitchRatio": 7,
+   "kParamPosition": 16,
+   "kParamScanRate": 13,
+   "kParamStart": 10,
+   "kParamUnisonStereo": 28,
+   "kParamUnisonWarp": 31,
+   "kParamVolume": 1
+  },
+  "RetriggerState": {
+   "kParamEnv2": 7,
+   "kParamEnv4": 9,
+   "kParamLFO1": 10,
+   "kParamLFO3": 12,
+   "kParamNoise": 5,
+   "kParamOscB": 2,
+   "kParamOscC": 3
+  },
+  "RoutingSlot": {
+   "kParamFXBus1Level": 1,
+   "kParamFXBus2Level": 2,
+   "kParamFilterBalance": 0
+  },
+  "SampleOsc": {
+   "kParamWarp": 0,
+   "kParamWarp2": 3
+  },
+  "SpectralOsc": {
+   "kParamFreqHi": 9,
+   "kParamFreqLo": 8,
+   "kParamSpecFltShift": 6,
+   "kParamSpecFltWetDry": 7,
+   "kParamWarp": 0,
+   "kParamWarp2": 3
+  },
+  "VoiceFilter": {
+   "kParamDrive": 5,
+   "kParamFreq": 3,
+   "kParamLevelOut": 8,
+   "kParamReso": 4,
+   "kParamStereo": 7,
+   "kParamVar": 6,
+   "kParamWet": 1,
+   "kParamX": 9,
+   "kParamY": 10
+  },
+  "VoicePanel": {
+   "kParamGlobalScalingEnvTime": 58,
+   "kParamGlobalScalingLfoTime": 59
+  },
+  "WTOsc": {
+   "kParamInitialPhase": 8,
+   "kParamRandomPhase": 9,
+   "kParamTablePos": 6,
+   "kParamUnisonWTPos": 7,
+   "kParamWarp": 0,
+   "kParamWarp2": 3,
+   "kParamWarpVar": 1,
+   "kParamWarpVar2": 4
+  }
+ },
+ "mod_dest_types": {
+  "envelope": "Env",
+  "filter": "VoiceFilter",
+  "global": "Global",
+  "lfo": "LFO",
+  "macro": "Macro",
+  "oscillator": "Oscillator",
+  "wt": "WTOsc"
+ },
+ "mod_sources": {},
+ "modules": {
+  "envelope": {
+   "count": 4,
+   "node": "Env{n}",
+   "params": {
+    "Attack": {
+     "kparam": "kParamAttack",
+     "native_max": 9.460776062685134,
+     "native_min": 0.0
+    },
+    "BeatSync": {
+     "kparam": "kParamBeatSync",
+     "native_max": 1.0,
+     "native_min": 1.0
+    },
+    "Curve1": {
+     "kparam": "kParamCurve1",
+     "native_max": 93.84421110153198,
+     "native_min": 5.882352963089943
+    },
+    "Curve2": {
+     "kparam": "kParamCurve2",
+     "native_max": 100.0,
+     "native_min": 0.0
+    },
+    "Curve3": {
+     "kparam": "kParamCurve3",
+     "native_max": 100.0,
+     "native_min": 1.999955756559757e-10
+    },
+    "Decay": {
+     "kparam": "kParamDecay",
+     "native_max": 32.0,
+     "native_min": 0.0
+    },
+    "End": {
+     "kparam": "kParamEnd",
+     "native_max": 1.0,
+     "native_min": 0.006002962589263916
+    },
+    "Hold": {
+     "kparam": "kParamHold",
+     "native_max": 29.87669244864954,
+     "native_min": 8.440650814966269e-12
+    },
+    "LegatoInverted": {
+     "kparam": "kParamLegatoInverted",
+     "native_max": 1.0,
+     "native_min": 1.0
+    },
+    "Release": {
+     "kparam": "kParamRelease",
+     "native_max": 32.0,
+     "native_min": 0.0
+    },
+    "Start": {
+     "kparam": "kParamStart",
+     "native_max": 1.0,
+     "native_min": 0.08088237047195435
+    },
+    "Sustain": {
+     "kparam": "kParamSustain",
+     "native_max": 0.9976643919944763,
+     "native_min": 0.0
+    },
+    "VoiceStealRestart": {
+     "kparam": "kParamVoiceStealRestart",
+     "native_max": 1.0,
+     "native_min": 0.0
+    }
+   }
+  },
+  "filter": {
+   "count": 2,
+   "node": "VoiceFilter{n}",
+   "params": {
+    "Drive": {
+     "kparam": "kParamDrive",
+     "native_max": 100.0,
+     "native_min": 0.3477933118119836
+    },
+    "Enable": {
+     "kparam": "kParamEnable",
+     "native_max": 1.0,
+     "native_min": 1.0
+    },
+    "Freq": {
+     "kparam": "kParamFreq",
+     "native_max": 1.0,
+     "native_min": 0.0
+    },
+    "KeyTrack": {
+     "kparam": "kParamKeyTrack",
+     "native_max": 1.0,
+     "native_min": 1.0
+    },
+    "LevelOut": {
+     "kparam": "kParamLevelOut",
+     "native_max": 1.0,
+     "native_min": 0.0
+    },
+    "Pad": {
+     "kparam": "kParamPad",
+     "native_max": 1.0,
+     "native_min": 1.0
+    },
+    "Reso": {
+     "kparam": "kParamReso",
+     "native_max": 100.0,
+     "native_min": 0.0
+    },
+    "Stereo": {
+     "kparam": "kParamStereo",
+     "native_max": 70.10775804519653,
+     "native_min": 29.10841405391693
+    },
+    "Var": {
+     "kparam": "kParamVar",
+     "native_max": 100.0,
+     "native_min": 0.4385964944958687
+    },
+    "Wet": {
+     "kparam": "kParamWet",
+     "native_max": 98.68420958518982,
+     "native_min": 0.0
+    },
+    "X": {
+     "kparam": "kParamX",
+     "native_max": 1.0,
+     "native_min": 0.0441988967359066
+    },
+    "Y": {
+     "kparam": "kParamY",
+     "native_max": 1.0,
+     "native_min": 0.02500000037252903
+    }
+   }
+  },
+  "lfo": {
+   "count": 10,
+   "node": "LFO{n}",
+   "params": {
+    "Anchored": {
+     "kparam": "kParamAnchored",
+     "native_max": 0.0,
+     "native_min": 0.0
+    },
+    "BeatSync": {
+     "kparam": "kParamBeatSync",
+     "native_max": 0.0,
+     "native_min": 0.0
+    },
+    "DefaultMode": {
+     "kparam": "kParamDefaultMode",
+     "native_max": 0.0,
+     "native_min": 0.0
+    },
+    "Delay": {
+     "kparam": "kParamDelay",
+     "native_max": 3.5986156463623047,
+     "native_min": 0.017543882131576538
+    },
+    "Direction": {
+     "kparam": "kParamDirection",
+     "native_max": 2.0,
+     "native_min": 1.0
+    },
+    "Dotted": {
+     "kparam": "kParamDotted",
+     "native_max": 1.0,
+     "native_min": 1.0
+    },
+    "GridX": {
+     "kparam": "kParamGridX",
+     "native_max": 32.0,
+     "native_min": 4.0
+    },
+    "GridY": {
+     "kparam": "kParamGridY",
+     "native_max": 32.0,
+     "native_min": 0.0
+    },
+    "Mono": {
+     "kparam": "kParamMono",
+     "native_max": 1.0,
+     "native_min": 1.0
+    },
+    "Phase": {
+     "kparam": "kParamPhase",
+     "native_max": 359.16106939315796,
+     "native_min": 30.000003576278687
+    },
+    "PhaseSnap": {
+     "kparam": "kParamPhaseSnap",
+     "native_max": 1.0,
+     "native_min": 1.0
+    },
+    "Rate": {
+     "kparam": "kParamRate",
+     "native_max": 100.0,
+     "native_min": 0.0
+    },
+    "Rate10x": {
+     "kparam": "kParamRate10x",
+     "native_max": 1.0,
+     "native_min": 1.0
+    },
+    "Rise": {
+     "kparam": "kParamRise",
+     "native_max": 4.0,
+     "native_min": 0.017543859779834747
+    },
+    "Smooth": {
+     "kparam": "kParamSmooth",
+     "native_max": 100.0,
+     "native_min": 1.0462360456585884
+    },
+    "Swing": {
+     "kparam": "kParamSwing",
+     "native_max": 1.0,
+     "native_min": 1.0
+    },
+    "Triplets": {
+     "kparam": "kParamTriplets",
+     "native_max": 1.0,
+     "native_min": 1.0
+    }
+   }
+  },
+  "macro": {
+   "count": 8,
+   "node": "Macro{n}"
+  },
+  "oscillator": {
+   "count": 5,
+   "modes": {
+    "granular": "kOsc_Granular",
+    "multisample": "kOsc_MultiSample",
+    "sample": "kOsc_Sample",
+    "spectral": "kOsc_Spectral",
+    "wavetable": null
+   },
+   "node": "Oscillator{n}",
+   "params": {
+    "AutoSliceThreshold": {
+     "kparam": "kParamAutoSliceThreshold",
+     "native_max": 0.39658302068710327,
+     "native_min": 0.0286063551902771
+    },
+    "BaseTempo": {
+     "kparam": "kParamBaseTempo",
+     "native_max": 155.99999999999997,
+     "native_min": 118.0
+    },
+    "CoarsePit": {
+     "kparam": "kParamCoarsePit",
+     "native_max": 64.0,
+     "native_min": -64.0
+    },
+    "Detune": {
+     "kparam": "kParamDetune",
+     "native_max": 1.0,
+     "native_min": 0.0
+    },
+    "DetuneWid": {
+     "kparam": "kParamDetuneWid",
+     "native_max": 100.0,
+     "native_min": 0.0
+    },
+    "Enable": {
+     "kparam": "kParamEnable",
+     "native_max": 1.0,
+     "native_min": 0.0
+    },
+    "End": {
+     "kparam": "kParamEnd",
+     "native_max": 99.99663233757019,
+     "native_min": 7.368765026330948
+    },
+    "Fine": {
+     "kparam": "kParamFine",
+     "native_max": 76.19049549102783,
+     "native_min": -46.234130859375
+    },
+    "HzOffset": {
+     "kparam": "kParamHzOffset",
+     "native_max": 500.0,
+     "native_min": -1000.0
+    },
+    "KeyZoneMax": {
+     "kparam": "kParamKeyZoneMax",
+     "native_max": 126.0,
+     "native_min": 10.0
+    },
+    "KeyZoneMin": {
+     "kparam": "kParamKeyZoneMin",
+     "native_max": 127.0,
+     "native_min": 11.0
+    },
+    "KeyZoneWarp": {
+     "kparam": "kParamKeyZoneWarp",
+     "native_max": 1.0,
+     "native_min": 1.0
+    },
+    "LinkLoopLength": {
+     "kparam": "kParamLinkLoopLength",
+     "native_max": 1.0,
+     "native_min": 1.0
+    },
+    "LoopCrossfade": {
+     "kparam": "kParamLoopCrossfade",
+     "native_max": 100.0,
+     "native_min": 0.4999999888241291
+    },
+    "LoopEnd": {
+     "kparam": "kParamLoopEnd",
+     "native_max": 99.99963641166687,
+     "native_min": 0.0
+    },
+    "LoopEndsAtRelease": {
+     "kparam": "kParamLoopEndsAtRelease",
+     "native_max": 1.0,
+     "native_min": 1.0
+    },
+    "LoopStart": {
+     "kparam": "kParamLoopStart",
+     "native_max": 100.0,
+     "native_min": 0.001026927657129922
+    },
+    "LoopStartLink": {
+     "kparam": "kParamLoopStartLink",
+     "native_max": 1.0,
+     "native_min": 1.0
+    },
+    "ManualPositionMode": {
+     "kparam": "kParamManualPositionMode",
+     "native_max": 1.0,
+     "native_min": 1.0
+    },
+    "Octave": {
+     "kparam": "kParamOctave",
+     "native_max": 4.0,
+     "native_min": -4.0
+    },
+    "Pan": {
+     "kparam": "kParamPan",
+     "native_max": 50.0,
+     "native_min": -50.0
+    },
+    "Pitch": {
+     "kparam": "kParamPitch",
+     "native_max": 12.0,
+     "native_min": -12.0
+    },
+    "PitchBendTrack": {
+     "kparam": "kParamPitchBendTrack",
+     "native_max": 0.0,
+     "native_min": 0.0
+    },
+    "PitchRatio": {
+     "kparam": "kParamPitchRatio",
+     "native_max": 24.000000447034836,
+     "native_min": -1.0
+    },
+    "PitchSource": {
+     "kparam": "kParamPitchSource",
+     "native_max": 4.0,
+     "native_min": 0.0
+    },
+    "PitchTrack": {
+     "kparam": "kParamPitchTrack",
+     "native_max": 1.0,
+     "native_min": 0.0
+    },
+    "Position": {
+     "kparam": "kParamPosition",
+     "native_max": 72.2533106803894,
+     "native_min": 2.294067107141018
+    },
+    "RandomStart": {
+     "kparam": "kParamRandomStart",
+     "native_max": 100.0,
+     "native_min": 19.921875
+    },
+    "Reverse": {
+     "kparam": "kParamReverse",
+     "native_max": 1.0,
+     "native_min": 1.0
+    },
+    "ScanBPMDivide": {
+     "kparam": "kParamScanBPMDivide",
+     "native_max": 1.0,
+     "native_min": 1.0
+    },
+    "ScanBPMRate": {
+     "kparam": "kParamScanBPMRate",
+     "native_max": 2.0,
+     "native_min": 0.0
+    },
+    "ScanRange": {
+     "kparam": "kParamScanRange",
+     "native_max": 2.0,
+     "native_min": 1.0
+    },
+    "ScanRate": {
+     "kparam": "kParamScanRate",
+     "native_max": 200.0,
+     "native_min": -200.0
+    },
+    "ScanTempoLock": {
+     "kparam": "kParamScanTempoLock",
+     "native_max": 1.0,
+     "native_min": 1.0
+    },
+    "SlicingPlayToEnd": {
+     "kparam": "kParamSlicingPlayToEnd",
+     "native_max": 1.0,
+     "native_min": 1.0
+    },
+    "SlicingRootNote": {
+     "kparam": "kParamSlicingRootNote",
+     "native_max": 6.0,
+     "native_min": 6.0
+    },
+    "Start": {
+     "kparam": "kParamStart",
+     "native_max": 67.16421246528625,
+     "native_min": 0.09291821043007076
+    },
+    "Unison": {
+     "kparam": "kParamUnison",
+     "native_max": 16.0,
+     "native_min": 2.0
+    },
+    "UnisonRange": {
+     "kparam": "kParamUnisonRange",
+     "native_max": 48.0,
+     "native_min": 0.0
+    },
+    "UnisonSpan": {
+     "kparam": "kParamUnisonSpan",
+     "native_max": 59.43775177001953,
+     "native_min": 20.3125
+    },
+    "UnisonStereo": {
+     "kparam": "kParamUnisonStereo",
+     "native_max": 79.84130382537842,
+     "native_min": -100.0
+    },
+    "UnisonWarp": {
+     "kparam": "kParamUnisonWarp",
+     "native_max": 79.6356201171875,
+     "native_min": -12.6950204372406
+    },
+    "UnisonWarp2": {
+     "kparam": "kParamUnisonWarp2",
+     "native_max": 18.0955171585083,
+     "native_min": -55.46875
+    },
+    "VelocityZoneMax": {
+     "kparam": "kParamVelocityZoneMax",
+     "native_max": 125.0,
+     "native_min": 1.0
+    },
+    "VelocityZoneMin": {
+     "kparam": "kParamVelocityZoneMin",
+     "native_max": 126.0,
+     "native_min": 2.0
+    },
+    "Volume": {
+     "kparam": "kParamVolume",
+     "native_max": 1.0,
+     "native_min": 0.0
+    }
+   }
+  }
+ },
+ "plugin": "Serum2",
+ "scanned_presets": 791
+}

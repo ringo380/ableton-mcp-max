@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_161 tools._
+_171 tools._
 
 ## Session & view
 
@@ -90,6 +90,16 @@ _161 tools._
 - **`insert_serum_fx`** - Insert an FX of catalog fx_type into a Serum rack (0-2) at index.
 - **`remove_serum_fx`** - Remove the FX at rack (0-2) / slot from a Serum instance.
 - **`reorder_serum_fx`** - Move an FX within a Serum rack (0-2), or toggle its bypass state.
+- **`get_serum_patch`** - Read a Serum 2 instance's full instrument state (read-only).
+- **`set_serum_oscillator`** - Set Serum oscillator params (native units) and/or its mode.
+- **`set_serum_filter`** - Set Serum filter params (native units).
+- **`set_serum_envelope`** - Set Serum envelope params (native units).
+- **`set_serum_lfo`** - Set Serum LFO params (native units).
+- **`set_serum_macro`** - Set a Serum macro value (0-100) and optionally its name.
+- **`set_serum_wavetable`** - Point a Serum oscillator at a wavetable file and put it in WaveTable mode.
+- **`add_serum_mod_route`** - Add a Serum mod-matrix route into a free ModSlot.
+- **`clear_serum_mod_route`** - Clear an existing Serum mod-matrix route targeting a destination param.
+- **`create_serum_patch`** - Build a Serum 2 patch from a single declarative spec in one reload.
 
 ## Clips & MIDI notes
 

@@ -1,5 +1,30 @@
 # ableton-mcp-max — Progress
 
+## Serum 2 patch authoring (Release 3) - SHIPPING v0.27.0 (2026-06-30)
+Synthesize a full Serum 2 instrument patch from scratch by patching the whole CBOR state tree in the
+live `.als` and reloading in place (same processor-only mechanism as Release 2). 10 new tools
+(161 -> **171**, "Plugins (VST/AU)" category, 22 total): `get_serum_patch`, `set_serum_oscillator`,
+`set_serum_filter`, `set_serum_envelope`, `set_serum_lfo`, `set_serum_macro`, `set_serum_wavetable`,
+`add_serum_mod_route`, `clear_serum_mod_route`, `create_serum_patch` (declarative whole-patch composer,
+one reload). Branch `feat/serum-patch-authoring` (SDD-executed; spec+plan under docs/superpowers/).
+Pure `serum_patch_utils.py` + friendly-name catalog `param_maps/serum2_patch.json` (built from 791-preset
+scan: per-module params/ranges, string oscillator-mode enum, mod-dest type/paramID Rosetta). Reuses the
+Release 2 `_serum_fx_read_impl`/`_serum_fx_mutate_impl` scaffolding (generalized, backward-compatible).
+**KEY spike findings:** osc mode enum = STRINGS (WT = omit `kParamType`); wavetable = `relativePathToWT`
+path-ref (no embed); free `ModSlot` = `{"plainParams":{}}`; mod-dest deterministic, mod-SOURCE id->name
+still open (add_serum_mod_route takes a raw int source id OR a friendly name; friendly `mod_sources` table
+filled later via a live GUI oracle - follow-up, not blocking). 1008 offline tests pass.
+
+**LIVE-VERIFIED 2026-06-30 (Live 12.4):** drove `create_serum_patch` against a real Serum instance, reloaded
+in place (`{reloaded:True}`), re-saved, decoded the re-saved ProcessorState - ALL sections survived Serum's
+reload: Osc0 Vol0.7/Pan25, VoiceFilter0 Freq0.3/Reso40, Env0 Attack0.5/Decay2 (+ Serum-default curves added =
+active reconciliation), Macro0 value30, ModSlot0 source[26,0]->VoiceFilter kParamFreq(id3) amount40, and the
+**from-scratch WTOsc1 node came back fully expanded - Serum read `relativePathToWT`, loaded the wavetable file,
+and recomputed numFrames=18432/sampleRate=44100/numChannels=1** (proves synthesized wavetable nodes are accepted).
+**Known limitation:** macro VALUE round-trips, but a custom macro NAME is not retained in the re-saved
+ProcessorState (Serum sources macro names from ControllerState, which we deliberately don't patch) - name effect
+on the live GUI unverified visually; functional value works.
+
 ## Local catalog - SHIPPED v0.26.0 (2026-06-29)
 Persistent local index of Serum presets, samples, grooves, and device presets with lexical
 search and reuse-vs-create recommendation. 6 new tools (155 -> **161**, new "Catalog" category = 22 total):
