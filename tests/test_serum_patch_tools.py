@@ -56,3 +56,25 @@ def test_get_serum_patch_projects_summary(monkeypatch):
     out = json.loads(server.get_serum_patch(None, 1))
     assert out["ok"] is True
     assert any(o["index"] == 0 for o in out["data"]["oscillators"])
+
+def test_create_serum_patch_applies_sections(monkeypatch):
+    captured = {}
+    def fake_mutate(track_index, device_index, mutate_fn, **kw):
+        cat = kw["catalog_loader"]()
+        tree = {"Oscillator0": {"plainParams": {}}, "Macro0": {"plainParams": {}}}
+        for n in range(64):
+            tree["ModSlot%d" % n] = {"plainParams": {}}
+        mutate_fn(cat, tree)
+        captured["tree"] = tree
+        return {"ok": True, "reloaded": True, "set_path": "/x.als"}
+    monkeypatch.setattr(server, "_serum_fx_mutate_impl", fake_mutate)
+    monkeypatch.setattr(server, "get_ableton_connection", lambda: object())
+    spec = {"oscillators": [{"index": 0, "params": {"Volume": 0.7}}],
+            "macros": [{"index": 0, "value": 30.0, "name": "X"}],
+            "mod_routes": [{"source": 26, "dest_module": "filter", "dest_index": 0,
+                            "dest_param": "Freq", "amount": 40.0}]}
+    out = json.loads(server.create_serum_patch(None, 1, spec))
+    assert out["ok"] is True
+    assert captured["tree"]["Macro0"]["name"] == "X"
+    assert captured["tree"]["ModSlot0"]["destModuleTypeString"] == "VoiceFilter"
+    assert out["data"]["applied"]["mod_routes"] == 1

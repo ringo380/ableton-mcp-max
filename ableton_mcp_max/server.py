@@ -3461,6 +3461,73 @@ def clear_serum_mod_route(ctx: Context, track_index: int, dest_module: str,
 
 
 @mcp.tool()
+def create_serum_patch(ctx: Context, track_index: int, spec: dict,
+                       device_index: int = 0, reload: bool = True) -> str:
+    """Build a Serum 2 patch from a single declarative spec in one reload.
+
+    spec sections (all optional; absent = untouched):
+      oscillators: [{index, mode?, params?}]   filters:   [{index, params}]
+      envelopes:   [{index, params}]           lfos:      [{index, params}]
+      macros:      [{index, value, name?}]     wavetables:[{index, table}]
+      mod_routes:  [{source, dest_module, dest_index, dest_param, amount}]
+      fx:          [{rack, slot, kparam, value}]   (Serum FX setters)
+    Params are native, range-validated. Applies everything to one decoded tree then
+    reloads once.
+
+    Parameters:
+    - track_index: track holding the Serum 2 instance.
+    - spec: the patch description dict.
+    - device_index: which VST/AU plugin device on the track (0 = first plugin).
+    - reload: reload the set after patching (default True).
+
+    Returns JSON {ok, data:{reloaded, set_path, applied}}."""
+    try:
+        get_ableton_connection()
+        applied = {"oscillators": 0, "filters": 0, "envelopes": 0, "lfos": 0,
+                   "macros": 0, "wavetables": 0, "mod_routes": 0, "fx": 0}
+        def mutate_fn(catalog, tree):
+            for o in spec.get("oscillators", []):
+                if o.get("mode") is not None:
+                    _spu.set_oscillator_mode(catalog, tree, o["index"], o["mode"])
+                if o.get("params"):
+                    _spu.set_module_params(catalog, tree, "oscillator", o["index"], o["params"])
+                applied["oscillators"] += 1
+            for mtype, key in (("filter", "filters"), ("envelope", "envelopes"), ("lfo", "lfos")):
+                for m in spec.get(key, []):
+                    _spu.set_module_params(catalog, tree, mtype, m["index"], m.get("params", {}))
+                    applied[key] += 1
+            for mc in spec.get("macros", []):
+                _spu.set_macro(catalog, tree, mc["index"], mc["value"], name=mc.get("name"))
+                applied["macros"] += 1
+            for w in spec.get("wavetables", []):
+                _spu.set_wavetable(catalog, tree, w["index"], w["table"])
+                applied["wavetables"] += 1
+            for r in spec.get("mod_routes", []):
+                _spu.add_mod_route(catalog, tree, r["source"], r["dest_module"],
+                                   r["dest_index"], r["dest_param"], r["amount"])
+                applied["mod_routes"] += 1
+            if spec.get("fx"):
+                fxcat = _sfxcat.load_catalog()
+                for f in spec["fx"]:
+                    _sfx.set_fx_param(fxcat, tree, f["rack"], f["slot"], f["kparam"], f["value"])
+                    applied["fx"] += 1
+        result = _serum_fx_mutate_impl(
+            track_index, device_index, mutate_fn, reload=reload,
+            catalog_loader=_spcat.load_catalog,
+            save_impl=lambda: _save_set_impl(name=""),
+            reload_impl=lambda p, n: _reload_set(p, n))
+        if not result.get("ok"):
+            return _err(result.get("error", "create_serum_patch failed"))
+        result["applied"] = applied
+        return _ok(result)
+    except (ValueError, RuntimeError, FileNotFoundError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("create_serum_patch error: %s", e)
+        return _err("create_serum_patch error: %s" % e)
+
+
+@mcp.tool()
 def set_device_parameter(
     ctx: Context,
     track_index: int,
