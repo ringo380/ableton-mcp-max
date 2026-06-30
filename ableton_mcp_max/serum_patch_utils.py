@@ -111,7 +111,8 @@ def resolve_source(catalog, source):
 
 def _dest_fields(catalog, dest_module, dest_index, dest_param):
     ts = pc.dest_type_string(catalog, dest_module)
-    info = pc.param_info(catalog, dest_module, dest_param) if dest_module in catalog["modules"] else None
+    has_params = dest_module in catalog["modules"] and "params" in catalog["modules"][dest_module]
+    info = pc.param_info(catalog, dest_module, dest_param) if has_params else None
     kparam = info["kparam"] if info else (dest_param if dest_param.startswith("kParam") else "kParam" + dest_param)
     pid = pc.dest_param_id(catalog, ts, kparam)
     return ts, int(dest_index), kparam, pid

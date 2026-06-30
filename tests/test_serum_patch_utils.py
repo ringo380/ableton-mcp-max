@@ -98,8 +98,9 @@ def test_roundtrip_setting_macro_only_changes_that_node():
 
 MODCAT = {"plugin": "Serum2",
           "modules": CAT["modules"],
-          "mod_dest_types": {"filter": "VoiceFilter", "oscillator": "Oscillator"},
-          "mod_dest_params": {"VoiceFilter": {"kParamFreq": 3}, "Oscillator": {"kParamVolume": 1}},
+          "mod_dest_types": {"filter": "VoiceFilter", "oscillator": "Oscillator", "macro": "Macro"},
+          "mod_dest_params": {"VoiceFilter": {"kParamFreq": 3}, "Oscillator": {"kParamVolume": 1},
+                               "Macro": {"kParamValue": 0}},
           "mod_sources": {"env1": 26}}
 
 def _mod_tree():
@@ -130,6 +131,15 @@ def test_add_mod_route_raw_int_source():
     pu.add_mod_route(MODCAT, t, 31, "oscillator", 1, "kParamVolume", 10.0)
     assert t["ModSlot0"]["source"] == [31, 0]
     assert t["ModSlot0"]["destModuleID"] == 1
+
+def test_add_mod_route_to_macro_dest():
+    t = _mod_tree()
+    idx = pu.add_mod_route(MODCAT, t, "env1", "macro", 0, "Value", 25.0)
+    assert idx == 0
+    s = t["ModSlot0"]
+    assert s["destModuleTypeString"] == "Macro"
+    assert s["destModuleParamName"] == "kParamValue"
+    assert s["destModuleParamID"] == 0
 
 def test_add_mod_route_no_free_slot_raises():
     t = _mod_tree()
