@@ -141,3 +141,14 @@ def clear_mod_route(catalog, tree, dest_module, dest_index, dest_param):
             tree["ModSlot%d" % n] = {"plainParams": {}}
             return n
     raise ValueError("no mod route to %s[%d].%s found" % (dest_module, dest_index, dest_param))
+
+
+def set_wavetable(catalog, tree, osc, table):
+    node = _node(tree, pc.node_key(catalog, "oscillator", osc), create=True)
+    node["plainParams"].pop("kParamType", None)   # WT is the default mode
+    wtkey = "WTOsc%d" % osc
+    wt = node.get(wtkey)
+    if not isinstance(wt, dict):
+        wt = {"plainParams": "default"}
+        node[wtkey] = wt
+    wt["relativePathToWT"] = table

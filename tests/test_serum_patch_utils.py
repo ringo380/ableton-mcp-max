@@ -148,3 +148,15 @@ def test_clear_mod_route_frees_slot():
 def test_clear_mod_route_not_found_raises():
     with pytest.raises(ValueError):
         pu.clear_mod_route(MODCAT, _mod_tree(), "filter", 0, "Freq")
+
+def test_set_wavetable_writes_ref_and_wt_mode():
+    t = {"Oscillator0": {"plainParams": {"kParamType": "kOsc_Sample"},
+                         "WTOsc0": {"plainParams": "default"}}}
+    pu.set_wavetable(CAT, t, 0, "S2 Tables/Basic Shapes.wav")
+    assert "kParamType" not in t["Oscillator0"]["plainParams"]  # WT = default
+    assert t["Oscillator0"]["WTOsc0"]["relativePathToWT"] == "S2 Tables/Basic Shapes.wav"
+
+def test_set_wavetable_creates_wtosc_when_absent():
+    t = {"Oscillator1": {"plainParams": {}}}
+    pu.set_wavetable(CAT, t, 1, "S2 Tables/Default Shapes.wav")
+    assert t["Oscillator1"]["WTOsc1"]["relativePathToWT"] == "S2 Tables/Default Shapes.wav"

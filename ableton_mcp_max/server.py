@@ -3345,6 +3345,43 @@ def set_serum_macro(ctx: Context, track_index: int, macro: int, value: float,
 
 
 @mcp.tool()
+def set_serum_wavetable(ctx: Context, track_index: int, osc: int, table: str,
+                        device_index: int = 0, reload: bool = True) -> str:
+    """Point a Serum oscillator at a wavetable file and put it in WaveTable mode.
+
+    Writes the table path into Oscillator{osc}.WTOsc{osc}.relativePathToWT (relative
+    to Serum's table library, e.g. 'S2 Tables/Default Shapes.wav') and clears the
+    oscillator mode to WaveTable (the default). Serum loads + recomputes the table on
+    reload. State authoring - the table must exist in Serum's library.
+
+    Parameters:
+    - track_index: track holding the Serum 2 instance.
+    - osc: oscillator index (0-4).
+    - table: wavetable path relative to Serum's table library.
+    - device_index: which VST/AU plugin device on the track (0 = first plugin).
+    - reload: reload the set after patching (default True).
+
+    Returns JSON {ok, data:{reloaded, set_path}}."""
+    try:
+        get_ableton_connection()
+        def mutate_fn(catalog, tree):
+            _spu.set_wavetable(catalog, tree, osc, table)
+        result = _serum_fx_mutate_impl(
+            track_index, device_index, mutate_fn, reload=reload,
+            catalog_loader=_spcat.load_catalog,
+            save_impl=lambda: _save_set_impl(name=""),
+            reload_impl=lambda p, n: _reload_set(p, n))
+        if not result.get("ok"):
+            return _err(result.get("error", "set_serum_wavetable failed"))
+        return _ok(result)
+    except (ValueError, RuntimeError, FileNotFoundError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("set_serum_wavetable error: %s", e)
+        return _err("set_serum_wavetable error: %s" % e)
+
+
+@mcp.tool()
 def add_serum_mod_route(ctx: Context, track_index: int, source, dest_module: str,
                         dest_index: int, dest_param: str, amount: float,
                         device_index: int = 0, reload: bool = True) -> str:
