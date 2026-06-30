@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **161 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **171 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -41,9 +41,9 @@ Inspect and drive devices, rack macros, and chains; load instruments and effects
 
 ## [Plugins (VST/AU)](./plugins.html)
 
-Expose and control third-party VST3/AU plugin parameters via the Configure-slot backdoor: probe a plugin's full parameter list, then Configure a curated param-map pack so its knobs become settable, automatable LOM parameters. For Serum 2, also author the FX racks (read, set params, bypass, insert, remove, reorder) by patching the plugin-state blob in the .als.
+Expose and control third-party VST3/AU plugin parameters via the Configure-slot backdoor: probe a plugin's full parameter list, then Configure a curated param-map pack so its knobs become settable, automatable LOM parameters. For Serum 2, also author the FX racks (read, set params, bypass, insert, remove, reorder) and synthesize a full instrument patch from scratch - oscillators (params, mode, wavetable), filters, envelopes, LFOs, macros, and the mod matrix - by patching the plugin-state blob in the .als and reloading in place.
 
-`probe_plugin_parameters`, `expose_plugin_parameters`, `get_serum_fx`, `set_serum_fx_param`, `insert_serum_fx`, `remove_serum_fx`, `reorder_serum_fx`
+`probe_plugin_parameters`, `expose_plugin_parameters`, `get_serum_fx`, `set_serum_fx_param`, `insert_serum_fx`, `remove_serum_fx`, `reorder_serum_fx`, `get_serum_patch`, `set_serum_oscillator`, `set_serum_filter`, `set_serum_envelope`, `set_serum_lfo`, `set_serum_macro`, `set_serum_wavetable`, `add_serum_mod_route`, `clear_serum_mod_route`, `create_serum_patch`
 
 ## [Mixer & Routing](./mixer-routing.html)
 

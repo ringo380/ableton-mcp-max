@@ -8,7 +8,7 @@ nav_order: 6
 # Plugins (VST/AU)
 {: .no_toc }
 
-Expose and control third-party VST3/AU plugin parameters via the Configure-slot backdoor: probe a plugin's full parameter list, then Configure a curated param-map pack so its knobs become settable, automatable LOM parameters. For Serum 2, also author the FX racks (read, set params, bypass, insert, remove, reorder) by patching the plugin-state blob in the .als.
+Expose and control third-party VST3/AU plugin parameters via the Configure-slot backdoor: probe a plugin's full parameter list, then Configure a curated param-map pack so its knobs become settable, automatable LOM parameters. For Serum 2, also author the FX racks (read, set params, bypass, insert, remove, reorder) and synthesize a full instrument patch from scratch - oscillators (params, mode, wavetable), filters, envelopes, LFOs, macros, and the mod matrix - by patching the plugin-state blob in the .als and reloading in place.
 
 <details open markdown="block">
   <summary>Tools on this page</summary>
@@ -220,4 +220,278 @@ Parameters:
 - reload: reload the set in Live after patching (default True).
 
 Returns JSON {ok, data:{reloaded, set_path}}.
+
+## get_serum_patch
+
+```python
+get_serum_patch(track_index: int, device_index: int = 0)
+```
+
+Read a Serum 2 instance's full instrument state (read-only).
+
+Saves the set, decodes the device's ProcessorState from disk (no reload), and
+returns a per-module summary. State authoring view - not LOM knobs.
+
+Parameters:
+- track_index: track holding the Serum 2 instance.
+- device_index: which VST/AU plugin device on the track (0 = first plugin).
+
+Returns JSON {ok, data:{set_path, oscillators, filters, envelopes, lfos, macros}}.
+
+## set_serum_oscillator
+
+```python
+set_serum_oscillator(
+    track_index: int,
+    osc: int,
+    params: dict = None,
+    mode: str = None,
+    device_index: int = 0,
+    reload: bool = True,
+)
+```
+
+Set Serum oscillator params (native units) and/or its mode.
+
+Patches plugin state in the .als and reloads in place. params keys are friendly
+names or raw kParam* keys; values are native, range-validated against the
+catalog. mode (when given) selects the oscillator engine: 'wavetable' (default),
+'multisample', 'sample', 'granular', 'spectral'.
+
+Parameters:
+- track_index: track holding the Serum 2 instance.
+- osc: oscillator index (0-4).
+- params: {name: native_value} dict (optional).
+- mode: oscillator mode name (optional).
+- device_index: which VST/AU plugin device on the track (0 = first plugin).
+- reload: reload the set after patching (default True).
+
+Returns JSON {ok, data:{reloaded, set_path}}.
+
+## set_serum_filter
+
+```python
+set_serum_filter(
+    track_index: int,
+    filt: int,
+    params: dict = None,
+    device_index: int = 0,
+    reload: bool = True,
+)
+```
+
+Set Serum filter params (native units).
+
+Patches plugin state in the .als and reloads in place. params keys are friendly
+names or raw kParam* keys; values are native, range-validated against the
+catalog.
+
+Parameters:
+- track_index: track holding the Serum 2 instance.
+- filt: filter index.
+- params: {name: native_value} dict (optional).
+- device_index: which VST/AU plugin device on the track (0 = first plugin).
+- reload: reload the set after patching (default True).
+
+Returns JSON {ok, data:{reloaded, set_path}}.
+
+## set_serum_envelope
+
+```python
+set_serum_envelope(
+    track_index: int,
+    env: int,
+    params: dict = None,
+    device_index: int = 0,
+    reload: bool = True,
+)
+```
+
+Set Serum envelope params (native units).
+
+Patches plugin state in the .als and reloads in place. params keys are friendly
+names or raw kParam* keys; values are native, range-validated against the
+catalog.
+
+Parameters:
+- track_index: track holding the Serum 2 instance.
+- env: envelope index.
+- params: {name: native_value} dict (optional).
+- device_index: which VST/AU plugin device on the track (0 = first plugin).
+- reload: reload the set after patching (default True).
+
+Returns JSON {ok, data:{reloaded, set_path}}.
+
+## set_serum_lfo
+
+```python
+set_serum_lfo(
+    track_index: int,
+    lfo: int,
+    params: dict = None,
+    device_index: int = 0,
+    reload: bool = True,
+)
+```
+
+Set Serum LFO params (native units).
+
+Patches plugin state in the .als and reloads in place. params keys are friendly
+names or raw kParam* keys; values are native, range-validated against the
+catalog.
+
+Parameters:
+- track_index: track holding the Serum 2 instance.
+- lfo: LFO index.
+- params: {name: native_value} dict (optional).
+- device_index: which VST/AU plugin device on the track (0 = first plugin).
+- reload: reload the set after patching (default True).
+
+Returns JSON {ok, data:{reloaded, set_path}}.
+
+## set_serum_macro
+
+```python
+set_serum_macro(
+    track_index: int,
+    macro: int,
+    value: float,
+    name: str = None,
+    device_index: int = 0,
+    reload: bool = True,
+)
+```
+
+Set a Serum macro value (0-100) and optionally its name.
+
+Parameters:
+- track_index: track holding the Serum 2 instance.
+- macro: macro index (0-7).
+- value: macro value 0-100.
+- name: optional macro label.
+- device_index: which VST/AU plugin device on the track (0 = first plugin).
+- reload: reload the set after patching (default True).
+
+Returns JSON {ok, data:{reloaded, set_path}}.
+
+## set_serum_wavetable
+
+```python
+set_serum_wavetable(
+    track_index: int,
+    osc: int,
+    table: str,
+    device_index: int = 0,
+    reload: bool = True,
+)
+```
+
+Point a Serum oscillator at a wavetable file and put it in WaveTable mode.
+
+Writes the table path into Oscillator{osc}.WTOsc{osc}.relativePathToWT (relative
+to Serum's table library, e.g. 'S2 Tables/Default Shapes.wav') and clears the
+oscillator mode to WaveTable (the default). Serum loads + recomputes the table on
+reload. State authoring - the table must exist in Serum's library.
+
+Parameters:
+- track_index: track holding the Serum 2 instance.
+- osc: oscillator index (0-4).
+- table: wavetable path relative to Serum's table library.
+- device_index: which VST/AU plugin device on the track (0 = first plugin).
+- reload: reload the set after patching (default True).
+
+Returns JSON {ok, data:{reloaded, set_path}}.
+
+## add_serum_mod_route
+
+```python
+add_serum_mod_route(
+    track_index: int,
+    source,
+    dest_module: str,
+    dest_index: int,
+    dest_param: str,
+    amount: float,
+    device_index: int = 0,
+    reload: bool = True,
+)
+```
+
+Add a Serum mod-matrix route into a free ModSlot.
+
+source is a raw integer mod-source id OR a configured friendly name (catalog
+mod_sources). dest is structural: dest_module ('oscillator'|'filter'|'envelope'|
+'lfo'|'wt'|'macro'|'global'), dest_index (instance), dest_param (friendly or
+kParam*). amount is native (typically 0-100). Patches state + reloads in place.
+
+Parameters:
+- track_index: track holding the Serum 2 instance.
+- source: int source id (or friendly name once configured).
+- dest_module: destination module type.
+- dest_index: destination instance index.
+- dest_param: destination parameter (friendly or kParam*).
+- amount: modulation amount (native).
+- device_index: which VST/AU plugin device on the track (0 = first plugin).
+- reload: reload the set after patching (default True).
+
+Returns JSON {ok, data:{reloaded, set_path}}.
+
+## clear_serum_mod_route
+
+```python
+clear_serum_mod_route(
+    track_index: int,
+    dest_module: str,
+    dest_index: int,
+    dest_param: str,
+    device_index: int = 0,
+    reload: bool = True,
+)
+```
+
+Clear an existing Serum mod-matrix route targeting a destination param.
+
+dest is structural: dest_module ('oscillator'|'filter'|'envelope'|'lfo'|'wt'|
+'macro'|'global'), dest_index (instance), dest_param (friendly or kParam*).
+Patches state + reloads in place.
+
+Parameters:
+- track_index: track holding the Serum 2 instance.
+- dest_module: destination module type.
+- dest_index: destination instance index.
+- dest_param: destination parameter (friendly or kParam*).
+- device_index: which VST/AU plugin device on the track (0 = first plugin).
+- reload: reload the set after patching (default True).
+
+Returns JSON {ok, data:{reloaded, set_path}}.
+
+## create_serum_patch
+
+```python
+create_serum_patch(
+    track_index: int,
+    spec: dict,
+    device_index: int = 0,
+    reload: bool = True,
+)
+```
+
+Build a Serum 2 patch from a single declarative spec in one reload.
+
+spec sections (all optional; absent = untouched):
+  oscillators: [{index, mode?, params?}]   filters:   [{index, params}]
+  envelopes:   [{index, params}]           lfos:      [{index, params}]
+  macros:      [{index, value, name?}]     wavetables:[{index, table}]
+  mod_routes:  [{source, dest_module, dest_index, dest_param, amount}]
+  fx:          [{rack, slot, kparam, value}]   (Serum FX setters)
+Params are native, range-validated. Applies everything to one decoded tree then
+reloads once.
+
+Parameters:
+- track_index: track holding the Serum 2 instance.
+- spec: the patch description dict.
+- device_index: which VST/AU plugin device on the track (0 = first plugin).
+- reload: reload the set after patching (default True).
+
+Returns JSON {ok, data:{reloaded, set_path, applied}}.
 

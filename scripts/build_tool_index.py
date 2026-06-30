@@ -40,6 +40,10 @@ GROUPS = [
         "probe_plugin_parameters", "expose_plugin_parameters",
         "get_serum_fx", "set_serum_fx_param", "insert_serum_fx",
         "remove_serum_fx", "reorder_serum_fx",
+        "get_serum_patch", "set_serum_oscillator", "set_serum_filter",
+        "set_serum_envelope", "set_serum_lfo", "set_serum_macro",
+        "set_serum_wavetable", "add_serum_mod_route", "clear_serum_mod_route",
+        "create_serum_patch",
     ]),
     ("Clips & MIDI notes", [
         "create_clip", "get_clip_info", "set_clip_name", "set_clip_property",
