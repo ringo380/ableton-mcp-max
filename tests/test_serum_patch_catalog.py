@@ -49,3 +49,13 @@ def test_real_catalog_loads():
     assert cat["plugin"] == "Serum2"
     assert set(["oscillator", "filter", "envelope", "lfo", "macro"]).issubset(cat["modules"])
     assert "VoiceFilter" in cat["mod_dest_params"]
+
+def test_real_catalog_mod_sources_oracle():
+    # The 16 mod-source ids harvested via the Task 7 live GUI oracle (Live 12.4).
+    expected = {
+        "env1": 2, "env2": 3, "env3": 4, "env4": 5,
+        "lfo1": 6, "lfo2": 7, "lfo3": 8, "lfo4": 9,
+        "macro1": 25, "macro2": 26, "macro3": 27, "macro4": 28,
+        "macro5": 29, "macro6": 30, "macro7": 31, "macro8": 32,
+    }
+    assert pc.load_catalog()["mod_sources"] == expected

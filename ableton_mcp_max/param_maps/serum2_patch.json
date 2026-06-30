@@ -293,7 +293,24 @@
   "oscillator": "Oscillator",
   "wt": "WTOsc"
  },
- "mod_sources": {},
+ "mod_sources": {
+  "env1": 2,
+  "env2": 3,
+  "env3": 4,
+  "env4": 5,
+  "lfo1": 6,
+  "lfo2": 7,
+  "lfo3": 8,
+  "lfo4": 9,
+  "macro1": 25,
+  "macro2": 26,
+  "macro3": 27,
+  "macro4": 28,
+  "macro5": 29,
+  "macro6": 30,
+  "macro7": 31,
+  "macro8": 32
+ },
  "modules": {
   "envelope": {
    "count": 4,

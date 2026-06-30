@@ -419,8 +419,10 @@ add_serum_mod_route(
 
 Add a Serum mod-matrix route into a free ModSlot.
 
-source is a raw integer mod-source id OR a configured friendly name (catalog
-mod_sources). dest is structural: dest_module ('oscillator'|'filter'|'envelope'|
+source is a raw integer mod-source id OR a configured friendly name from the
+catalog mod_sources table: env1-env4, lfo1-lfo4, macro1-macro8 (harvested via
+the live GUI oracle; other sources still work by raw int id). dest is
+structural: dest_module ('oscillator'|'filter'|'envelope'|
 'lfo'|'wt'|'macro'|'global'), dest_index (instance), dest_param (friendly or
 kParam*). amount is native (typically 0-100). Patches state + reloads in place.
 

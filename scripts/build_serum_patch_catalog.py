@@ -2,7 +2,8 @@
 Friendly param name = kParam* minus the 'kParam' prefix. Param ranges are the
 observed min/max across all presets. mod_dest_params harvests the deterministic
 (destModuleTypeString -> {destModuleParamName: destModuleParamID}) map. Mode enum
-and mod_dest_types are spike constants. mod_sources starts empty (Task 7 oracle)."""
+and mod_dest_types are spike constants; mod_sources is the MOD_SOURCES table
+harvested via the Task 7 live GUI oracle."""
 import glob, json, os, sys
 
 from ableton_mcp_max import serum_state_codec as ssc
@@ -18,6 +19,16 @@ MODES = {"wavetable": None, "multisample": "kOsc_MultiSample", "sample": "kOsc_S
          "granular": "kOsc_Granular", "spectral": "kOsc_Spectral"}
 MOD_DEST_TYPES = {"oscillator": "Oscillator", "filter": "VoiceFilter", "envelope": "Env",
                   "lfo": "LFO", "wt": "WTOsc", "macro": "Macro", "global": "Global"}
+# mod_source friendly-name -> source moduleID (the first element of ModSlot.source;
+# the second element/sub is always 0 for these). Harvested via the Task 7 live GUI
+# oracle (Live 12.4, 2026-06-30): routed each known source to a distinct destination
+# in Serum's mod matrix, saved, and read the source id off each route.
+MOD_SOURCES = {
+    "env1": 2, "env2": 3, "env3": 4, "env4": 5,
+    "lfo1": 6, "lfo2": 7, "lfo3": 8, "lfo4": 9,
+    "macro1": 25, "macro2": 26, "macro3": 27, "macro4": 28,
+    "macro5": 29, "macro6": 30, "macro7": 31, "macro8": 32,
+}
 
 
 def friendly(kparam):
@@ -71,7 +82,7 @@ def build(root):
     return {"plugin": "Serum2", "scanned_presets": nfiles, "modules": modules,
             "mod_dest_types": MOD_DEST_TYPES,
             "mod_dest_params": {ts: dict(sorted(d.items())) for ts, d in sorted(dest.items())},
-            "mod_sources": {}}
+            "mod_sources": dict(MOD_SOURCES)}
 
 
 if __name__ == "__main__":
@@ -81,5 +92,6 @@ if __name__ == "__main__":
     cat = build(root)
     with open(out, "w") as fh:
         json.dump(cat, fh, indent=1, sort_keys=True)
+        fh.write("\n")
     print("wrote %s (%d presets, dest_types=%d)"
           % (out, cat["scanned_presets"], len(cat["mod_dest_params"])))
