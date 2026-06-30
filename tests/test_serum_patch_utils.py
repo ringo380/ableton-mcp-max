@@ -95,3 +95,56 @@ def test_roundtrip_setting_macro_only_changes_that_node():
         after = {k: v for k, v in re.items() if k != "Macro0"}
         assert after == before, "patch perturbed an unrelated node in %s" % p
         assert re["Macro0"]["plainParams"]["kParamValue"] == 42.0
+
+MODCAT = {"plugin": "Serum2",
+          "modules": CAT["modules"],
+          "mod_dest_types": {"filter": "VoiceFilter", "oscillator": "Oscillator"},
+          "mod_dest_params": {"VoiceFilter": {"kParamFreq": 3}, "Oscillator": {"kParamVolume": 1}},
+          "mod_sources": {"env1": 26}}
+
+def _mod_tree():
+    return {"ModSlot%d" % n: {"plainParams": {}} for n in range(64)}
+
+def test_resolve_source_int_and_name():
+    assert pu.resolve_source(MODCAT, 30) == [30, 0]
+    assert pu.resolve_source(MODCAT, "env1") == [26, 0]
+
+def test_resolve_source_unknown_name_raises():
+    with pytest.raises(ValueError):
+        pu.resolve_source(MODCAT, "nope")
+
+def test_add_mod_route_uses_first_free_slot():
+    t = _mod_tree()
+    idx = pu.add_mod_route(MODCAT, t, "env1", "filter", 0, "Freq", 40.0)
+    assert idx == 0
+    s = t["ModSlot0"]
+    assert s["source"] == [26, 0]
+    assert s["destModuleTypeString"] == "VoiceFilter"
+    assert s["destModuleID"] == 0
+    assert s["destModuleParamName"] == "kParamFreq"
+    assert s["destModuleParamID"] == 3
+    assert s["plainParams"]["kParamAmount"] == 40.0
+
+def test_add_mod_route_raw_int_source():
+    t = _mod_tree()
+    pu.add_mod_route(MODCAT, t, 31, "oscillator", 1, "kParamVolume", 10.0)
+    assert t["ModSlot0"]["source"] == [31, 0]
+    assert t["ModSlot0"]["destModuleID"] == 1
+
+def test_add_mod_route_no_free_slot_raises():
+    t = _mod_tree()
+    for _ in range(64):
+        pu.add_mod_route(MODCAT, t, 26, "filter", 0, "Freq", 1.0)
+    with pytest.raises(ValueError):
+        pu.add_mod_route(MODCAT, t, 26, "filter", 0, "Freq", 1.0)
+
+def test_clear_mod_route_frees_slot():
+    t = _mod_tree()
+    pu.add_mod_route(MODCAT, t, "env1", "filter", 0, "Freq", 40.0)
+    idx = pu.clear_mod_route(MODCAT, t, "filter", 0, "Freq")
+    assert idx == 0
+    assert pu._is_free_slot(t["ModSlot0"])
+
+def test_clear_mod_route_not_found_raises():
+    with pytest.raises(ValueError):
+        pu.clear_mod_route(MODCAT, _mod_tree(), "filter", 0, "Freq")

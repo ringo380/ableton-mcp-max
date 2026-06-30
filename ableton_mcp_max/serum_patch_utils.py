@@ -84,3 +84,60 @@ def summarize(catalog, tree):
         out["macros"].append({"index": n, "name": node.get("name", ""),
                               "value": pp.get("kParamValue")})
     return out
+
+
+_MOD_SLOTS = 64
+
+
+def _is_free_slot(node):
+    if not isinstance(node, dict):
+        return True
+    return "source" not in node and "destModuleTypeString" not in node
+
+
+def resolve_source(catalog, source):
+    if isinstance(source, bool):
+        raise ValueError("mod source must be an int id or a name, not a bool")
+    if isinstance(source, int):
+        return [int(source), 0]
+    if isinstance(source, str) and source.lstrip("-").isdigit():
+        return [int(source), 0]
+    srcs = catalog.get("mod_sources", {})
+    if source not in srcs:
+        raise ValueError("unknown mod source %r; pass a raw int id, or one of: %s"
+                         % (source, ", ".join(sorted(srcs)) or "(none configured yet)"))
+    return [int(srcs[source]), 0]
+
+
+def _dest_fields(catalog, dest_module, dest_index, dest_param):
+    ts = pc.dest_type_string(catalog, dest_module)
+    info = pc.param_info(catalog, dest_module, dest_param) if dest_module in catalog["modules"] else None
+    kparam = info["kparam"] if info else (dest_param if dest_param.startswith("kParam") else "kParam" + dest_param)
+    pid = pc.dest_param_id(catalog, ts, kparam)
+    return ts, int(dest_index), kparam, pid
+
+
+def add_mod_route(catalog, tree, source, dest_module, dest_index, dest_param, amount):
+    src = resolve_source(catalog, source)
+    ts, did, kparam, pid = _dest_fields(catalog, dest_module, dest_index, dest_param)
+    for n in range(_MOD_SLOTS):
+        key = "ModSlot%d" % n
+        node = tree.get(key)
+        if node is None or _is_free_slot(node):
+            tree[key] = {"source": src, "destModuleID": did, "destModuleParamID": pid,
+                         "destModuleParamName": kparam, "destModuleTypeString": ts,
+                         "plainParams": {"kParamAmount": float(amount)}}
+            return n
+    raise ValueError("no free ModSlot (all %d used)" % _MOD_SLOTS)
+
+
+def clear_mod_route(catalog, tree, dest_module, dest_index, dest_param):
+    ts, did, kparam, pid = _dest_fields(catalog, dest_module, dest_index, dest_param)
+    for n in range(_MOD_SLOTS):
+        node = tree.get("ModSlot%d" % n)
+        if (isinstance(node, dict) and node.get("destModuleTypeString") == ts
+                and node.get("destModuleID") == did
+                and node.get("destModuleParamID") == pid):
+            tree["ModSlot%d" % n] = {"plainParams": {}}
+            return n
+    raise ValueError("no mod route to %s[%d].%s found" % (dest_module, dest_index, dest_param))
