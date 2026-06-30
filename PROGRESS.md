@@ -1,6 +1,17 @@
 # ableton-mcp-max — Progress
 
-## Serum 2 patch authoring (Release 3) - SHIPPING v0.27.0 (2026-06-30)
+## Serum mod-source oracle - SHIPPED v0.27.1 (2026-06-30)
+Follow-up to Release 3: filled the patch catalog's empty `mod_sources` table via a live GUI oracle.
+Routed each known source to a DISTINCT destination in Serum's mod matrix (Live 12.4), saved, and read
+the source moduleID off each route by its dest (baseline-diffed against 3 pre-existing routes). 16 core
+sources mapped: **env1-env4 = 2-5, lfo1-lfo4 = 6-9, macro1-macro8 = 25-32** (contiguous; macro5=29 also
+matched a pre-existing route = confirmed). Baked into `MOD_SOURCES` in the catalog generator (survives
+regen) + `serum2_patch.json`; `add_serum_mod_route` now takes these friendly names (raw int still works
+for any other source - MIDI/global = later top-up). No new tools (171). 1009 offline tests pass.
+PR #49 squash-merged @72417a5; tag v0.27.1 = main = origin; marketplace `ableton` ref v0.27.0->v0.27.1
+@71cba82 + build-readme.
+
+## Serum 2 patch authoring (Release 3) - SHIPPED v0.27.0 (2026-06-30)
 Synthesize a full Serum 2 instrument patch from scratch by patching the whole CBOR state tree in the
 live `.als` and reloading in place (same processor-only mechanism as Release 2). 10 new tools
 (161 -> **171**, "Plugins (VST/AU)" category, 22 total): `get_serum_patch`, `set_serum_oscillator`,
