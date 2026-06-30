@@ -51,11 +51,21 @@ def test_real_catalog_loads():
     assert "VoiceFilter" in cat["mod_dest_params"]
 
 def test_real_catalog_mod_sources_oracle():
-    # The 16 mod-source ids harvested via the Task 7 live GUI oracle (Live 12.4).
+    # The 36 mod-source ids harvested via the live GUI oracle (Live 12.4): the
+    # core envelope/LFO/macro modulators plus the MIDI/global, Note-submenu, and
+    # MPE sources mapped in a second oracle pass.
     expected = {
         "env1": 2, "env2": 3, "env3": 4, "env4": 5,
         "lfo1": 6, "lfo2": 7, "lfo3": 8, "lfo4": 9,
         "macro1": 25, "macro2": 26, "macro3": 27, "macro4": 28,
         "macro5": 29, "macro6": 30, "macro7": 31, "macro8": 32,
+        "modwheel": 1, "aftertouch": 18, "polyaftertouch": 19,
+        "pitchbend": 33, "fixed": 38,
+        "velocity": 16, "note": 17, "releasevelo": 37,
+        "activevoices": 55, "voiceindex": 58,
+        "voicemod1": 56, "voicemod2": 57,
+        "noteonrand1": 21, "noteonrand2": 22, "noteonranddiscrete": 59,
+        "noteonalt": 23, "noteonalt2": 24,
+        "mpex": 34, "mpey": 35, "mpez": 36,
     }
     assert pc.load_catalog()["mod_sources"] == expected

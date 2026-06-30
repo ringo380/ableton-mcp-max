@@ -20,14 +20,28 @@ MODES = {"wavetable": None, "multisample": "kOsc_MultiSample", "sample": "kOsc_S
 MOD_DEST_TYPES = {"oscillator": "Oscillator", "filter": "VoiceFilter", "envelope": "Env",
                   "lfo": "LFO", "wt": "WTOsc", "macro": "Macro", "global": "Global"}
 # mod_source friendly-name -> source moduleID (the first element of ModSlot.source;
-# the second element/sub is always 0 for these). Harvested via the Task 7 live GUI
-# oracle (Live 12.4, 2026-06-30): routed each known source to a distinct destination
-# in Serum's mod matrix, saved, and read the source id off each route.
+# the second element/sub is always 0 for these). Harvested via the live GUI oracle
+# (Live 12.4, 2026-06-30): routed each known source to a distinct destination in
+# Serum's mod matrix, saved, and read the source id off each route. The core
+# envelope/LFO/macro ids came first; the MIDI/global + Note + MPE sources were
+# mapped in a second oracle pass against the same scratch set.
 MOD_SOURCES = {
+    # core modulators
     "env1": 2, "env2": 3, "env3": 4, "env4": 5,
     "lfo1": 6, "lfo2": 7, "lfo3": 8, "lfo4": 9,
     "macro1": 25, "macro2": 26, "macro3": 27, "macro4": 28,
     "macro5": 29, "macro6": 30, "macro7": 31, "macro8": 32,
+    # MIDI / global controllers
+    "modwheel": 1, "aftertouch": 18, "polyaftertouch": 19,
+    "pitchbend": 33, "fixed": 38,
+    # Note-submenu sources
+    "velocity": 16, "note": 17, "releasevelo": 37,
+    "activevoices": 55, "voiceindex": 58,
+    "voicemod1": 56, "voicemod2": 57,
+    "noteonrand1": 21, "noteonrand2": 22, "noteonranddiscrete": 59,
+    "noteonalt": 23, "noteonalt2": 24,
+    # MPE expression
+    "mpex": 34, "mpey": 35, "mpez": 36,
 }
 
 

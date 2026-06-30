@@ -3388,8 +3388,12 @@ def add_serum_mod_route(ctx: Context, track_index: int, source, dest_module: str
     """Add a Serum mod-matrix route into a free ModSlot.
 
     source is a raw integer mod-source id OR a configured friendly name from the
-    catalog mod_sources table: env1-env4, lfo1-lfo4, macro1-macro8 (harvested via
-    the live GUI oracle; other sources still work by raw int id). dest is
+    catalog mod_sources table (36 mapped via the live GUI oracle): env1-env4,
+    lfo1-lfo4, macro1-macro8, plus modwheel, aftertouch, polyaftertouch, pitchbend,
+    fixed, velocity, note, releasevelo, activevoices, voiceindex, voicemod1,
+    voicemod2, noteonrand1, noteonrand2, noteonranddiscrete, noteonalt, noteonalt2,
+    and the MPE sources mpex/mpey/mpez. Any unmapped source still works by raw int
+    id. dest is
     structural: dest_module ('oscillator'|'filter'|'envelope'|
     'lfo'|'wt'|'macro'|'global'), dest_index (instance), dest_param (friendly or
     kParam*). amount is native (typically 0-100). Patches state + reloads in place.

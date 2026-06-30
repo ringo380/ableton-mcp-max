@@ -1,5 +1,16 @@
 # ableton-mcp-max — Progress
 
+## Serum mod-source oracle, pass 2 (MIDI/global/MPE) - SHIPPED v0.27.2 (2026-06-30)
+Second oracle pass: mapped the 20 remaining single mod sources (MIDI/global + Note submenu + MPE),
+same method (route each to a distinct Filter 1 / Filter 2 / Env 1 destination, save, read source id off
+each by its dest param). `mod_sources` now has 36 entries (no id collisions). New ids:
+**modwheel=1, velocity=16, note=17, aftertouch=18, polyaftertouch=19, noteonrand1=21, noteonrand2=22,
+noteonalt=23, noteonalt2=24, pitchbend=33, mpex=34, mpey=35, mpez=36, releasevelo=37, fixed=38,
+activevoices=55, voicemod1=56, voicemod2=57, voiceindex=58, noteonranddiscrete=59.** Confirmed the
+two baseline-route "unknown" sources were velocity(16) and note(17). No new tools (171). 1009 offline
+tests pass. `add_serum_mod_route` docstring lists all friendly names; raw int still works for anything
+unmapped (gaps remain in 39-54, etc.). serum2_idtest restored to its 3 baseline routes.
+
 ## Serum mod-source oracle - SHIPPED v0.27.1 (2026-06-30)
 Follow-up to Release 3: filled the patch catalog's empty `mod_sources` table via a live GUI oracle.
 Routed each known source to a DISTINCT destination in Serum's mod matrix (Live 12.4), saved, and read

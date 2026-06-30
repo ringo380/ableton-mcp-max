@@ -294,10 +294,13 @@
   "wt": "WTOsc"
  },
  "mod_sources": {
+  "activevoices": 55,
+  "aftertouch": 18,
   "env1": 2,
   "env2": 3,
   "env3": 4,
   "env4": 5,
+  "fixed": 38,
   "lfo1": 6,
   "lfo2": 7,
   "lfo3": 8,
@@ -309,7 +312,24 @@
   "macro5": 29,
   "macro6": 30,
   "macro7": 31,
-  "macro8": 32
+  "macro8": 32,
+  "modwheel": 1,
+  "mpex": 34,
+  "mpey": 35,
+  "mpez": 36,
+  "note": 17,
+  "noteonalt": 23,
+  "noteonalt2": 24,
+  "noteonrand1": 21,
+  "noteonrand2": 22,
+  "noteonranddiscrete": 59,
+  "pitchbend": 33,
+  "polyaftertouch": 19,
+  "releasevelo": 37,
+  "velocity": 16,
+  "voiceindex": 58,
+  "voicemod1": 56,
+  "voicemod2": 57
  },
  "modules": {
   "envelope": {
