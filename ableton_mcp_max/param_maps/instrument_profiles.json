@@ -1,0 +1,88 @@
+{
+ "engines": {
+  "serum": {
+   "display": "Serum 2", "native": false, "creatable": true, "domain": "serum", "cpu": "high",
+   "roles": {"bass": 5, "lead": 5, "pad": 4, "pluck": 4, "fx": 5, "drums": 1},
+   "genres": ["dnb", "dubstep", "future-bass", "edm", "techno", "trap"],
+   "character": ["gritty", "evolving", "modern", "aggressive", "digital", "complex-mod", "growl"],
+   "reach_for_when": ["wavetable morphing", "heavy unison", "complex mod matrix", "reese/growl"],
+   "avoid_when": ["simple sub", "portability required", "cpu constrained", "acoustic/realistic"]
+  },
+  "wavetable": {
+   "display": "Wavetable (native)", "native": true, "creatable": true, "domain": "wavetable", "cpu": "med",
+   "roles": {"bass": 4, "lead": 4, "pad": 5, "pluck": 4, "fx": 4, "drums": 1},
+   "genres": ["house", "techno", "edm", "pop", "ambient"],
+   "character": ["modern", "clean", "evolving", "digital"],
+   "reach_for_when": ["wavetable morph without a 3rd-party plugin", "portable set", "generic pad/lead"],
+   "avoid_when": ["extreme growl needing deep mod", "acoustic/realistic"]
+  },
+  "operator": {
+   "display": "Operator (FM)", "native": true, "creatable": false, "domain": "device_preset", "cpu": "low",
+   "roles": {"bass": 4, "lead": 4, "pad": 3, "pluck": 5, "fx": 3, "drums": 2},
+   "genres": ["house", "techno", "electro", "pop"],
+   "character": ["metallic", "clean", "punchy", "digital"],
+   "reach_for_when": ["FM bells/plucks", "clean sub", "low cpu", "e-piano/DX-style"],
+   "avoid_when": ["wavetable morph", "acoustic/realistic"]
+  },
+  "analog": {
+   "display": "Analog", "native": true, "creatable": false, "domain": "device_preset", "cpu": "low",
+   "roles": {"bass": 4, "lead": 4, "pad": 4, "pluck": 3, "fx": 2, "drums": 1},
+   "genres": ["house", "techno", "synthwave", "pop", "ambient"],
+   "character": ["warm", "vintage", "analog", "smooth"],
+   "reach_for_when": ["classic subtractive", "warm analog pad/bass", "low cpu"],
+   "avoid_when": ["wavetable morph", "digital/aggressive", "acoustic/realistic"]
+  },
+  "simpler": {
+   "display": "Simpler / Sampler", "native": true, "creatable": true, "domain": "simpler", "cpu": "low",
+   "roles": {"bass": 3, "lead": 3, "pad": 3, "pluck": 3, "fx": 4, "drums": 3},
+   "genres": ["hip-hop", "lofi", "house", "pop", "ambient"],
+   "character": ["acoustic", "realistic", "organic", "vintage", "textural"],
+   "reach_for_when": ["acoustic/realistic instrument", "a specific sample as the source", "one-shot/chop"],
+   "avoid_when": ["synthesized-from-scratch tone", "deep synthesis mod"]
+  },
+  "drum_rack": {
+   "display": "Drum Rack", "native": true, "creatable": false, "domain": "device_preset", "cpu": "med",
+   "roles": {"bass": 1, "lead": 1, "pad": 1, "pluck": 1, "fx": 2, "drums": 5},
+   "genres": ["hip-hop", "house", "techno", "dnb", "trap", "pop"],
+   "character": ["percussive", "organic", "punchy"],
+   "reach_for_when": ["drums/percussion", "beat/kit", "layered one-shots"],
+   "avoid_when": ["melodic/tonal instrument"]
+  }
+ },
+ "role_vocab": {
+  "bass": ["bass", "sub", "reese", "808", "bassline"],
+  "lead": ["lead", "melody", "topline", "arp", "hook"],
+  "pad": ["pad", "atmosphere", "ambient", "drone", "wash", "strings"],
+  "pluck": ["pluck", "stab", "key", "keys", "bell", "mallet", "e-piano", "rhodes"],
+  "fx": ["fx", "riser", "sweep", "impact", "texture", "noise", "downlifter"],
+  "drums": ["drum", "drums", "kick", "snare", "hat", "hihat", "perc", "percussion", "beat", "kit"]
+ },
+ "genre_vocab": {
+  "dnb": ["dnb", "drum and bass", "drum-and-bass", "neurofunk"],
+  "dubstep": ["dubstep", "riddim", "brostep"],
+  "future-bass": ["future bass", "future-bass"],
+  "house": ["house", "deep house", "tech house"],
+  "techno": ["techno"],
+  "trap": ["trap"],
+  "hip-hop": ["hip hop", "hip-hop", "boom bap", "boom-bap", "lofi", "lo-fi"],
+  "edm": ["edm", "big room", "festival"],
+  "synthwave": ["synthwave", "retrowave", "80s"],
+  "ambient": ["ambient", "cinematic", "soundtrack"],
+  "pop": ["pop"],
+  "electro": ["electro"]
+ },
+ "character_vocab": {
+  "gritty": ["gritty", "dirty", "grungy", "distorted"],
+  "evolving": ["evolving", "moving", "morphing", "animated", "modulated"],
+  "aggressive": ["aggressive", "hard", "harsh", "screaming"],
+  "growl": ["growl", "reese", "neuro"],
+  "warm": ["warm", "smooth", "round"],
+  "vintage": ["vintage", "analog", "retro", "classic", "old-school"],
+  "clean": ["clean", "pure", "hi-fi", "crisp"],
+  "metallic": ["metallic", "fm", "bell", "glassy"],
+  "acoustic": ["acoustic", "realistic", "real", "natural", "organic", "live"],
+  "digital": ["digital"],
+  "textural": ["textural", "granular", "atmospheric", "lush"],
+  "punchy": ["punchy", "tight", "snappy"]
+ }
+}
