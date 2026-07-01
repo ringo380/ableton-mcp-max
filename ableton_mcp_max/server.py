@@ -152,6 +152,7 @@ from ableton_mcp_max import catalog_index as _cat_index
 from ableton_mcp_max import catalog_query as _cat_query
 from ableton_mcp_max import catalog_decide as _cat_decide
 from ableton_mcp_max import catalog_adapt
+from ableton_mcp_max import instrument_select
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -8362,6 +8363,58 @@ def create_from_plan(ctx: Context, plan: dict, confirm: bool = False) -> str:
     except Exception as e:
         logger.error("create_from_plan error: %s", e)
         return _err("create_from_plan error: %s" % e)
+
+
+def _resolve_instrument_env(prefer_native):
+    """Resolve the live signals recommend_instrument scores against. Degrades to
+    filesystem-only + intent-only scoring when Live is disconnected."""
+    installed = instrument_select.serum_installed()
+    try:
+        conn = get_ableton_connection()
+        info = conn.send_command("get_session_info")
+        n = int(info.get("track_count", 0))
+        tracks_devices = []
+        for i in range(n):
+            ti = conn.send_command("get_track_info", {"track_index": i})
+            tracks_devices.append(ti.get("devices", []))
+        env = instrument_select.summarize_environment(tracks_devices, installed,
+                                                      prefer_native)
+        env["live_connected"] = True
+        return env
+    except Exception as e:
+        logger.warning("recommend_instrument env fallback: %s", e)
+        return {"serum_installed": installed, "serum_instances": 0,
+                "prefer_native": bool(prefer_native) if prefer_native is not None
+                else False, "live_connected": False}
+
+
+@mcp.tool()
+def recommend_instrument(ctx: Context, intent: str,
+                         prefer_native: bool = None) -> str:
+    """Choose which instrument engine to reach for from a free-text intent
+    (e.g. 'gritty evolving reese bass for dnb'). Ranks Serum vs native Wavetable,
+    Operator, Analog, Simpler/Sampler, and Drum Rack against a capability matrix,
+    biased toward native engines so Serum is used only when it earns it. Applies
+    live signals when connected: Serum-installed (drops Serum if absent), Serum
+    instance count (busy penalty), and portability (prefer_native). Set
+    prefer_native=True to force native-only weighting; leave None to auto-detect
+    (native-preferred only when the set has no 3rd-party plugin). PROPOSE ONLY -
+    pass the returned top.domain to recommend_asset to pick reuse-vs-create.
+    Returns {ok, data:{intent, parsed, ranked, top, reason, environment, next}}."""
+    try:
+        env = _resolve_instrument_env(prefer_native)
+        result = instrument_select.recommend(intent, env)
+        result["environment"] = env
+        top = result.get("top")
+        result["next"] = (("Pass domain=%r to recommend_asset to pick "
+                           "reuse-vs-create." % top["domain"]) if top
+                          else "No engine matched.")
+        return _ok(result)
+    except FileNotFoundError as e:
+        return _err("instrument profiles missing: %s" % e)
+    except Exception as e:
+        logger.error("recommend_instrument error: %s", e)
+        return _err("recommend_instrument error: %s" % e)
 
 
 # Main execution
