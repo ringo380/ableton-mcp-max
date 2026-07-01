@@ -14,10 +14,21 @@ degrades to intent-only when Live disconnected (never errors). Scoring: ROLE 1.0
 NATIVE_BONUS 1.0, penalties 3.0. Sound-design skill got a "Choosing the engine" section. **PR #51
 squash-merged @a2aad7c (main=origin=tag v0.28.0); marketplace `ableton` ref v0.27.2->v0.28.0 @801bb6b.**
 172 tools / 22 cat (joined Catalog). Offline 1032 pass / 2 skip. Built via SDD (7 tasks, all task-reviews +
-opus final review clean - READY TO MERGE, 0 Critical/Important). LIVE VERIFY PENDING (manual): serum_installed
-detection, serum_instances off a real set, intent->engine->recommend_asset round-trips (reese->serum,
-generic pad->native, acoustic pluck->simpler). Known minor (deferred by user): a generic-FX tie lets Serum
-win the alphabetical tiebreak (Serum fx-role 5 vs native 4 - intentional matrix weighting).
+opus final review clean - READY TO MERGE, 0 Critical/Important). **LIVE-VERIFIED 2026-07-01 (Live 12.4,
+in-process against real FS + the open set):** serum_installed=True off the real machine FS; the actual
+loaded "Serum 2" PluginDevice classifies as `serum`; summarize_environment off the open set (1 Serum
+instance, a 3rd-party plugin present) -> prefer_native auto=False; recommend() end-to-end:
+reese/dnb->serum(9.5), warm pad->wavetable(8.5), realistic acoustic pluck->simpler(6.5 > operator 6.0),
+growl bass->serum(7.5), punchy drums->drum_rack(8.5, domain device_preset), bright pluck lead->analog
+(native tie-break, all natives+serum at 5.0). Busy penalty: 3 Serum instances drops serum 9.5->6.5 (still
+wins a strong reese signal). Serum-absent: serum EXCLUDED from the ranking entirely (top falls to analog).
+All `top.domain` values (serum/wavetable/simpler/device_preset) are valid recommend_asset domains =
+chain contract holds. NOTE: exercised the pure logic with the exact inputs the server's
+`_resolve_instrument_env` builds (same get_session_info/get_track_info reads, fed to summarize_environment);
+the MCP tool call itself was not exercised because the running AbletonDev server predates the merge - a
+Claude Code restart would load `recommend_instrument` for a transport-level check, but the logic path is
+fully covered. Known minor (deferred by user): a generic-FX tie lets Serum win the alphabetical tiebreak
+(Serum fx-role 5 vs native 4 - intentional matrix weighting).
 
 ## Serum mod-source oracle, pass 2 (MIDI/global/MPE) - SHIPPED v0.27.2 (2026-06-30)
 Second oracle pass: mapped the 20 remaining single mod sources (MIDI/global + Note submenu + MPE),
