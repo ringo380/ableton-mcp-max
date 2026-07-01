@@ -23,11 +23,14 @@ growl bass->serum(7.5), punchy drums->drum_rack(8.5, domain device_preset), brig
 (native tie-break, all natives+serum at 5.0). Busy penalty: 3 Serum instances drops serum 9.5->6.5 (still
 wins a strong reese signal). Serum-absent: serum EXCLUDED from the ranking entirely (top falls to analog).
 All `top.domain` values (serum/wavetable/simpler/device_preset) are valid recommend_asset domains =
-chain contract holds. NOTE: exercised the pure logic with the exact inputs the server's
-`_resolve_instrument_env` builds (same get_session_info/get_track_info reads, fed to summarize_environment);
-the MCP tool call itself was not exercised because the running AbletonDev server predates the merge - a
-Claude Code restart would load `recommend_instrument` for a transport-level check, but the logic path is
-fully covered. Known minor (deferred by user): a generic-FX tie lets Serum win the alphabetical tiebreak
+chain contract holds. **TRANSPORT-LEVEL VERIFY DONE 2026-07-01 (Live 12.4, AbletonDev socket after Claude
+Code restart):** the actual `recommend_instrument` MCP tool ran over the socket against the open set (4
+tracks) - reese/dnb->serum(14.5), warm pad->wavetable(8.5 > serum 6.5), acoustic pluck->simpler(6.5); the
+`environment` block resolved live via `_resolve_instrument_env` (serum_installed:true, serum_instances:1,
+prefer_native:false auto-detected from the plugin-bearing set, live_connected:true); `top.domain='serum'`
+chained into `recommend_asset` -> decision:"reuse" with real factory matches (BA - Amazing DNB Bass, Gnarly
+Reese, etc.). Closes the prior in-process caveat - the `_resolve_instrument_env` wrapper is now confirmed
+via the real socket path, not just reproduced by hand. Known minor (deferred by user): a generic-FX tie lets Serum win the alphabetical tiebreak
 (Serum fx-role 5 vs native 4 - intentional matrix weighting).
 
 ## Serum mod-source oracle, pass 2 (MIDI/global/MPE) - SHIPPED v0.27.2 (2026-06-30)
