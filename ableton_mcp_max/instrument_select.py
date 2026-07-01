@@ -93,3 +93,74 @@ def summarize_environment(tracks_devices, serum_is_installed, prefer_native_arg)
     return {"serum_installed": bool(serum_is_installed),
             "serum_instances": serum_instances,
             "prefer_native": prefer_native}
+
+
+ROLE_WEIGHT = 1.0
+GENRE_WEIGHT = 2.0
+CHAR_WEIGHT = 2.5
+NATIVE_BONUS = 1.0
+SERUM_BUSY_THRESHOLD = 3
+SERUM_BUSY_PENALTY = 3.0
+NON_NATIVE_PENALTY = 3.0
+
+
+def _base_score(eng, parsed):
+    s = 0.0
+    if parsed["role"]:
+        s += ROLE_WEIGHT * float(eng["roles"].get(parsed["role"], 0))
+    if parsed["genre"] and parsed["genre"] in eng.get("genres", []):
+        s += GENRE_WEIGHT
+    overlap = sum(1 for c in parsed["character"] if c in eng.get("character", []))
+    s += CHAR_WEIGHT * overlap
+    if eng.get("native"):
+        s += NATIVE_BONUS
+    return s
+
+
+def _why(eng, parsed, penalties):
+    parts = []
+    if parsed["role"]:
+        parts.append("role %s fit %d" % (parsed["role"], eng["roles"].get(parsed["role"], 0)))
+    if parsed["genre"] and parsed["genre"] in eng.get("genres", []):
+        parts.append("genre %s" % parsed["genre"])
+    ov = [c for c in parsed["character"] if c in eng.get("character", [])]
+    if ov:
+        parts.append("character " + "/".join(ov))
+    if eng.get("native"):
+        parts.append("native bias")
+    parts.extend(penalties)
+    return "; ".join(parts) or "no strong signal"
+
+
+def score(parsed, profiles, environment):
+    out = []
+    for key, eng in profiles["engines"].items():
+        if key == "serum" and not environment.get("serum_installed", True):
+            continue
+        s = _base_score(eng, parsed)
+        penalties = []
+        if key == "serum" and environment.get("serum_instances", 0) >= SERUM_BUSY_THRESHOLD:
+            s -= SERUM_BUSY_PENALTY
+            penalties.append("serum-busy penalty")
+        if environment.get("prefer_native") and not eng.get("native"):
+            s -= NON_NATIVE_PENALTY
+            penalties.append("non-native penalty")
+        out.append({"engine": key, "domain": eng["domain"],
+                    "score": round(s, 3), "creatable": bool(eng.get("creatable")),
+                    "why": _why(eng, parsed, penalties)})
+    out.sort(key=lambda r: (-r["score"], r["engine"]))
+    return out
+
+
+def recommend(intent, environment, profiles=None):
+    profiles = profiles or load_profiles()
+    parsed = parse_intent(intent, profiles)
+    ranked = score(parsed, profiles, environment)
+    top = ({"engine": ranked[0]["engine"], "domain": ranked[0]["domain"]}
+           if ranked else None)
+    if top:
+        reason = "%s leads (%s)." % (ranked[0]["engine"], ranked[0]["why"])
+    else:
+        reason = "No engine available (Serum not installed and no fallback matched)."
+    return {"intent": intent, "parsed": parsed, "ranked": ranked,
+            "top": top, "reason": reason}
