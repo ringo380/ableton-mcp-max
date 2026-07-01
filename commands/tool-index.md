@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_171 tools._
+_172 tools._
 
 ## Session & view
 
@@ -267,4 +267,5 @@ _171 tools._
 - **`catalog_stats`** - Counts and freshness for the local catalog by domain/source/kind, plus
 - **`reindex_catalog`** - Rebuild the catalog. domains defaults to all. full=True drops and rebuilds
 - **`recommend_asset`** - Propose reuse-vs-create for a described asset. domain in
+- **`recommend_instrument`** - Choose which instrument engine to reach for from a free-text intent
 - **`create_from_plan`** - Execute a create_plan from recommend_asset. confirm=False (default)

@@ -139,7 +139,7 @@ GROUPS = [
     ]),
     ("Catalog", [
         "search_catalog", "find_similar", "catalog_stats", "reindex_catalog",
-        "recommend_asset", "create_from_plan",
+        "recommend_asset", "recommend_instrument", "create_from_plan",
     ]),
 ]
 

@@ -76,6 +76,23 @@ serum|sample|groove|device_preset|wavetable|simpler. Returns {ok, data:
 {decision, top_matches, create_plan, reason}}. PROPOSE ONLY - never writes;
 pass create_plan to create_from_plan(confirm=True) to act on a 'create'.
 
+## recommend_instrument
+
+```python
+recommend_instrument(intent: str, prefer_native: bool = None)
+```
+
+Choose which instrument engine to reach for from a free-text intent
+(e.g. 'gritty evolving reese bass for dnb'). Ranks Serum vs native Wavetable,
+Operator, Analog, Simpler/Sampler, and Drum Rack against a capability matrix,
+biased toward native engines so Serum is used only when it earns it. Applies
+live signals when connected: Serum-installed (drops Serum if absent), Serum
+instance count (busy penalty), and portability (prefer_native). Set
+prefer_native=True to force native-only weighting; leave None to auto-detect
+(native-preferred only when the set has no 3rd-party plugin). PROPOSE ONLY -
+pass the returned top.domain to recommend_asset to pick reuse-vs-create.
+Returns {ok, data:{intent, parsed, ranked, top, reason, environment, next}}.
+
 ## create_from_plan
 
 ```python

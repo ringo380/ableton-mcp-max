@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **171 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **172 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -139,5 +139,5 @@ Discover audio samples in Live's User Library and factory packs and load them as
 
 Persistent local index of Serum presets, samples, grooves, and device presets, with similarity search and reuse-vs-create recommendation that can orchestrate the existing create tools.
 
-`search_catalog`, `find_similar`, `catalog_stats`, `reindex_catalog`, `recommend_asset`, `create_from_plan`
+`search_catalog`, `find_similar`, `catalog_stats`, `reindex_catalog`, `recommend_asset`, `recommend_instrument`, `create_from_plan`
 
