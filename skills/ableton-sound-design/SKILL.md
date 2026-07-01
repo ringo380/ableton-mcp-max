@@ -17,6 +17,21 @@ Goal: a fit-for-purpose instrument/effect sound, repeatable via presets and rack
 - Racks: `inspect_rack_preset`, `clone_rack`, `rename_rack_macros`, `set_rack_zones`,
   `add_rack_macro_mappings`, `get_rack_macros` / `set_rack_macro`.
 
+## Choosing the engine
+- Before loading a synth for a described sound, call `recommend_instrument` with
+  a free-text intent (role + genre + character, e.g. "gritty evolving reese bass
+  for dnb"). It ranks the engines and returns a `top.domain` to feed
+  `recommend_asset`.
+- Default to native (Wavetable / Operator / Analog) for subs, generic pads, and
+  FM keys - lighter, recall-safe, no 3rd-party dependency. Wavetable (native)
+  covers most wavetable needs.
+- Escalate to Serum only for wavetable morphing, heavy unison, complex mod, or
+  reese/growl - or when the user names Serum.
+- Prefer Simpler/Sampler for acoustic/realistic tones or when a specific sample
+  is the source; Drum Rack for percussion.
+- Flow: `recommend_instrument` (pick engine) -> `recommend_asset(domain)`
+  (reuse-vs-create) -> `create_from_plan` or load a preset.
+
 ## Principles
 - Reach for the backdoor only for hidden state (sample refs, wavetable selection, macro
   mappings). Everything automatable goes through `set_device_parameter`.
