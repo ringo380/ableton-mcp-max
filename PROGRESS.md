@@ -1,5 +1,24 @@
 # ableton-mcp-max — Progress
 
+## Instrument-selection intelligence - SHIPPED v0.28.0 (2026-07-01)
+New tool `recommend_instrument(intent, prefer_native=None)`: choose which instrument ENGINE to reach for
+from a free-text intent (e.g. "gritty evolving reese bass for dnb"), ranking Serum vs native Wavetable/
+Operator/Analog vs Simpler/Sampler vs Drum Rack against a curated capability matrix, biased toward native
+so Serum is used only when it earns it. Fills the gap that `recommend_asset(intent, domain)` required the
+caller to already KNOW the domain; `recommend_instrument`'s `top.domain` now chains into `recommend_asset`
+for reuse-vs-create. Pure module `instrument_select.py` (parse_intent/score/recommend + serum_installed/
+classify_device/summarize_environment) + data file `param_maps/instrument_profiles.json` (6 engines,
+role/genre/character vocab). Live signals resolved server-side: Serum-installed (drops Serum if absent),
+Serum instance count (busy penalty >=3), portability (prefer_native auto when set has no 3rd-party plugin);
+degrades to intent-only when Live disconnected (never errors). Scoring: ROLE 1.0 / GENRE 2.0 / CHAR 2.5 /
+NATIVE_BONUS 1.0, penalties 3.0. Sound-design skill got a "Choosing the engine" section. **PR #51
+squash-merged @a2aad7c (main=origin=tag v0.28.0); marketplace `ableton` ref v0.27.2->v0.28.0 @801bb6b.**
+172 tools / 22 cat (joined Catalog). Offline 1032 pass / 2 skip. Built via SDD (7 tasks, all task-reviews +
+opus final review clean - READY TO MERGE, 0 Critical/Important). LIVE VERIFY PENDING (manual): serum_installed
+detection, serum_instances off a real set, intent->engine->recommend_asset round-trips (reese->serum,
+generic pad->native, acoustic pluck->simpler). Known minor (deferred by user): a generic-FX tie lets Serum
+win the alphabetical tiebreak (Serum fx-role 5 vs native 4 - intentional matrix weighting).
+
 ## Serum mod-source oracle, pass 2 (MIDI/global/MPE) - SHIPPED v0.27.2 (2026-06-30)
 Second oracle pass: mapped the 20 remaining single mod sources (MIDI/global + Note submenu + MPE),
 same method (route each to a distinct Filter 1 / Filter 2 / Env 1 destination, save, read source id off
