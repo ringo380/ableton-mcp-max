@@ -39,3 +39,33 @@ def test_parse_bypass_and_global():
     assert b["module"] == "MAX" and b["role"] == "bypass"
     g = oz.parse_param_name("Global Bypass")
     assert g["module"] is None and g["role"] == "global bypass"
+
+
+def test_pack_modules_selects_requested_within_cap():
+    params = [
+        {"module": "EQ", "param_id": 1, "name": "EQ: a"},
+        {"module": "EQ", "param_id": 2, "name": "EQ: b"},
+        {"module": "MAX", "param_id": 3, "name": "MAX: c"},
+        {"module": "IMG", "param_id": 4, "name": "IMG: d"},
+    ]
+    res = oz.pack_modules(params, ["EQ", "MAX"], cap=128)
+    assert [p["param_id"] for p in res["selected"]] == [1, 2, 3]
+    assert res["dropped"] == 0
+    assert res["overflow"] == []
+
+
+def test_pack_modules_reports_overflow():
+    params = [{"module": "EQ", "param_id": i, "name": "EQ: %d" % i} for i in range(5)]
+    res = oz.pack_modules(params, ["EQ"], cap=3)
+    assert len(res["selected"]) == 3
+    assert res["dropped"] == 2
+    assert res["overflow"] == ["EQ"]
+
+
+def test_value_mapping_roundtrip():
+    p = {"min": 20.0, "max": 20000.0}
+    assert abs(oz.to_native(p, 0.0) - 20.0) < 1e-6
+    assert abs(oz.to_native(p, 1.0) - 20000.0) < 1e-6
+    assert abs(oz.to_normalized(p, 20000.0) - 1.0) < 1e-6
+    # clamp
+    assert oz.to_normalized(p, 40000.0) == 1.0

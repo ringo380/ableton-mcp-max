@@ -73,3 +73,48 @@ def parse_param_name(name):
     rest = ' '.join(parts)
     return {"module": module, "module_name": MODULES[module], "section": section,
             "role": rest.lower(), "band": band, "raw": raw}
+
+
+def pack_modules(params, modules, cap=128):
+    """Select params belonging to `modules` (in module-list order), capped at
+    `cap` Configure slots. Returns {selected, dropped, overflow}."""
+    wanted = list(modules)
+    by_mod = {}
+    for p in params:
+        by_mod.setdefault(p.get("module"), []).append(p)
+    selected = []
+    overflow = []
+    for mod in wanted:
+        mod_params = by_mod.get(mod, [])
+        room = cap - len(selected)
+        if room <= 0:
+            if mod_params:
+                overflow.append(mod)
+            continue
+        take = mod_params[:room]
+        selected.extend(take)
+        if len(take) < len(mod_params):
+            overflow.append(mod)
+    total_wanted = sum(len(by_mod.get(m, [])) for m in wanted)
+    dropped = total_wanted - len(selected)
+    return {"selected": selected, "dropped": dropped, "overflow": overflow}
+
+
+def _clamp(v, lo, hi):
+    return lo if v < lo else (hi if v > hi else v)
+
+
+def to_native(param, normalized):
+    """Map LOM-normalized 0-1 -> native units via the param's min/max."""
+    lo = float(param.get("min", 0.0))
+    hi = float(param.get("max", 1.0))
+    return lo + _clamp(float(normalized), 0.0, 1.0) * (hi - lo)
+
+
+def to_normalized(param, native):
+    """Map native units -> LOM-normalized 0-1 via the param's min/max (clamped)."""
+    lo = float(param.get("min", 0.0))
+    hi = float(param.get("max", 1.0))
+    if hi == lo:
+        return 0.0
+    return _clamp((float(native) - lo) / (hi - lo), 0.0, 1.0)
