@@ -3016,6 +3016,81 @@ def set_ozone_module_enabled(ctx: Context, track_index: int, module: str, on: bo
         return _err("set_ozone_module_enabled error: %s" % e)
 
 
+def _oz_apply(track_index, device_index, track_type, module, items):
+    """items: list of (role, band, section, native_value); skip None values."""
+    pack = _ozcat.load()
+    applied = []
+    for role, band, section, val in items:
+        if val is None:
+            continue
+        p = _ozcat.find_param(pack, module, role, band=band, section=section)
+        if p is None:
+            continue
+        normalized = _oz.to_normalized(p, val)
+        _oz_set_by_name(track_index, device_index, track_type, p["name"], normalized)
+        applied.append(p["name"])
+    return applied
+
+
+@mcp.tool()
+def set_ozone_eq_band(ctx: Context, track_index: int, band: int, freq: float = None,
+                      gain: float = None, q: float = None, enable: float = None,
+                      section: str = "stereo_main", device_index: int = 0,
+                      track_type: str = "master") -> str:
+    """Set an Ozone 12 EQ band (freq Hz / gain dB / q / enable) in one call.
+    The EQ module must be exposed first (expose_ozone_modules ["EQ"])."""
+    try:
+        applied = _oz_apply(track_index, device_index, track_type, "EQ", [
+            ("frequency", band, section, freq),
+            ("gain", band, section, gain),
+            ("q", band, section, q),
+            ("enable", band, section, enable),
+        ])
+        return _ok({"module": "EQ", "band": band, "applied": applied})
+    except Exception as e:
+        logger.error("set_ozone_eq_band error: %s", e)
+        return _err("set_ozone_eq_band error: %s" % e)
+
+
+@mcp.tool()
+def set_ozone_maximizer(ctx: Context, track_index: int, threshold: float = None,
+                        ceiling: float = None, character: float = None,
+                        device_index: int = 0, track_type: str = "master") -> str:
+    """Set Ozone 12 Maximizer controls (threshold via input gain, output ceiling,
+    character). Maximizer must be exposed first (expose_ozone_modules ["MAX"])."""
+    try:
+        applied = _oz_apply(track_index, device_index, track_type, "MAX", [
+            ("input gain", None, None, threshold),
+            ("output level", None, None, ceiling),
+            ("character", None, None, character),
+        ])
+        return _ok({"module": "MAX", "applied": applied})
+    except Exception as e:
+        logger.error("set_ozone_maximizer error: %s", e)
+        return _err("set_ozone_maximizer error: %s" % e)
+
+
+@mcp.tool()
+def set_ozone_dynamics_band(ctx: Context, track_index: int, band: int,
+                            comp_threshold: float = None, comp_ratio: float = None,
+                            comp_attack: float = None, comp_release: float = None,
+                            section: str = "stereo_main", device_index: int = 0,
+                            track_type: str = "master") -> str:
+    """Set an Ozone 12 Dynamics band's compressor controls in one call. Dynamics
+    must be exposed first (expose_ozone_modules ["DYN"])."""
+    try:
+        applied = _oz_apply(track_index, device_index, track_type, "DYN", [
+            ("band comp threshold", band, section, comp_threshold),
+            ("band comp ratio", band, section, comp_ratio),
+            ("band comp attack", band, section, comp_attack),
+            ("band comp release", band, section, comp_release),
+        ])
+        return _ok({"module": "DYN", "band": band, "applied": applied})
+    except Exception as e:
+        logger.error("set_ozone_dynamics_band error: %s", e)
+        return _err("set_ozone_dynamics_band error: %s" % e)
+
+
 def _serum_fx_resolve_path(title_fn, resolve_path):
     title = (title_fn or _live_window_title)()
     if is_untitled_title(title):

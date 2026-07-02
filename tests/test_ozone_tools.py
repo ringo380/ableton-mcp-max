@@ -21,3 +21,10 @@ def test_find_param_bypass():
     pack = cat.load()
     p = cat.find_param(pack, "IMG", "bypass")
     assert p is not None and p["name"].endswith("Bypass")
+
+
+def test_wrapper_role_names_resolve():
+    pack = cat.load()
+    assert cat.find_param(pack, "EQ", "gain", band=2, section="stereo_main")["name"] == "EQ: Stereo/Main Gain 2"
+    assert cat.find_param(pack, "MAX", "output level") is not None
+    assert cat.find_param(pack, "DYN", "band comp threshold", band=1, section="stereo_main") is not None
