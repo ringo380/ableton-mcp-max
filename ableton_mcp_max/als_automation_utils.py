@@ -220,6 +220,39 @@ def find_track_span(xml, track_index):
     raise ValueError("regular track index %d not found" % track_index)
 
 
+def find_master_track_span(xml):
+    """Char span (start, end) of the <MasterTrack>...</MasterTrack> element."""
+    open_tag = "<MasterTrack>"
+    s = xml.find(open_tag)
+    if s == -1:
+        raise ValueError("no <MasterTrack> in document")
+    close = "</MasterTrack>"
+    e = xml.find(close, s)
+    if e == -1:
+        raise ValueError("unterminated <MasterTrack>")
+    return (s, e + len(close))
+
+
+def find_return_track_span(xml, return_index):
+    """Char span (start, end) of the return_index-th <ReturnTrack> (doc order)."""
+    idx = 0
+    pos = 0
+    open_tag = "<ReturnTrack>"
+    close = "</ReturnTrack>"
+    while True:
+        s = xml.find(open_tag, pos)
+        if s == -1:
+            raise ValueError("return track index %d not found" % return_index)
+        e = xml.find(close, s)
+        if e == -1:
+            raise ValueError("unterminated <ReturnTrack> %d" % return_index)
+        e += len(close)
+        if idx == return_index:
+            return (s, e)
+        idx += 1
+        pos = e
+
+
 def _matching_close(xml, tag, open_index):
     """Index just past the close tag matching the element opening at open_index,
     accounting for nested same-name elements and self-closing tags."""

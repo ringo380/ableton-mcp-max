@@ -2728,9 +2728,14 @@ def _expose_plugin_impl(track_index, device_index, track_type, params, manual,
     plugin device's <ParameterList> with the pack params (filling empty Configure
     slots + allocating target ids from <NextPointeeId>), writes the .als, and
     reloads. Returns the result dict."""
-    if track_type != "regular":
-        raise ValueError("expose_plugin_parameters supports regular tracks only "
-                         "in v1 (VST/AU instruments load on regular tracks).")
+    if track_type == "regular":
+        _span = lambda x: find_track_span(x, track_index)
+    elif track_type == "return":
+        _span = lambda x: als.find_return_track_span(x, track_index)
+    elif track_type == "master":
+        _span = lambda x: als.find_master_track_span(x)
+    else:
+        raise ValueError("track_type must be regular, return, or master")
     title = (title_fn or _live_window_title)()
     if is_untitled_title(title):
         raise ValueError("Set is untitled — save it first via save_set_as, then "
@@ -2752,7 +2757,7 @@ def _expose_plugin_impl(track_index, device_index, track_type, params, manual,
 
     xml = read_als(path)
     # Count how many params will actually fit (empty slots in the target list).
-    ts, te = find_track_span(xml, track_index)
+    ts, te = _span(xml)
     pl_s, pl_e = pcu.locate_param_list(xml, ts, te, device_index)
     n_empty = len(pcu.find_empty_slots(xml[pl_s:pl_e]))
     n_filled_existing = pcu.count_slots(xml[pl_s:pl_e]) - n_empty
@@ -2768,7 +2773,7 @@ def _expose_plugin_impl(track_index, device_index, track_type, params, manual,
     # set if any target id >= NextPointeeId). The bump rewrites one token, which
     # can shift offsets, so re-locate the list on the bumped doc before filling.
     xml, start_id = pcu.bump_next_pointee_id(xml, count)
-    ts, te = find_track_span(xml, track_index)
+    ts, te = _span(xml)
     pl_s, pl_e = pcu.locate_param_list(xml, ts, te, device_index)
 
     fill_params = []

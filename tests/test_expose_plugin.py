@@ -95,9 +95,9 @@ def test_untitled_set_errors():
         _run(_doc(), PARAMS, title_fn=lambda: "")
 
 
-def test_non_regular_track_errors():
-    with pytest.raises(ValueError, match="regular tracks only"):
-        _run(_doc(), PARAMS, track_type="return")
+def test_invalid_track_type_errors():
+    with pytest.raises(ValueError, match="track_type must be regular, return, or master"):
+        _run(_doc(), PARAMS, track_type="bogus")
 
 
 def test_save_failure_short_circuits():
