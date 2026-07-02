@@ -153,6 +153,8 @@ from ableton_mcp_max import catalog_query as _cat_query
 from ableton_mcp_max import catalog_decide as _cat_decide
 from ableton_mcp_max import catalog_adapt
 from ableton_mcp_max import instrument_select
+from ableton_mcp_max import ozone_utils as _oz
+from ableton_mcp_max import ozone_param_catalog as _ozcat
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -2856,6 +2858,77 @@ def expose_plugin_parameters(
     except Exception as e:
         logger.error("expose_plugin_parameters error: %s", e)
         return _err("expose_plugin_parameters error: %s" % e)
+
+
+@mcp.tool()
+def get_ozone_modules(ctx: Context, track_index: int, device_index: int = 0,
+                      track_type: str = "master") -> str:
+    """List an Ozone 12 instance's modules with exposed/bypassed state.
+
+    Reads the device's currently-exposed LOM params (get_device_parameters) and
+    reports, per Ozone module, whether any of its params are exposed and whether
+    its Bypass is engaged. Ozone 12 lives on the master by default.
+    """
+    try:
+        pack = _ozcat.load()
+        conn = get_ableton_connection()
+        dp = conn.send_command("get_device_parameters", {
+            "track_index": track_index, "device_index": device_index,
+            "track_type": track_type})
+        exposed_names = {p["name"] for p in dp.get("parameters", [])}
+        bypassed = {}
+        for p in dp.get("parameters", []):
+            info = _oz.parse_param_name(p["name"])
+            if info["module"] and info["role"] == "bypass":
+                bypassed[info["module"]] = p["value"] >= 0.5
+        groups = _ozcat.catalog_by_module(pack)
+        modules = []
+        for key in sorted(k for k in groups if k != "GLOBAL"):
+            names = {p["name"] for p in groups[key]}
+            modules.append({
+                "key": key, "name": _oz.MODULES.get(key, key),
+                "exposed": bool(names & exposed_names),
+                "bypassed": bypassed.get(key),
+            })
+        return _ok({"modules": modules})
+    except Exception as e:
+        logger.error("get_ozone_modules error: %s", e)
+        return _err("get_ozone_modules error: %s" % e)
+
+
+@mcp.tool()
+def expose_ozone_modules(ctx: Context, track_index: int, modules: list,
+                         device_index: int = 0, track_type: str = "master",
+                         reload: bool = True) -> str:
+    """Configure the given Ozone 12 modules' params as settable LOM params.
+
+    Ozone exposes 873 params but Ableton Configures at most 128 at once; this
+    fills the device's Configure slots with the requested modules' params (in
+    order), reloads the set in place, and reports overflow. The set must be saved
+    first (save_set_as). modules: list of module keys (e.g. ["EQ","MAX","IMG"]);
+    see get_ozone_modules for keys.
+    """
+    try:
+        pack = _ozcat.load()
+        plan = _oz.pack_modules(pack["params"], modules, cap=128)
+        if not plan["selected"]:
+            return _err("no catalog params for modules %s" % modules)
+        get_ableton_connection()  # ensure reachable before save
+        data = _expose_plugin_impl(
+            track_index, device_index, track_type, plan["selected"],
+            _EXPOSE_DEFAULT_MANUAL, reload,
+            save_impl=lambda: _save_set_impl(name=""),
+            reload_impl=lambda p, n: _reload_set(
+                p, n, probe=lambda: get_ableton_connection().send_command(
+                    "get_session_info")),
+        )
+        data["overflow"] = plan["overflow"]
+        return _ok(data)
+    except (ValueError, RuntimeError, FileNotFoundError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("expose_ozone_modules error: %s", e)
+        return _err("expose_ozone_modules error: %s" % e)
 
 
 def _serum_fx_resolve_path(title_fn, resolve_path):
