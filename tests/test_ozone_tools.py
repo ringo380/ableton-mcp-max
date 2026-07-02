@@ -9,3 +9,15 @@ def test_expose_selection_respects_modules_and_cap():
     assert res["dropped"] == 0 and res["overflow"] == []
     assert all(p["module"] in ("MAX", "IMG") for p in res["selected"])
     assert len(res["selected"]) > 0
+
+
+def test_find_param_resolves_maximizer_output_level():
+    pack = cat.load()
+    p = cat.find_param(pack, "MAX", "output level")
+    assert p is not None and p["name"] == "MAX: Output Level"
+
+
+def test_find_param_bypass():
+    pack = cat.load()
+    p = cat.find_param(pack, "IMG", "bypass")
+    assert p is not None and p["name"].endswith("Bypass")

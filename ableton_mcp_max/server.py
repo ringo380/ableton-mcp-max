@@ -2931,6 +2931,91 @@ def expose_ozone_modules(ctx: Context, track_index: int, modules: list,
         return _err("expose_ozone_modules error: %s" % e)
 
 
+def _oz_set_by_name(track_index, device_index, track_type, name, normalized):
+    # set_device_parameter's send_command contract takes parameter_index (int),
+    # not a name -- resolve name -> index against the live param list first.
+    conn = get_ableton_connection()
+    info = conn.send_command("get_device_parameters", {
+        "track_index": track_index, "device_index": device_index,
+        "track_type": track_type})
+    params = info.get("parameters", [])
+    idx = resolve_parameter_index(params, name)
+    return conn.send_command("set_device_parameter", {
+        "track_index": track_index, "device_index": device_index,
+        "track_type": track_type, "parameter_index": idx, "value": normalized})
+
+
+@mcp.tool()
+def get_ozone_module(ctx: Context, track_index: int, module: str,
+                     device_index: int = 0, track_type: str = "master") -> str:
+    """Read the currently-exposed params of one Ozone 12 module (native + normalized)."""
+    try:
+        pack = _ozcat.load()
+        by_name = {p["name"]: p for p in pack["params"]}
+        conn = get_ableton_connection()
+        dp = conn.send_command("get_device_parameters", {
+            "track_index": track_index, "device_index": device_index,
+            "track_type": track_type})
+        out = []
+        for p in dp.get("parameters", []):
+            info = _oz.parse_param_name(p["name"])
+            if info["module"] != module:
+                continue
+            cat_p = by_name.get(p["name"], {})
+            out.append({"name": p["name"], "role": info["role"],
+                        "band": info["band"], "section": info["section"],
+                        "normalized": p["value"],
+                        "native": _oz.to_native(cat_p, p["value"]) if cat_p else None})
+        if not out:
+            return _err("module %s not exposed; call expose_ozone_modules first" % module)
+        return _ok({"module": module, "name": _oz.MODULES.get(module, module),
+                    "params": out})
+    except Exception as e:
+        logger.error("get_ozone_module error: %s", e)
+        return _err("get_ozone_module error: %s" % e)
+
+
+@mcp.tool()
+def set_ozone_module_param(ctx: Context, track_index: int, module: str, role: str,
+                           value: float, band: int = None, section: str = None,
+                           native: bool = True, device_index: int = 0,
+                           track_type: str = "master") -> str:
+    """Set one Ozone 12 module param. role/band/section identify the param (see
+    get_ozone_module); value is native units by default (native=False for 0-1).
+    The param must be exposed first (expose_ozone_modules)."""
+    try:
+        pack = _ozcat.load()
+        p = _ozcat.find_param(pack, module, role.lower(), band=band, section=section)
+        if p is None:
+            return _err("no Ozone param for module=%s role=%s band=%s section=%s"
+                        % (module, role, band, section))
+        normalized = _oz.to_normalized(p, value) if native else max(0.0, min(1.0, value))
+        res = _oz_set_by_name(track_index, device_index, track_type, p["name"], normalized)
+        return _ok({"name": p["name"], "normalized": normalized, "result": res})
+    except Exception as e:
+        logger.error("set_ozone_module_param error: %s", e)
+        return _err("set_ozone_module_param error: %s" % e)
+
+
+@mcp.tool()
+def set_ozone_module_enabled(ctx: Context, track_index: int, module: str, on: bool,
+                             device_index: int = 0, track_type: str = "master") -> str:
+    """Enable/disable an Ozone 12 module via its Bypass param (on=True -> not
+    bypassed). The module's Bypass must be exposed (expose_ozone_modules)."""
+    try:
+        pack = _ozcat.load()
+        p = _ozcat.find_param(pack, module, "bypass")
+        if p is None:
+            return _err("no Bypass param for module %s" % module)
+        # Bypass = 1 means bypassed; on=True -> value 0
+        res = _oz_set_by_name(track_index, device_index, track_type, p["name"],
+                              0.0 if on else 1.0)
+        return _ok({"name": p["name"], "on": on, "result": res})
+    except Exception as e:
+        logger.error("set_ozone_module_enabled error: %s", e)
+        return _err("set_ozone_module_enabled error: %s" % e)
+
+
 def _serum_fx_resolve_path(title_fn, resolve_path):
     title = (title_fn or _live_window_title)()
     if is_untitled_title(title):
