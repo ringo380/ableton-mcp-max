@@ -1,0 +1,7013 @@
+{
+ "plugin": "Ozone 12",
+ "class_name": "PluginDevice",
+ "captured": "2026-07-02",
+ "live_version": "Ableton Live 12.4.2 Suite",
+ "id_base": 0,
+ "id_scheme": "positional: configure_slot_param_id = id_base + probe_index",
+ "param_count": 873,
+ "value_encoding": "normalized_0_1",
+ "native_min_max_available": false,
+ "quantized_value_items_available": false,
+ "notes": "LOM exposes all Ozone params as continuous normalized [0,1] floats, even toggles/enums (is_quantized always False, no value_items). Native units/enum labels are not host-derivable. id_base=0 positional, verified live on 3 well-separated sentinels.",
+ "verified_bindings": [
+  {
+   "index": 2,
+   "name": "EQ: Stereo/Main Frequency 1"
+  },
+  {
+   "index": 100,
+   "name": "Global Bypass"
+  },
+  {
+   "index": 121,
+   "name": "MAX: Output Level"
+  }
+ ],
+ "params": [
+  {
+   "index": 0,
+   "name": "EQ: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 1,
+   "name": "EQ: Global Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 2,
+   "name": "EQ: Stereo/Main Frequency 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 3,
+   "name": "EQ: Stereo/Main Frequency 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 4,
+   "name": "EQ: Stereo/Main Frequency 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 5,
+   "name": "EQ: Stereo/Main Frequency 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 6,
+   "name": "EQ: Stereo/Main Frequency 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 7,
+   "name": "EQ: Stereo/Main Frequency 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 8,
+   "name": "EQ: Stereo/Main Frequency 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 9,
+   "name": "EQ: Stereo/Main Frequency 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 10,
+   "name": "EQ: Stereo/Main Gain 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 11,
+   "name": "EQ: Stereo/Main Gain 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 12,
+   "name": "EQ: Stereo/Main Gain 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 13,
+   "name": "EQ: Stereo/Main Gain 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 14,
+   "name": "EQ: Stereo/Main Gain 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 15,
+   "name": "EQ: Stereo/Main Gain 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 16,
+   "name": "EQ: Stereo/Main Gain 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 17,
+   "name": "EQ: Stereo/Main Gain 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 18,
+   "name": "EQ: Stereo/Main Q 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 19,
+   "name": "EQ: Stereo/Main Q 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 20,
+   "name": "EQ: Stereo/Main Q 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 21,
+   "name": "EQ: Stereo/Main Q 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 22,
+   "name": "EQ: Stereo/Main Q 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 23,
+   "name": "EQ: Stereo/Main Q 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 24,
+   "name": "EQ: Stereo/Main Q 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 25,
+   "name": "EQ: Stereo/Main Q 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 26,
+   "name": "EQ: Stereo/Main Phase 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 27,
+   "name": "EQ: Stereo/Main Phase 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 28,
+   "name": "EQ: Stereo/Main Phase 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 29,
+   "name": "EQ: Stereo/Main Phase 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 30,
+   "name": "EQ: Stereo/Main Phase 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 31,
+   "name": "EQ: Stereo/Main Phase 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 32,
+   "name": "EQ: Stereo/Main Phase 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 33,
+   "name": "EQ: Stereo/Main Phase 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 34,
+   "name": "EQ: Stereo/Main Enable 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 35,
+   "name": "EQ: Stereo/Main Enable 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 36,
+   "name": "EQ: Stereo/Main Enable 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 37,
+   "name": "EQ: Stereo/Main Enable 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 38,
+   "name": "EQ: Stereo/Main Enable 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 39,
+   "name": "EQ: Stereo/Main Enable 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 40,
+   "name": "EQ: Stereo/Main Enable 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 41,
+   "name": "EQ: Stereo/Main Enable 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 42,
+   "name": "EQ: Stereo/Main Shape 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 43,
+   "name": "EQ: Stereo/Main Shape 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 44,
+   "name": "EQ: Stereo/Main Shape 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 45,
+   "name": "EQ: Stereo/Main Shape 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 46,
+   "name": "EQ: Stereo/Main Shape 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 47,
+   "name": "EQ: Stereo/Main Shape 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 48,
+   "name": "EQ: Stereo/Main Shape 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 49,
+   "name": "EQ: Stereo/Main Shape 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 50,
+   "name": "EQ: Stereo/Main Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 51,
+   "name": "EQ: Aux Frequency 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 52,
+   "name": "EQ: Aux Frequency 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 53,
+   "name": "EQ: Aux Frequency 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 54,
+   "name": "EQ: Aux Frequency 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 55,
+   "name": "EQ: Aux Frequency 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 56,
+   "name": "EQ: Aux Frequency 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 57,
+   "name": "EQ: Aux Frequency 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 58,
+   "name": "EQ: Aux Frequency 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 59,
+   "name": "EQ: Aux Gain 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 60,
+   "name": "EQ: Aux Gain 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 61,
+   "name": "EQ: Aux Gain 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 62,
+   "name": "EQ: Aux Gain 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 63,
+   "name": "EQ: Aux Gain 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 64,
+   "name": "EQ: Aux Gain 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 65,
+   "name": "EQ: Aux Gain 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 66,
+   "name": "EQ: Aux Gain 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 67,
+   "name": "EQ: Aux Q 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 68,
+   "name": "EQ: Aux Q 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 69,
+   "name": "EQ: Aux Q 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 70,
+   "name": "EQ: Aux Q 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 71,
+   "name": "EQ: Aux Q 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 72,
+   "name": "EQ: Aux Q 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 73,
+   "name": "EQ: Aux Q 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 74,
+   "name": "EQ: Aux Q 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 75,
+   "name": "EQ: Aux Phase 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 76,
+   "name": "EQ: Aux Phase 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 77,
+   "name": "EQ: Aux Phase 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 78,
+   "name": "EQ: Aux Phase 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 79,
+   "name": "EQ: Aux Phase 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 80,
+   "name": "EQ: Aux Phase 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 81,
+   "name": "EQ: Aux Phase 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 82,
+   "name": "EQ: Aux Phase 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 83,
+   "name": "EQ: Aux Enable 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 84,
+   "name": "EQ: Aux Enable 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 85,
+   "name": "EQ: Aux Enable 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 86,
+   "name": "EQ: Aux Enable 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 87,
+   "name": "EQ: Aux Enable 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 88,
+   "name": "EQ: Aux Enable 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 89,
+   "name": "EQ: Aux Enable 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 90,
+   "name": "EQ: Aux Enable 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 91,
+   "name": "EQ: Aux Shape 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 92,
+   "name": "EQ: Aux Shape 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 93,
+   "name": "EQ: Aux Shape 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 94,
+   "name": "EQ: Aux Shape 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 95,
+   "name": "EQ: Aux Shape 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 96,
+   "name": "EQ: Aux Shape 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 97,
+   "name": "EQ: Aux Shape 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 98,
+   "name": "EQ: Aux Shape 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 99,
+   "name": "EQ: Aux Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 100,
+   "name": "Global Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 101,
+   "name": "IMG: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 102,
+   "name": "IMG: Global Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 103,
+   "name": "IMG: Stereo/Main Enable Stereoizer",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 104,
+   "name": "IMG: Stereo/Main Stereoizer Delay",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 105,
+   "name": "IMG: Stereo/Main Band 1 Width Percent",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 106,
+   "name": "IMG: Stereo/Main Band 2 Width Percent",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 107,
+   "name": "IMG: Stereo/Main Band 3 Width Percent",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 108,
+   "name": "IMG: Stereo/Main Band 4 Width Percent",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 109,
+   "name": "IMG: Stereo/Main Recover Sides Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 110,
+   "name": "IMG: Stereo/Main Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 111,
+   "name": "IMG: Aux Enable Stereoizer",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 112,
+   "name": "IMG: Aux Stereoizer Delay",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 113,
+   "name": "IMG: Aux Band 1 Width Percent",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 114,
+   "name": "IMG: Aux Band 2 Width Percent",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 115,
+   "name": "IMG: Aux Band 3 Width Percent",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 116,
+   "name": "IMG: Aux Band 4 Width Percent",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 117,
+   "name": "IMG: Aux Recover Sides Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 118,
+   "name": "IMG: Aux Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 119,
+   "name": "MAX: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 120,
+   "name": "MAX: Input Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 121,
+   "name": "MAX: Output Level",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 122,
+   "name": "MAX: Link Input Gain and Output Level",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 123,
+   "name": "MAX: Character",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 124,
+   "name": "MAX: Upward Compression Amt",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 125,
+   "name": "MAX: Soft Clip On/Off",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 126,
+   "name": "MAX: Soft Clip Mix",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 127,
+   "name": "MAX: Soft Clip Mode",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 128,
+   "name": "MAX: Transient Shaping Amt",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 129,
+   "name": "MAX: Stereo Ind. Sustain Amt",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 130,
+   "name": "MAX: Stereo Ind. Transient Amt",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 131,
+   "name": "MAX: Link Stereo Amounts",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 132,
+   "name": "GAIN: Input L (Locked)",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 133,
+   "name": "GAIN: Input L (Unlocked)",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 134,
+   "name": "GAIN: Input R (Unlocked)",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 135,
+   "name": "GAIN: Output L (Locked)",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 136,
+   "name": "GAIN: Output L (Unlocked)",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 137,
+   "name": "GAIN: Output R (Unlocked)",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 138,
+   "name": "EQ2: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 139,
+   "name": "EQ2: Global Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 140,
+   "name": "EQ2: Stereo/Main Frequency 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 141,
+   "name": "EQ2: Stereo/Main Frequency 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 142,
+   "name": "EQ2: Stereo/Main Frequency 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 143,
+   "name": "EQ2: Stereo/Main Frequency 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 144,
+   "name": "EQ2: Stereo/Main Frequency 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 145,
+   "name": "EQ2: Stereo/Main Frequency 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 146,
+   "name": "EQ2: Stereo/Main Frequency 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 147,
+   "name": "EQ2: Stereo/Main Frequency 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 148,
+   "name": "EQ2: Stereo/Main Gain 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 149,
+   "name": "EQ2: Stereo/Main Gain 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 150,
+   "name": "EQ2: Stereo/Main Gain 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 151,
+   "name": "EQ2: Stereo/Main Gain 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 152,
+   "name": "EQ2: Stereo/Main Gain 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 153,
+   "name": "EQ2: Stereo/Main Gain 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 154,
+   "name": "EQ2: Stereo/Main Gain 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 155,
+   "name": "EQ2: Stereo/Main Gain 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 156,
+   "name": "EQ2: Stereo/Main Q 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 157,
+   "name": "EQ2: Stereo/Main Q 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 158,
+   "name": "EQ2: Stereo/Main Q 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 159,
+   "name": "EQ2: Stereo/Main Q 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 160,
+   "name": "EQ2: Stereo/Main Q 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 161,
+   "name": "EQ2: Stereo/Main Q 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 162,
+   "name": "EQ2: Stereo/Main Q 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 163,
+   "name": "EQ2: Stereo/Main Q 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 164,
+   "name": "EQ2: Stereo/Main Phase 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 165,
+   "name": "EQ2: Stereo/Main Phase 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 166,
+   "name": "EQ2: Stereo/Main Phase 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 167,
+   "name": "EQ2: Stereo/Main Phase 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 168,
+   "name": "EQ2: Stereo/Main Phase 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 169,
+   "name": "EQ2: Stereo/Main Phase 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 170,
+   "name": "EQ2: Stereo/Main Phase 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 171,
+   "name": "EQ2: Stereo/Main Phase 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 172,
+   "name": "EQ2: Stereo/Main Enable 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 173,
+   "name": "EQ2: Stereo/Main Enable 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 174,
+   "name": "EQ2: Stereo/Main Enable 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 175,
+   "name": "EQ2: Stereo/Main Enable 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 176,
+   "name": "EQ2: Stereo/Main Enable 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 177,
+   "name": "EQ2: Stereo/Main Enable 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 178,
+   "name": "EQ2: Stereo/Main Enable 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 179,
+   "name": "EQ2: Stereo/Main Enable 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 180,
+   "name": "EQ2: Stereo/Main Shape 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 181,
+   "name": "EQ2: Stereo/Main Shape 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 182,
+   "name": "EQ2: Stereo/Main Shape 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 183,
+   "name": "EQ2: Stereo/Main Shape 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 184,
+   "name": "EQ2: Stereo/Main Shape 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 185,
+   "name": "EQ2: Stereo/Main Shape 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 186,
+   "name": "EQ2: Stereo/Main Shape 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 187,
+   "name": "EQ2: Stereo/Main Shape 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 188,
+   "name": "EQ2: Stereo/Main Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 189,
+   "name": "EQ2: Aux Frequency 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 190,
+   "name": "EQ2: Aux Frequency 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 191,
+   "name": "EQ2: Aux Frequency 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 192,
+   "name": "EQ2: Aux Frequency 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 193,
+   "name": "EQ2: Aux Frequency 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 194,
+   "name": "EQ2: Aux Frequency 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 195,
+   "name": "EQ2: Aux Frequency 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 196,
+   "name": "EQ2: Aux Frequency 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 197,
+   "name": "EQ2: Aux Gain 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 198,
+   "name": "EQ2: Aux Gain 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 199,
+   "name": "EQ2: Aux Gain 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 200,
+   "name": "EQ2: Aux Gain 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 201,
+   "name": "EQ2: Aux Gain 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 202,
+   "name": "EQ2: Aux Gain 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 203,
+   "name": "EQ2: Aux Gain 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 204,
+   "name": "EQ2: Aux Gain 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 205,
+   "name": "EQ2: Aux Q 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 206,
+   "name": "EQ2: Aux Q 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 207,
+   "name": "EQ2: Aux Q 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 208,
+   "name": "EQ2: Aux Q 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 209,
+   "name": "EQ2: Aux Q 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 210,
+   "name": "EQ2: Aux Q 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 211,
+   "name": "EQ2: Aux Q 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 212,
+   "name": "EQ2: Aux Q 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 213,
+   "name": "EQ2: Aux Phase 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 214,
+   "name": "EQ2: Aux Phase 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 215,
+   "name": "EQ2: Aux Phase 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 216,
+   "name": "EQ2: Aux Phase 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 217,
+   "name": "EQ2: Aux Phase 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 218,
+   "name": "EQ2: Aux Phase 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 219,
+   "name": "EQ2: Aux Phase 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 220,
+   "name": "EQ2: Aux Phase 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 221,
+   "name": "EQ2: Aux Enable 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 222,
+   "name": "EQ2: Aux Enable 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 223,
+   "name": "EQ2: Aux Enable 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 224,
+   "name": "EQ2: Aux Enable 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 225,
+   "name": "EQ2: Aux Enable 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 226,
+   "name": "EQ2: Aux Enable 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 227,
+   "name": "EQ2: Aux Enable 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 228,
+   "name": "EQ2: Aux Enable 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 229,
+   "name": "EQ2: Aux Shape 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 230,
+   "name": "EQ2: Aux Shape 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 231,
+   "name": "EQ2: Aux Shape 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 232,
+   "name": "EQ2: Aux Shape 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 233,
+   "name": "EQ2: Aux Shape 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 234,
+   "name": "EQ2: Aux Shape 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 235,
+   "name": "EQ2: Aux Shape 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 236,
+   "name": "EQ2: Aux Shape 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 237,
+   "name": "EQ2: Aux Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 238,
+   "name": "DYN: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 239,
+   "name": "DYN: Stereo/Main Global Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 240,
+   "name": "DYN: Stereo/Main Band 1 Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 241,
+   "name": "DYN: Stereo/Main Band 1 Mix",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 242,
+   "name": "DYN: Stereo/Main Band 1 Comp Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 243,
+   "name": "DYN: Stereo/Main Band 1 Comp Ratio",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 244,
+   "name": "DYN: Stereo/Main Band 1 Comp Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 245,
+   "name": "DYN: Stereo/Main Band 1 Comp Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 246,
+   "name": "DYN: Stereo/Main Band 1 Comp Knee",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 247,
+   "name": "DYN: Stereo/Main Band 1 Lim Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 248,
+   "name": "DYN: Stereo/Main Band 1 Lim Ratio",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 249,
+   "name": "DYN: Stereo/Main Band 1 Lim Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 250,
+   "name": "DYN: Stereo/Main Band 1 Lim Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 251,
+   "name": "DYN: Stereo/Main Band 1 Lim Knee",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 252,
+   "name": "DYN: Stereo/Main Band 2 Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 253,
+   "name": "DYN: Stereo/Main Band 2 Mix",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 254,
+   "name": "DYN: Stereo/Main Band 2 Comp Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 255,
+   "name": "DYN: Stereo/Main Band 2 Comp Ratio",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 256,
+   "name": "DYN: Stereo/Main Band 2 Comp Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 257,
+   "name": "DYN: Stereo/Main Band 2 Comp Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 258,
+   "name": "DYN: Stereo/Main Band 2 Comp Knee",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 259,
+   "name": "DYN: Stereo/Main Band 2 Lim Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 260,
+   "name": "DYN: Stereo/Main Band 2 Lim Ratio",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 261,
+   "name": "DYN: Stereo/Main Band 2 Lim Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 262,
+   "name": "DYN: Stereo/Main Band 2 Lim Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 263,
+   "name": "DYN: Stereo/Main Band 2 Lim Knee",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 264,
+   "name": "DYN: Stereo/Main Band 3 Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 265,
+   "name": "DYN: Stereo/Main Band 3 Mix",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 266,
+   "name": "DYN: Stereo/Main Band 3 Comp Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 267,
+   "name": "DYN: Stereo/Main Band 3 Comp Ratio",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 268,
+   "name": "DYN: Stereo/Main Band 3 Comp Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 269,
+   "name": "DYN: Stereo/Main Band 3 Comp Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 270,
+   "name": "DYN: Stereo/Main Band 3 Comp Knee",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 271,
+   "name": "DYN: Stereo/Main Band 3 Lim Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 272,
+   "name": "DYN: Stereo/Main Band 3 Lim Ratio",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 273,
+   "name": "DYN: Stereo/Main Band 3 Lim Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 274,
+   "name": "DYN: Stereo/Main Band 3 Lim Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 275,
+   "name": "DYN: Stereo/Main Band 3 Lim Knee",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 276,
+   "name": "DYN: Stereo/Main Band 4 Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 277,
+   "name": "DYN: Stereo/Main Band 4 Mix",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 278,
+   "name": "DYN: Stereo/Main Band 4 Comp Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 279,
+   "name": "DYN: Stereo/Main Band 4 Comp Ratio",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 280,
+   "name": "DYN: Stereo/Main Band 4 Comp Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 281,
+   "name": "DYN: Stereo/Main Band 4 Comp Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 282,
+   "name": "DYN: Stereo/Main Band 4 Comp Knee",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 283,
+   "name": "DYN: Stereo/Main Band 4 Lim Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 284,
+   "name": "DYN: Stereo/Main Band 4 Lim Ratio",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 285,
+   "name": "DYN: Stereo/Main Band 4 Lim Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 286,
+   "name": "DYN: Stereo/Main Band 4 Lim Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 287,
+   "name": "DYN: Stereo/Main Band 4 Lim Knee",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 288,
+   "name": "DYN: Stereo/Main Level Detection Method",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 289,
+   "name": "DYN: Stereo/Main Sidechain HPF",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 290,
+   "name": "DYN: Stereo/Main Sidechain Tilt Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 291,
+   "name": "DYN: Stereo/Main Sidechain Filter Mode",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 292,
+   "name": "DYN: Stereo/Main Sidechain Filter Slope",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 293,
+   "name": "DYN: Stereo/Main Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 294,
+   "name": "DYN: Aux Global Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 295,
+   "name": "DYN: Aux Band 1 Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 296,
+   "name": "DYN: Aux Band 1 Mix",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 297,
+   "name": "DYN: Aux Band 1 Comp Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 298,
+   "name": "DYN: Aux Band 1 Comp Ratio",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 299,
+   "name": "DYN: Aux Band 1 Comp Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 300,
+   "name": "DYN: Aux Band 1 Comp Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 301,
+   "name": "DYN: Aux Band 1 Comp Knee",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 302,
+   "name": "DYN: Aux Band 1 Lim Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 303,
+   "name": "DYN: Aux Band 1 Lim Ratio",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 304,
+   "name": "DYN: Aux Band 1 Lim Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 305,
+   "name": "DYN: Aux Band 1 Lim Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 306,
+   "name": "DYN: Aux Band 1 Lim Knee",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 307,
+   "name": "DYN: Aux Band 2 Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 308,
+   "name": "DYN: Aux Band 2 Mix",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 309,
+   "name": "DYN: Aux Band 2 Comp Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 310,
+   "name": "DYN: Aux Band 2 Comp Ratio",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 311,
+   "name": "DYN: Aux Band 2 Comp Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 312,
+   "name": "DYN: Aux Band 2 Comp Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 313,
+   "name": "DYN: Aux Band 2 Comp Knee",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 314,
+   "name": "DYN: Aux Band 2 Lim Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 315,
+   "name": "DYN: Aux Band 2 Lim Ratio",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 316,
+   "name": "DYN: Aux Band 2 Lim Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 317,
+   "name": "DYN: Aux Band 2 Lim Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 318,
+   "name": "DYN: Aux Band 2 Lim Knee",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 319,
+   "name": "DYN: Aux Band 3 Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 320,
+   "name": "DYN: Aux Band 3 Mix",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 321,
+   "name": "DYN: Aux Band 3 Comp Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 322,
+   "name": "DYN: Aux Band 3 Comp Ratio",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 323,
+   "name": "DYN: Aux Band 3 Comp Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 324,
+   "name": "DYN: Aux Band 3 Comp Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 325,
+   "name": "DYN: Aux Band 3 Comp Knee",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 326,
+   "name": "DYN: Aux Band 3 Lim Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 327,
+   "name": "DYN: Aux Band 3 Lim Ratio",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 328,
+   "name": "DYN: Aux Band 3 Lim Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 329,
+   "name": "DYN: Aux Band 3 Lim Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 330,
+   "name": "DYN: Aux Band 3 Lim Knee",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 331,
+   "name": "DYN: Aux Band 4 Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 332,
+   "name": "DYN: Aux Band 4 Mix",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 333,
+   "name": "DYN: Aux Band 4 Comp Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 334,
+   "name": "DYN: Aux Band 4 Comp Ratio",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 335,
+   "name": "DYN: Aux Band 4 Comp Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 336,
+   "name": "DYN: Aux Band 4 Comp Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 337,
+   "name": "DYN: Aux Band 4 Comp Knee",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 338,
+   "name": "DYN: Aux Band 4 Lim Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 339,
+   "name": "DYN: Aux Band 4 Lim Ratio",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 340,
+   "name": "DYN: Aux Band 4 Lim Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 341,
+   "name": "DYN: Aux Band 4 Lim Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 342,
+   "name": "DYN: Aux Band 4 Lim Knee",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 343,
+   "name": "DYN: Aux Level Detection Method",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 344,
+   "name": "DYN: Aux Sidechain HPF",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 345,
+   "name": "DYN: Aux Sidechain Tilt Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 346,
+   "name": "DYN: Aux Sidechain Filter Mode",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 347,
+   "name": "DYN: Aux Sidechain Filter Slope",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 348,
+   "name": "DYN: Aux Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 349,
+   "name": "DYNEQ: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 350,
+   "name": "DYNEQ: Stereo/Main Frequency 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 351,
+   "name": "DYNEQ: Stereo/Main Gain 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 352,
+   "name": "DYNEQ: Stereo/Main Offset Gain 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 353,
+   "name": "DYNEQ: Stereo/Main Q 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 354,
+   "name": "DYNEQ: Stereo/Main Threshold 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 355,
+   "name": "DYNEQ: Stereo/Main Enable 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 356,
+   "name": "DYNEQ: Stereo/Main Shape 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 357,
+   "name": "DYNEQ: Stereo/Main Dyn Trigger Mode 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 358,
+   "name": "DYNEQ: Stereo/Main Attack 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 359,
+   "name": "DYNEQ: Stereo/Main Release 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 360,
+   "name": "DYNEQ: Stereo/Main Auto Attack 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 361,
+   "name": "DYNEQ: Stereo/Main Auto Release 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 362,
+   "name": "DYNEQ: Stereo/Main Auto Attack/Release 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 363,
+   "name": "DYNEQ: Stereo/Main Frequency 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 364,
+   "name": "DYNEQ: Stereo/Main Gain 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 365,
+   "name": "DYNEQ: Stereo/Main Offset Gain 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 366,
+   "name": "DYNEQ: Stereo/Main Q 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 367,
+   "name": "DYNEQ: Stereo/Main Threshold 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 368,
+   "name": "DYNEQ: Stereo/Main Enable 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 369,
+   "name": "DYNEQ: Stereo/Main Shape 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 370,
+   "name": "DYNEQ: Stereo/Main Dyn Trigger Mode 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 371,
+   "name": "DYNEQ: Stereo/Main Attack 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 372,
+   "name": "DYNEQ: Stereo/Main Release 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 373,
+   "name": "DYNEQ: Stereo/Main Auto Attack 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 374,
+   "name": "DYNEQ: Stereo/Main Auto Release 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 375,
+   "name": "DYNEQ: Stereo/Main Auto Attack/Release 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 376,
+   "name": "DYNEQ: Stereo/Main Frequency 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 377,
+   "name": "DYNEQ: Stereo/Main Gain 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 378,
+   "name": "DYNEQ: Stereo/Main Offset Gain 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 379,
+   "name": "DYNEQ: Stereo/Main Q 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 380,
+   "name": "DYNEQ: Stereo/Main Threshold 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 381,
+   "name": "DYNEQ: Stereo/Main Enable 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 382,
+   "name": "DYNEQ: Stereo/Main Shape 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 383,
+   "name": "DYNEQ: Stereo/Main Dyn Trigger Mode 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 384,
+   "name": "DYNEQ: Stereo/Main Attack 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 385,
+   "name": "DYNEQ: Stereo/Main Release 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 386,
+   "name": "DYNEQ: Stereo/Main Auto Attack 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 387,
+   "name": "DYNEQ: Stereo/Main Auto Release 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 388,
+   "name": "DYNEQ: Stereo/Main Auto Attack/Release 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 389,
+   "name": "DYNEQ: Stereo/Main Frequency 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 390,
+   "name": "DYNEQ: Stereo/Main Gain 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 391,
+   "name": "DYNEQ: Stereo/Main Offset Gain 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 392,
+   "name": "DYNEQ: Stereo/Main Q 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 393,
+   "name": "DYNEQ: Stereo/Main Threshold 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 394,
+   "name": "DYNEQ: Stereo/Main Enable 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 395,
+   "name": "DYNEQ: Stereo/Main Shape 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 396,
+   "name": "DYNEQ: Stereo/Main Dyn Trigger Mode 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 397,
+   "name": "DYNEQ: Stereo/Main Attack 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 398,
+   "name": "DYNEQ: Stereo/Main Release 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 399,
+   "name": "DYNEQ: Stereo/Main Auto Attack 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 400,
+   "name": "DYNEQ: Stereo/Main Auto Release 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 401,
+   "name": "DYNEQ: Stereo/Main Auto Attack/Release 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 402,
+   "name": "DYNEQ: Stereo/Main Frequency 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 403,
+   "name": "DYNEQ: Stereo/Main Gain 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 404,
+   "name": "DYNEQ: Stereo/Main Offset Gain 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 405,
+   "name": "DYNEQ: Stereo/Main Q 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 406,
+   "name": "DYNEQ: Stereo/Main Threshold 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 407,
+   "name": "DYNEQ: Stereo/Main Enable 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 408,
+   "name": "DYNEQ: Stereo/Main Shape 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 409,
+   "name": "DYNEQ: Stereo/Main Dyn Trigger Mode 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 410,
+   "name": "DYNEQ: Stereo/Main Attack 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 411,
+   "name": "DYNEQ: Stereo/Main Release 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 412,
+   "name": "DYNEQ: Stereo/Main Auto Attack 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 413,
+   "name": "DYNEQ: Stereo/Main Auto Release 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 414,
+   "name": "DYNEQ: Stereo/Main Auto Attack/Release 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 415,
+   "name": "DYNEQ: Stereo/Main Frequency 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 416,
+   "name": "DYNEQ: Stereo/Main Gain 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 417,
+   "name": "DYNEQ: Stereo/Main Offset Gain 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 418,
+   "name": "DYNEQ: Stereo/Main Q 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 419,
+   "name": "DYNEQ: Stereo/Main Threshold 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 420,
+   "name": "DYNEQ: Stereo/Main Enable 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 421,
+   "name": "DYNEQ: Stereo/Main Shape 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 422,
+   "name": "DYNEQ: Stereo/Main Dyn Trigger Mode 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 423,
+   "name": "DYNEQ: Stereo/Main Attack 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 424,
+   "name": "DYNEQ: Stereo/Main Release 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 425,
+   "name": "DYNEQ: Stereo/Main Auto Attack 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 426,
+   "name": "DYNEQ: Stereo/Main Auto Release 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 427,
+   "name": "DYNEQ: Stereo/Main Auto Attack/Release 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 428,
+   "name": "DYNEQ: Stereo/Main Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 429,
+   "name": "DYNEQ: Aux Frequency 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 430,
+   "name": "DYNEQ: Aux Gain 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 431,
+   "name": "DYNEQ: Aux Offset Gain 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 432,
+   "name": "DYNEQ: Aux Q 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 433,
+   "name": "DYNEQ: Aux Threshold 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 434,
+   "name": "DYNEQ: Aux Enable 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 435,
+   "name": "DYNEQ: Aux Shape 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 436,
+   "name": "DYNEQ: Aux Dyn Trigger Mode 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 437,
+   "name": "DYNEQ: Aux Attack 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 438,
+   "name": "DYNEQ: Aux Release 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 439,
+   "name": "DYNEQ: Aux Auto Attack 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 440,
+   "name": "DYNEQ: Aux Auto Release 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 441,
+   "name": "DYNEQ: Aux Auto Attack/Release 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 442,
+   "name": "DYNEQ: Aux Frequency 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 443,
+   "name": "DYNEQ: Aux Gain 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 444,
+   "name": "DYNEQ: Aux Offset Gain 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 445,
+   "name": "DYNEQ: Aux Q 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 446,
+   "name": "DYNEQ: Aux Threshold 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 447,
+   "name": "DYNEQ: Aux Enable 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 448,
+   "name": "DYNEQ: Aux Shape 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 449,
+   "name": "DYNEQ: Aux Dyn Trigger Mode 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 450,
+   "name": "DYNEQ: Aux Attack 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 451,
+   "name": "DYNEQ: Aux Release 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 452,
+   "name": "DYNEQ: Aux Auto Attack 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 453,
+   "name": "DYNEQ: Aux Auto Release 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 454,
+   "name": "DYNEQ: Aux Auto Attack/Release 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 455,
+   "name": "DYNEQ: Aux Frequency 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 456,
+   "name": "DYNEQ: Aux Gain 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 457,
+   "name": "DYNEQ: Aux Offset Gain 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 458,
+   "name": "DYNEQ: Aux Q 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 459,
+   "name": "DYNEQ: Aux Threshold 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 460,
+   "name": "DYNEQ: Aux Enable 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 461,
+   "name": "DYNEQ: Aux Shape 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 462,
+   "name": "DYNEQ: Aux Dyn Trigger Mode 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 463,
+   "name": "DYNEQ: Aux Attack 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 464,
+   "name": "DYNEQ: Aux Release 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 465,
+   "name": "DYNEQ: Aux Auto Attack 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 466,
+   "name": "DYNEQ: Aux Auto Release 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 467,
+   "name": "DYNEQ: Aux Auto Attack/Release 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 468,
+   "name": "DYNEQ: Aux Frequency 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 469,
+   "name": "DYNEQ: Aux Gain 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 470,
+   "name": "DYNEQ: Aux Offset Gain 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 471,
+   "name": "DYNEQ: Aux Q 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 472,
+   "name": "DYNEQ: Aux Threshold 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 473,
+   "name": "DYNEQ: Aux Band Enable 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 474,
+   "name": "DYNEQ: Aux Shape 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 475,
+   "name": "DYNEQ: Aux Dyn Trigger Mode 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 476,
+   "name": "DYNEQ: Aux Attack 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 477,
+   "name": "DYNEQ: Aux Release 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 478,
+   "name": "DYNEQ: Aux Auto Attack 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 479,
+   "name": "DYNEQ: Aux Auto Release 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 480,
+   "name": "DYNEQ: Aux Auto Attack/Release 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 481,
+   "name": "DYNEQ: Aux Frequency 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 482,
+   "name": "DYNEQ: Aux Gain 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 483,
+   "name": "DYNEQ: Aux Offset Gain 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 484,
+   "name": "DYNEQ: Aux Q 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 485,
+   "name": "DYNEQ: Aux Threshold 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 486,
+   "name": "DYNEQ: Aux Enable 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 487,
+   "name": "DYNEQ: Aux Shape 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 488,
+   "name": "DYNEQ: Aux Dyn Trigger Mode 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 489,
+   "name": "DYNEQ: Aux Attack 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 490,
+   "name": "DYNEQ: Aux Release 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 491,
+   "name": "DYNEQ: Aux Auto Attack 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 492,
+   "name": "DYNEQ: Aux Auto Release 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 493,
+   "name": "DYNEQ: Aux Auto Attack/Release 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 494,
+   "name": "DYNEQ: Aux Frequency 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 495,
+   "name": "DYNEQ: Aux Gain 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 496,
+   "name": "DYNEQ: Aux Offset Gain 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 497,
+   "name": "DYNEQ: Aux Q 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 498,
+   "name": "DYNEQ: Aux Threshold 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 499,
+   "name": "DYNEQ: Aux Band Enable 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 500,
+   "name": "DYNEQ: Aux Shape 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 501,
+   "name": "DYNEQ: Aux Dyn Trigger Mode 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 502,
+   "name": "DYNEQ: Aux Attack 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 503,
+   "name": "DYNEQ: Aux Release 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 504,
+   "name": "DYNEQ: Aux Auto Attack 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 505,
+   "name": "DYNEQ: Aux Auto Release 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 506,
+   "name": "DYNEQ: Aux Auto Attack/Release 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 507,
+   "name": "DYNEQ: Aux Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 508,
+   "name": "EXC: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 509,
+   "name": "EXC: Stereo/Main Band 1 Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 510,
+   "name": "EXC: Stereo/Main Band 1 Mix",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 511,
+   "name": "EXC: Stereo/Main Band 1 Mode",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 512,
+   "name": "EXC: Stereo/Main Band 2 Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 513,
+   "name": "EXC: Stereo/Main Band 2 Mix",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 514,
+   "name": "EXC: Stereo/Main Band 2 Mode",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 515,
+   "name": "EXC: Stereo/Main Band 3 Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 516,
+   "name": "EXC: Stereo/Main Band 3 Mix",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 517,
+   "name": "EXC: Stereo/Main Band 3 Mode",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 518,
+   "name": "EXC: Stereo/Main Band 4 Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 519,
+   "name": "EXC: Stereo/Main Band 4 Mix",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 520,
+   "name": "EXC: Stereo/Main Band 4 Mode",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 521,
+   "name": "EXC: Stereo/Main Filter Frequency",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 522,
+   "name": "EXC: Stereo/Main Filter Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 523,
+   "name": "EXC: Stereo/Main Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 524,
+   "name": "EXC: Aux Band 1 Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 525,
+   "name": "EXC: Aux Band 1 Mix",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 526,
+   "name": "EXC: Aux Band 1 Mode",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 527,
+   "name": "EXC: Aux Band 2 Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 528,
+   "name": "EXC: Aux Band 2 Mix",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 529,
+   "name": "EXC: Aux Band 2 Mode",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 530,
+   "name": "EXC: Aux Band 3 Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 531,
+   "name": "EXC: Aux Band 3 Mix",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 532,
+   "name": "EXC: Aux Band 3 Mode",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 533,
+   "name": "EXC: Aux Band 4 Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 534,
+   "name": "EXC: Aux Band 4 Mix",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 535,
+   "name": "EXC: Aux Band 4 Mode",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 536,
+   "name": "EXC: Aux Filter Frequency",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 537,
+   "name": "EXC: Aux Filter Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 538,
+   "name": "EXC: Aux Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 539,
+   "name": "VCOMP: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 540,
+   "name": "VCOMP: Stereo/Main Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 541,
+   "name": "VCOMP: Stereo/Main Ratio",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 542,
+   "name": "VCOMP: Stereo/Main Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 543,
+   "name": "VCOMP: Stereo/Main Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 544,
+   "name": "VCOMP: Stereo/Main Mode",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 545,
+   "name": "VCOMP: Stereo/Main Output Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 546,
+   "name": "VCOMP: Stereo/Main Auto Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 547,
+   "name": "VCOMP: Stereo/Main Det. Filt. HP Frequency",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 548,
+   "name": "VCOMP: Stereo/Main Det. Filt. Bell Frequency",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 549,
+   "name": "VCOMP: Stereo/Main Det. Filt. Bell Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 550,
+   "name": "VCOMP: Stereo/Main Det. Filt. High Shelf Frequency",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 551,
+   "name": "VCOMP: Stereo/Main Det. Filt. High Shelf Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 552,
+   "name": "VCOMP: Stereo/Main Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 553,
+   "name": "VCOMP: Aux Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 554,
+   "name": "VCOMP: Aux Ratio",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 555,
+   "name": "VCOMP: Aux Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 556,
+   "name": "VCOMP: Aux Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 557,
+   "name": "VCOMP: Aux Mode",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 558,
+   "name": "VCOMP: Aux Output Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 559,
+   "name": "VCOMP: Aux Auto Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 560,
+   "name": "VCOMP: Aux Det. Filt. HP Frequency",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 561,
+   "name": "VCOMP: Aux Det. Filt. Bell Frequency",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 562,
+   "name": "VCOMP: Aux Det. Filt. Bell Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 563,
+   "name": "VCOMP: Aux Det. Filt. High Shelf Frequency",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 564,
+   "name": "VCOMP: Aux Det. Filt. High Shelf Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 565,
+   "name": "VCOMP: Aux Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 566,
+   "name": "VEQ: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 567,
+   "name": "VEQ: Stereo/Main Low Frequency",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 568,
+   "name": "VEQ: Stereo/Main Low Boost Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 569,
+   "name": "VEQ: Stereo/Main Low Cut Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 570,
+   "name": "VEQ: Stereo/Main High Boost Frequency",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 571,
+   "name": "VEQ: Stereo/Main High Boost Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 572,
+   "name": "VEQ: Stereo/Main High Q",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 573,
+   "name": "VEQ: Stereo/Main High Cut Frequency",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 574,
+   "name": "VEQ: Stereo/Main High Cut Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 575,
+   "name": "VEQ: Stereo/Main Low-Mid Frequency",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 576,
+   "name": "VEQ: Stereo/Main Low-Mid Boost Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 577,
+   "name": "VEQ: Stereo/Main Mid Frequency",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 578,
+   "name": "VEQ: Stereo/Main Mid Cut Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 579,
+   "name": "VEQ: Stereo/Main High-Mid Frequency",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 580,
+   "name": "VEQ: Stereo/Main High-Mid Boost Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 581,
+   "name": "VEQ: Stereo/Main Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 582,
+   "name": "VEQ: Aux Low Frequency",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 583,
+   "name": "VEQ: Aux Low Boost Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 584,
+   "name": "VEQ: Aux Low Cut Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 585,
+   "name": "VEQ: Aux High Boost Frequency",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 586,
+   "name": "VEQ: Aux High Boost Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 587,
+   "name": "VEQ: Aux High Q",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 588,
+   "name": "VEQ: Aux High Cut Frequency",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 589,
+   "name": "VEQ: Aux High Cut Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 590,
+   "name": "VEQ: Aux Low-Mid Frequency",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 591,
+   "name": "VEQ: Aux Low-Mid Boost Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 592,
+   "name": "VEQ: Aux Mid Frequency",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 593,
+   "name": "VEQ: Aux Mid Cut Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 594,
+   "name": "VEQ: Aux High-Mid Frequency",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 595,
+   "name": "VEQ: Aux High-Mid Boost Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 596,
+   "name": "VEQ: Aux Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 597,
+   "name": "VLIM: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 598,
+   "name": "VLIM: Tube Type",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 599,
+   "name": "VLIM: Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 600,
+   "name": "VLIM: Ceiling",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 601,
+   "name": "VLIM: Link Threshold and Ceiling",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 602,
+   "name": "VLIM: Character",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 603,
+   "name": "VTAPE: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 604,
+   "name": "VTAPE: Input Drive",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 605,
+   "name": "VTAPE: Bias",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 606,
+   "name": "VTAPE: Speed",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 607,
+   "name": "VTAPE: Harmonics",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 608,
+   "name": "VTAPE: Low Emphasis",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 609,
+   "name": "VTAPE: High Emphasis",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 610,
+   "name": "SPSHPR: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 611,
+   "name": "SPSHPR: Stereo/Main Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 612,
+   "name": "SPSHPR: Stereo/Main Compression Mode",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 613,
+   "name": "SPSHPR: Stereo/Main Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 614,
+   "name": "SPSHPR: Stereo/Main Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 615,
+   "name": "SPSHPR: Stereo/Main Tone",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 616,
+   "name": "SPSHPR: Stereo/Main Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 617,
+   "name": "SPSHPR: Aux Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 618,
+   "name": "SPSHPR: Aux Compression Mode",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 619,
+   "name": "SPSHPR: Aux Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 620,
+   "name": "SPSHPR: Aux Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 621,
+   "name": "SPSHPR: Aux Tone",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 622,
+   "name": "SPSHPR: Aux Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 623,
+   "name": "MREBAL: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 624,
+   "name": "MREBAL: Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 625,
+   "name": "MATCH EQ: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 626,
+   "name": "MATCH EQ: Stereo/Main Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 627,
+   "name": "MATCH EQ: Stereo/Main Smoothing",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 628,
+   "name": "MATCH EQ: Stereo/Main Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 629,
+   "name": "MATCH EQ: Aux Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 630,
+   "name": "MATCH EQ: Aux Smoothing",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 631,
+   "name": "MATCH EQ: Aux Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 632,
+   "name": "LEF: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 633,
+   "name": "LEF: Stereo/Main Contrast",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 634,
+   "name": "LEF: Stereo/Main Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 635,
+   "name": "LEF: Stereo/Main Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 636,
+   "name": "LEF: Aux Contrast",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 637,
+   "name": "LEF: Aux Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 638,
+   "name": "LEF: Aux Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 639,
+   "name": "IMP: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 640,
+   "name": "IMP: Global Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 641,
+   "name": "IMP: Auto Gain On/Off",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 642,
+   "name": "IMP: Stereo/Main Band 1 Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 643,
+   "name": "IMP: Stereo/Main Band 2 Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 644,
+   "name": "IMP: Stereo/Main Band 3 Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 645,
+   "name": "IMP: Stereo/Main Band 4 Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 646,
+   "name": "IMP: Stereo/Main Envelope (ms)",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 647,
+   "name": "IMP: Stereo/Main Envelope (Tempo synced)",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 648,
+   "name": "IMP: Stereo/Main Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 649,
+   "name": "IMP: Aux Band 1 Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 650,
+   "name": "IMP: Aux Band 2 Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 651,
+   "name": "IMP: Aux Band 3 Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 652,
+   "name": "IMP: Aux Band 4 Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 653,
+   "name": "IMP: Aux Envelope (ms)",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 654,
+   "name": "IMP: Aux Envelope (Tempo synced)",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 655,
+   "name": "IMP: Aux Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 656,
+   "name": "STBL: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 657,
+   "name": "STBL: Tame Transients On/Off",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 658,
+   "name": "STBL: Stereo/Main Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 659,
+   "name": "STBL: Stereo/Main Speed (Shape Mode)",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 660,
+   "name": "STBL: Stereo/Main Smoothing",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 661,
+   "name": "STBL: Stereo/Main Sensitivity",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 662,
+   "name": "STBL: Stereo/Main Speed (Cut Mode)",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 663,
+   "name": "STBL: Stereo/Main Low Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 664,
+   "name": "STBL: Stereo/Main Mid Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 665,
+   "name": "STBL: Stereo/Main High Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 666,
+   "name": "STBL: Stereo/Main Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 667,
+   "name": "STBL: Aux Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 668,
+   "name": "STBL: Aux Speed (Shape Mode)",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 669,
+   "name": "STBL: Aux Smoothing",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 670,
+   "name": "STBL: Aux Sensitivity",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 671,
+   "name": "STBL: Aux Speed (Cut Mode)",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 672,
+   "name": "STBL: Aux Low Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 673,
+   "name": "STBL: Aux Mid Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 674,
+   "name": "STBL: Aux High Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 675,
+   "name": "STBL: Aux Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 676,
+   "name": "CLA: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 677,
+   "name": "CLA: Stereo/Main Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 678,
+   "name": "CLA: Stereo/Main Tilt",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 679,
+   "name": "CLA: Stereo/Main Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 680,
+   "name": "CLA: Stereo/Main Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 681,
+   "name": "CLA: Stereo/Main Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 682,
+   "name": "CLA: Aux Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 683,
+   "name": "CLA: Aux Tilt",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 684,
+   "name": "CLA: Aux Attack",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 685,
+   "name": "CLA: Aux Release",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 686,
+   "name": "CLA: Aux Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 687,
+   "name": "BAS: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 688,
+   "name": "BAS: Balance",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 689,
+   "name": "BAS: Peak Control Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 690,
+   "name": "BAS: Punch",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 691,
+   "name": "BAS: Sustain Power Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 692,
+   "name": "BAS: Sustain Power Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 693,
+   "name": "BAS: Sustain Power Clean Dirty Blend",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 694,
+   "name": "BAS: Peak Control Character",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 695,
+   "name": "BAS: Balance Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 696,
+   "name": "BAS: Punch Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 697,
+   "name": "BAS: Sustain Power Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 698,
+   "name": "BAS: Peak Control Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 699,
+   "name": "STEMEQ: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 700,
+   "name": "STEMEQ: Vocals Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 701,
+   "name": "STEMEQ: Vocals Power",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 702,
+   "name": "STEMEQ: Vocals Frequency 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 703,
+   "name": "STEMEQ: Vocals Frequency 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 704,
+   "name": "STEMEQ: Vocals Frequency 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 705,
+   "name": "STEMEQ: Vocals Frequency 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 706,
+   "name": "STEMEQ: Vocals Frequency 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 707,
+   "name": "STEMEQ: Vocals Frequency 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 708,
+   "name": "STEMEQ: Vocals Frequency 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 709,
+   "name": "STEMEQ: Vocals Frequency 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 710,
+   "name": "STEMEQ: Vocals Gain 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 711,
+   "name": "STEMEQ: Vocals Gain 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 712,
+   "name": "STEMEQ: Vocals Gain 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 713,
+   "name": "STEMEQ: Vocals Gain 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 714,
+   "name": "STEMEQ: Vocals Gain 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 715,
+   "name": "STEMEQ: Vocals Gain 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 716,
+   "name": "STEMEQ: Vocals Gain 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 717,
+   "name": "STEMEQ: Vocals Gain 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 718,
+   "name": "STEMEQ: Vocals Q 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 719,
+   "name": "STEMEQ: Vocals Q 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 720,
+   "name": "STEMEQ: Vocals Q 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 721,
+   "name": "STEMEQ: Vocals Q 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 722,
+   "name": "STEMEQ: Vocals Q 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 723,
+   "name": "STEMEQ: Vocals Q 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 724,
+   "name": "STEMEQ: Vocals Q 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 725,
+   "name": "STEMEQ: Vocals Q 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 726,
+   "name": "STEMEQ: Vocals Enable 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 727,
+   "name": "STEMEQ: Vocals Enable 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 728,
+   "name": "STEMEQ: Vocals Enable 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 729,
+   "name": "STEMEQ: Vocals Enable 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 730,
+   "name": "STEMEQ: Vocals Enable 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 731,
+   "name": "STEMEQ: Vocals Enable 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 732,
+   "name": "STEMEQ: Vocals Enable 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 733,
+   "name": "STEMEQ: Vocals Enable 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 734,
+   "name": "STEMEQ: Vocals Shape 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 735,
+   "name": "STEMEQ: Vocals Shape 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 736,
+   "name": "STEMEQ: Vocals Shape 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 737,
+   "name": "STEMEQ: Vocals Shape 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 738,
+   "name": "STEMEQ: Vocals Shape 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 739,
+   "name": "STEMEQ: Vocals Shape 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 740,
+   "name": "STEMEQ: Vocals Shape 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 741,
+   "name": "STEMEQ: Vocals Shape 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 742,
+   "name": "STEMEQ: Bass Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 743,
+   "name": "STEMEQ: Bass Power",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 744,
+   "name": "STEMEQ: Bass Frequency 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 745,
+   "name": "STEMEQ: Bass Frequency 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 746,
+   "name": "STEMEQ: Bass Frequency 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 747,
+   "name": "STEMEQ: Bass Frequency 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 748,
+   "name": "STEMEQ: Bass Frequency 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 749,
+   "name": "STEMEQ: Bass Frequency 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 750,
+   "name": "STEMEQ: Bass Frequency 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 751,
+   "name": "STEMEQ: Bass Frequency 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 752,
+   "name": "STEMEQ: Bass Gain 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 753,
+   "name": "STEMEQ: Bass Gain 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 754,
+   "name": "STEMEQ: Bass Gain 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 755,
+   "name": "STEMEQ: Bass Gain 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 756,
+   "name": "STEMEQ: Bass Gain 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 757,
+   "name": "STEMEQ: Bass Gain 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 758,
+   "name": "STEMEQ: Bass Gain 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 759,
+   "name": "STEMEQ: Bass Gain 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 760,
+   "name": "STEMEQ: Bass Q 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 761,
+   "name": "STEMEQ: Bass Q 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 762,
+   "name": "STEMEQ: Bass Q 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 763,
+   "name": "STEMEQ: Bass Q 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 764,
+   "name": "STEMEQ: Bass Q 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 765,
+   "name": "STEMEQ: Bass Q 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 766,
+   "name": "STEMEQ: Bass Q 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 767,
+   "name": "STEMEQ: Bass Q 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 768,
+   "name": "STEMEQ: Bass Enable 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 769,
+   "name": "STEMEQ: Bass Enable 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 770,
+   "name": "STEMEQ: Bass Enable 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 771,
+   "name": "STEMEQ: Bass Enable 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 772,
+   "name": "STEMEQ: Bass Enable 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 773,
+   "name": "STEMEQ: Bass Enable 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 774,
+   "name": "STEMEQ: Bass Enable 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 775,
+   "name": "STEMEQ: Bass Enable 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 776,
+   "name": "STEMEQ: Bass Shape 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 777,
+   "name": "STEMEQ: Bass Shape 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 778,
+   "name": "STEMEQ: Bass Shape 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 779,
+   "name": "STEMEQ: Bass Shape 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 780,
+   "name": "STEMEQ: Bass Shape 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 781,
+   "name": "STEMEQ: Bass Shape 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 782,
+   "name": "STEMEQ: Bass Shape 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 783,
+   "name": "STEMEQ: Bass Shape 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 784,
+   "name": "STEMEQ: Drums Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 785,
+   "name": "STEMEQ: Drums Power",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 786,
+   "name": "STEMEQ: Drums Frequency 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 787,
+   "name": "STEMEQ: Drums Frequency 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 788,
+   "name": "STEMEQ: Drums Frequency 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 789,
+   "name": "STEMEQ: Drums Frequency 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 790,
+   "name": "STEMEQ: Drums Frequency 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 791,
+   "name": "STEMEQ: Drums Frequency 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 792,
+   "name": "STEMEQ: Drums Frequency 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 793,
+   "name": "STEMEQ: Drums Frequency 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 794,
+   "name": "STEMEQ: Drums Gain 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 795,
+   "name": "STEMEQ: Drums Gain 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 796,
+   "name": "STEMEQ: Drums Gain 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 797,
+   "name": "STEMEQ: Drums Gain 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 798,
+   "name": "STEMEQ: Drums Gain 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 799,
+   "name": "STEMEQ: Drums Gain 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 800,
+   "name": "STEMEQ: Drums Gain 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 801,
+   "name": "STEMEQ: Drums Gain 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 802,
+   "name": "STEMEQ: Drums Q 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 803,
+   "name": "STEMEQ: Drums Q 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 804,
+   "name": "STEMEQ: Drums Q 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 805,
+   "name": "STEMEQ: Drums Q 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 806,
+   "name": "STEMEQ: Drums Q 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 807,
+   "name": "STEMEQ: Drums Q 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 808,
+   "name": "STEMEQ: Drums Q 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 809,
+   "name": "STEMEQ: Drums Q 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 810,
+   "name": "STEMEQ: Drums Enable 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 811,
+   "name": "STEMEQ: Drums Enable 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 812,
+   "name": "STEMEQ: Drums Enable 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 813,
+   "name": "STEMEQ: Drums Enable 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 814,
+   "name": "STEMEQ: Drums Enable 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 815,
+   "name": "STEMEQ: Drums Enable 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 816,
+   "name": "STEMEQ: Drums Enable 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 817,
+   "name": "STEMEQ: Drums Enable 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 818,
+   "name": "STEMEQ: Drums Shape 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 819,
+   "name": "STEMEQ: Drums Shape 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 820,
+   "name": "STEMEQ: Drums Shape 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 821,
+   "name": "STEMEQ: Drums Shape 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 822,
+   "name": "STEMEQ: Drums Shape 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 823,
+   "name": "STEMEQ: Drums Shape 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 824,
+   "name": "STEMEQ: Drums Shape 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 825,
+   "name": "STEMEQ: Drums Shape 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 826,
+   "name": "STEMEQ: Other Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 827,
+   "name": "STEMEQ: Other Power",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 828,
+   "name": "STEMEQ: Other Frequency 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 829,
+   "name": "STEMEQ: Other Frequency 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 830,
+   "name": "STEMEQ: Other Frequency 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 831,
+   "name": "STEMEQ: Other Frequency 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 832,
+   "name": "STEMEQ: Other Frequency 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 833,
+   "name": "STEMEQ: Other Frequency 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 834,
+   "name": "STEMEQ: Other Frequency 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 835,
+   "name": "STEMEQ: Other Frequency 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 836,
+   "name": "STEMEQ: Other Gain 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 837,
+   "name": "STEMEQ: Other Gain 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 838,
+   "name": "STEMEQ: Other Gain 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 839,
+   "name": "STEMEQ: Other Gain 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 840,
+   "name": "STEMEQ: Other Gain 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 841,
+   "name": "STEMEQ: Other Gain 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 842,
+   "name": "STEMEQ: Other Gain 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 843,
+   "name": "STEMEQ: Other Gain 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 844,
+   "name": "STEMEQ: Other Q 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 845,
+   "name": "STEMEQ: Other Q 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 846,
+   "name": "STEMEQ: Other Q 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 847,
+   "name": "STEMEQ: Other Q 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 848,
+   "name": "STEMEQ: Other Q 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 849,
+   "name": "STEMEQ: Other Q 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 850,
+   "name": "STEMEQ: Other Q 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 851,
+   "name": "STEMEQ: Other Q 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 852,
+   "name": "STEMEQ: Other Enable 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 853,
+   "name": "STEMEQ: Other Enable 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 854,
+   "name": "STEMEQ: Other Enable 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 855,
+   "name": "STEMEQ: Other Enable 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 856,
+   "name": "STEMEQ: Other Enable 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 857,
+   "name": "STEMEQ: Other Enable 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 858,
+   "name": "STEMEQ: Other Enable 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 859,
+   "name": "STEMEQ: Other Enable 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 860,
+   "name": "STEMEQ: Other Shape 1",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 861,
+   "name": "STEMEQ: Other Shape 2",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 862,
+   "name": "STEMEQ: Other Shape 3",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 863,
+   "name": "STEMEQ: Other Shape 4",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 864,
+   "name": "STEMEQ: Other Shape 5",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 865,
+   "name": "STEMEQ: Other Shape 6",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 866,
+   "name": "STEMEQ: Other Shape 7",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 867,
+   "name": "STEMEQ: Other Shape 8",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 868,
+   "name": "UNLIMITER: Bypass",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 869,
+   "name": "UNLIMITER: Amount",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 870,
+   "name": "UNLIMITER: Threshold",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 871,
+   "name": "UNLIMITER: Input Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  },
+  {
+   "index": 872,
+   "name": "UNLIMITER: Output Gain",
+   "min": 0.0,
+   "max": 1.0,
+   "is_quantized": false,
+   "value_items": []
+  }
+ ]
+}
