@@ -221,16 +221,23 @@ def find_track_span(xml, track_index):
 
 
 def find_master_track_span(xml):
-    """Char span (start, end) of the <MasterTrack>...</MasterTrack> element."""
-    open_tag = "<MasterTrack>"
-    s = xml.find(open_tag)
-    if s == -1:
-        raise ValueError("no <MasterTrack> in document")
-    close = "</MasterTrack>"
-    e = xml.find(close, s)
-    if e == -1:
-        raise ValueError("unterminated <MasterTrack>")
-    return (s, e + len(close))
+    """Char span (start, end) of the master track element.
+
+    Live 11 names it <MasterTrack>; Live 12 renamed it to <MainTrack>, and the
+    open tag may carry attributes (e.g. <MainTrack SelectedToolPanel="7" ...>).
+    Accept either name, with or without attributes, so master-targeting .als
+    patches work on both versions.
+    """
+    for name in ("MasterTrack", "MainTrack"):
+        m = re.search(r"<%s(?:\s[^>]*)?>" % name, xml)
+        if not m:
+            continue
+        close = "</%s>" % name
+        e = xml.find(close, m.end())
+        if e == -1:
+            raise ValueError("unterminated <%s>" % name)
+        return (m.start(), e + len(close))
+    raise ValueError("no <MasterTrack> or <MainTrack> in document")
 
 
 def find_return_track_span(xml, return_index):
