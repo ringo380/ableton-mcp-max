@@ -2880,7 +2880,12 @@ def get_ozone_modules(ctx: Context, track_index: int, device_index: int = 0,
         for p in dp.get("parameters", []):
             info = _oz.parse_param_name(p["name"])
             if info["module"] and info["role"] == "bypass":
-                bypassed[info["module"]] = p["value"] >= 0.5
+                # Prefer the module-level (section=None) bypass -- that's the one
+                # set_ozone_module_enabled writes. A per-section bypass (EQ has
+                # stereo_main/aux) must not overwrite it, else the summary can
+                # disagree with the module-level enable state.
+                if info["section"] is None or info["module"] not in bypassed:
+                    bypassed[info["module"]] = p["value"] >= 0.5
         groups = _ozcat.catalog_by_module(pack)
         modules = []
         for key in sorted(k for k in groups if k != "GLOBAL"):
@@ -3017,19 +3022,24 @@ def set_ozone_module_enabled(ctx: Context, track_index: int, module: str, on: bo
 
 
 def _oz_apply(track_index, device_index, track_type, module, items):
-    """items: list of (role, band, section, native_value); skip None values."""
+    """items: list of (role, band, section, native_value); None values are not
+    requested (skipped silently). A requested role that doesn't resolve to a
+    catalog param is recorded in `skipped` so a no-op isn't reported as success.
+    Returns (applied_names, skipped_roles)."""
     pack = _ozcat.load()
     applied = []
+    skipped = []
     for role, band, section, val in items:
         if val is None:
             continue
         p = _ozcat.find_param(pack, module, role, band=band, section=section)
         if p is None:
+            skipped.append(role)
             continue
         normalized = _oz.to_normalized(p, val)
         _oz_set_by_name(track_index, device_index, track_type, p["name"], normalized)
         applied.append(p["name"])
-    return applied
+    return applied, skipped
 
 
 @mcp.tool()
@@ -3040,13 +3050,14 @@ def set_ozone_eq_band(ctx: Context, track_index: int, band: int, freq: float = N
     """Set an Ozone 12 EQ band (freq Hz / gain dB / q / enable) in one call.
     The EQ module must be exposed first (expose_ozone_modules ["EQ"])."""
     try:
-        applied = _oz_apply(track_index, device_index, track_type, "EQ", [
+        applied, skipped = _oz_apply(track_index, device_index, track_type, "EQ", [
             ("frequency", band, section, freq),
             ("gain", band, section, gain),
             ("q", band, section, q),
             ("enable", band, section, enable),
         ])
-        return _ok({"module": "EQ", "band": band, "applied": applied})
+        return _ok({"module": "EQ", "band": band, "applied": applied,
+                    "skipped": skipped})
     except Exception as e:
         logger.error("set_ozone_eq_band error: %s", e)
         return _err("set_ozone_eq_band error: %s" % e)
@@ -3059,12 +3070,12 @@ def set_ozone_maximizer(ctx: Context, track_index: int, threshold: float = None,
     """Set Ozone 12 Maximizer controls (threshold via input gain, output ceiling,
     character). Maximizer must be exposed first (expose_ozone_modules ["MAX"])."""
     try:
-        applied = _oz_apply(track_index, device_index, track_type, "MAX", [
+        applied, skipped = _oz_apply(track_index, device_index, track_type, "MAX", [
             ("input gain", None, None, threshold),
             ("output level", None, None, ceiling),
             ("character", None, None, character),
         ])
-        return _ok({"module": "MAX", "applied": applied})
+        return _ok({"module": "MAX", "applied": applied, "skipped": skipped})
     except Exception as e:
         logger.error("set_ozone_maximizer error: %s", e)
         return _err("set_ozone_maximizer error: %s" % e)
@@ -3079,13 +3090,14 @@ def set_ozone_dynamics_band(ctx: Context, track_index: int, band: int,
     """Set an Ozone 12 Dynamics band's compressor controls in one call. Dynamics
     must be exposed first (expose_ozone_modules ["DYN"])."""
     try:
-        applied = _oz_apply(track_index, device_index, track_type, "DYN", [
+        applied, skipped = _oz_apply(track_index, device_index, track_type, "DYN", [
             ("band comp threshold", band, section, comp_threshold),
             ("band comp ratio", band, section, comp_ratio),
             ("band comp attack", band, section, comp_attack),
             ("band comp release", band, section, comp_release),
         ])
-        return _ok({"module": "DYN", "band": band, "applied": applied})
+        return _ok({"module": "DYN", "band": band, "applied": applied,
+                    "skipped": skipped})
     except Exception as e:
         logger.error("set_ozone_dynamics_band error: %s", e)
         return _err("set_ozone_dynamics_band error: %s" % e)

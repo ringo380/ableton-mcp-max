@@ -5,7 +5,6 @@ This module parses those names into a structured model, holds the module
 registry, packs a chosen module set into Ableton's 128 Configure slots, and maps
 values between LOM-normalized 0-1 and native units. Imported by server.py only.
 """
-import re
 
 MODULES = {
     "EQ": "Equalizer",
@@ -31,10 +30,6 @@ MODULES = {
     "UNLIMITER": "Unlimiter",
     "GAIN": "Gain",
 }
-
-# module keys sorted longest-first so "MATCH EQ" wins over a bare "EQ" prefix
-_MODULE_KEYS = sorted(MODULES, key=len, reverse=True)
-_TRAIL_BAND = re.compile(r"\s+(\d+)$")
 
 
 def parse_param_name(name):

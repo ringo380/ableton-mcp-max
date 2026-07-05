@@ -241,23 +241,24 @@ def find_master_track_span(xml):
 
 
 def find_return_track_span(xml, return_index):
-    """Char span (start, end) of the return_index-th <ReturnTrack> (doc order)."""
-    idx = 0
-    pos = 0
-    open_tag = "<ReturnTrack>"
+    """Char span (start, end) of the return_index-th <ReturnTrack> (doc order).
+
+    Real Live 11/12 sets emit return tracks with attributes
+    (e.g. <ReturnTrack Id="2" SelectedToolPanel="7" ...>), so match the open
+    tag by regex rather than a bare literal. The `(?:\\s[^>]*)?>` bound also
+    excludes sibling tags that merely share the prefix (<ReturnTracksListWrapper>).
+    """
     close = "</ReturnTrack>"
-    while True:
-        s = xml.find(open_tag, pos)
-        if s == -1:
-            raise ValueError("return track index %d not found" % return_index)
-        e = xml.find(close, s)
-        if e == -1:
-            raise ValueError("unterminated <ReturnTrack> %d" % return_index)
-        e += len(close)
+    open_re = re.compile(r"<ReturnTrack(?:\s[^>]*)?>")
+    idx = 0
+    for m in open_re.finditer(xml):
         if idx == return_index:
-            return (s, e)
+            e = xml.find(close, m.end())
+            if e == -1:
+                raise ValueError("unterminated <ReturnTrack> %d" % return_index)
+            return (m.start(), e + len(close))
         idx += 1
-        pos = e
+    raise ValueError("return track index %d not found" % return_index)
 
 
 def _matching_close(xml, tag, open_index):
