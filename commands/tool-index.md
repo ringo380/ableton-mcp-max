@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_172 tools._
+_180 tools._
 
 ## Session & view
 
@@ -100,6 +100,17 @@ _172 tools._
 - **`add_serum_mod_route`** - Add a Serum mod-matrix route into a free ModSlot.
 - **`clear_serum_mod_route`** - Clear an existing Serum mod-matrix route targeting a destination param.
 - **`create_serum_patch`** - Build a Serum 2 patch from a single declarative spec in one reload.
+
+## Mastering (Ozone)
+
+- **`get_ozone_modules`** - List an Ozone 12 instance's modules with exposed/bypassed state.
+- **`expose_ozone_modules`** - Configure the given Ozone 12 modules' params as settable LOM params.
+- **`get_ozone_module`** - Read the currently-exposed params of one Ozone 12 module (native + normalized).
+- **`set_ozone_module_param`** - Set one Ozone 12 module param. role/band/section identify the param (see
+- **`set_ozone_module_enabled`** - Enable/disable an Ozone 12 module via its Bypass param (on=True -> not
+- **`set_ozone_eq_band`** - Set an Ozone 12 EQ band (freq Hz / gain dB / q / enable) in one call.
+- **`set_ozone_maximizer`** - Set Ozone 12 Maximizer controls (threshold via input gain, output ceiling,
+- **`set_ozone_dynamics_band`** - Set an Ozone 12 Dynamics band's compressor controls in one call. Dynamics
 
 ## Clips & MIDI notes
 

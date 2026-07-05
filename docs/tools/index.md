@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **172 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **180 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -44,6 +44,12 @@ Inspect and drive devices, rack macros, and chains; load instruments and effects
 Expose and control third-party VST3/AU plugin parameters via the Configure-slot backdoor: probe a plugin's full parameter list, then Configure a curated param-map pack so its knobs become settable, automatable LOM parameters. For Serum 2, also author the FX racks (read, set params, bypass, insert, remove, reorder) and synthesize a full instrument patch from scratch - oscillators (params, mode, wavetable), filters, envelopes, LFOs, macros, and the mod matrix - by patching the plugin-state blob in the .als and reloading in place.
 
 `probe_plugin_parameters`, `expose_plugin_parameters`, `get_serum_fx`, `set_serum_fx_param`, `insert_serum_fx`, `remove_serum_fx`, `reorder_serum_fx`, `get_serum_patch`, `set_serum_oscillator`, `set_serum_filter`, `set_serum_envelope`, `set_serum_lfo`, `set_serum_macro`, `set_serum_wavetable`, `add_serum_mod_route`, `clear_serum_mod_route`, `create_serum_patch`
+
+## [Mastering (Ozone)](./mastering-ozone.html)
+
+Module-aware control of an iZotope Ozone 12 instance on the master track. Ozone exposes 873 host params but Ableton Configures at most 128 at once, so expose a chosen module's params into the Configure slots (patching the .als and reloading in place), then read/set them per module: EQ bands, Maximizer, Dynamics bands, and any module's params or bypass.
+
+`get_ozone_modules`, `expose_ozone_modules`, `get_ozone_module`, `set_ozone_module_param`, `set_ozone_module_enabled`, `set_ozone_eq_band`, `set_ozone_maximizer`, `set_ozone_dynamics_band`
 
 ## [Mixer & Routing](./mixer-routing.html)
 

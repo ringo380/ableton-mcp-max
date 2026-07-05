@@ -48,6 +48,11 @@ CATEGORIES = [
         "set_serum_wavetable", "add_serum_mod_route", "clear_serum_mod_route",
         "create_serum_patch",
     ]),
+    ("mastering-ozone", "Mastering (Ozone)", "Module-aware control of an iZotope Ozone 12 instance on the master track. Ozone exposes 873 host params but Ableton Configures at most 128 at once, so expose a chosen module's params into the Configure slots (patching the .als and reloading in place), then read/set them per module: EQ bands, Maximizer, Dynamics bands, and any module's params or bypass.", [
+        "get_ozone_modules", "expose_ozone_modules", "get_ozone_module",
+        "set_ozone_module_param", "set_ozone_module_enabled",
+        "set_ozone_eq_band", "set_ozone_maximizer", "set_ozone_dynamics_band",
+    ]),
     ("mixer-routing", "Mixer & Routing", "Volume, pan, sends, and input/output routing for every track type.", [
         "get_mixer", "set_mixer_property", "get_routing", "set_routing",
     ]),
