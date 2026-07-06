@@ -58,9 +58,6 @@ def is_ozone_state(inner_hex):
         return False
 
 
-_SETTABLE = ("Float", "Bool", "UInt")
-
-
 def _module_dict(tree, module):
     elems = tree["DSP State"]["Value"]["DSP Elements"]["Value"]
     if module not in elems:
@@ -68,11 +65,15 @@ def _module_dict(tree, module):
     return elems[module]["Value"]
 
 
+def _is_leaf(node):
+    return isinstance(node, dict) and "Type" in node and "Value" in node
+
+
 def module_leaves(tree, module):
     md = _module_dict(tree, module)
     out = {}
     for name, node in md.items():
-        if isinstance(node, dict) and "Type" in node and "Value" in node:
+        if _is_leaf(node):
             out[name] = {"type": node["Type"], "value": node["Value"]}
     return out
 
@@ -80,7 +81,7 @@ def module_leaves(tree, module):
 def get_param(tree, module, param):
     md = _module_dict(tree, module)
     node = md.get(param)
-    if not (isinstance(node, dict) and "Type" in node and "Value" in node):
+    if not _is_leaf(node):
         raise ValueError("unknown param")
     return {"type": node["Type"], "value": node["Value"]}
 
@@ -111,7 +112,7 @@ def _coerce(t, value):
 def set_param(tree, module, param, value):
     md = _module_dict(tree, module)          # raises "unknown module"
     node = md.get(param)
-    if not (isinstance(node, dict) and "Type" in node and "Value" in node):
+    if not _is_leaf(node):
         raise ValueError("unknown param")
     coerced = _coerce(node["Type"], value)   # raises "unsupported type"/"type mismatch"
     node["Value"] = coerced

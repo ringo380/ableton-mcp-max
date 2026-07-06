@@ -3171,9 +3171,14 @@ def _ozone_state_mutate_impl(track_index, device_index, track_type, changes, *,
         return {"ok": False, "reloaded": False, "set_path": path,
                 "error": "device %d on track %d is not an Ozone 12 plugin"
                          % (device_index, track_index)}
-    normalized = {_oz.normalize_module(m): p for m, p in changes.items()}
+    normalized = {}
+    for m, p in changes.items():
+        normalized.setdefault(_oz.normalize_module(m), {}).update(p)
     st = _osu.decode(_osu.from_hex(xml[s:e]))
     applied, skipped = _osu.apply_changes(st.tree, normalized)
+    if not applied:
+        return {"ok": True, "reloaded": False, "set_path": path,
+                "applied": applied, "skipped": skipped}
     new_hex = _osu.to_hex(_osu.encode(st, st.tree))
     xml = xml[:s] + new_hex + xml[e:]
     write_als(path, xml)

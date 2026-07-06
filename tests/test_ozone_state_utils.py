@@ -19,6 +19,13 @@ def test_decode_rejects_bad_magic():
         osu.decode(b"NOPE" + BLOB[4:])
 
 
+def test_decode_rejects_rawlen_mismatch():
+    import struct
+    bad = BLOB[:12] + struct.pack("<I", 999) + BLOB[16:]
+    with pytest.raises(ValueError):
+        osu.decode(bad)
+
+
 def test_encode_roundtrips_tree_and_header():
     st = osu.decode(BLOB)
     blob2 = osu.encode(st, st.tree)

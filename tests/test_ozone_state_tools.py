@@ -60,3 +60,33 @@ def test_mutate_impl_writes_native_value_and_reports_skips():
     m = re.search(r"<ProcessorState>([0-9A-F]+)</ProcessorState>", written["xml"])
     tree = osu.decode(osu.from_hex(m.group(1))).tree
     assert tree["DSP State"]["Value"]["DSP Elements"]["Value"]["Maximizer"]["Value"]["Target Loudness [dB]"]["Value"] == -9.0
+
+
+def test_mutate_impl_merges_aliased_modules():
+    written = {}
+    res = server._ozone_state_mutate_impl(
+        0, 0, "master",
+        {"MAX": {"Target Loudness [dB]": -9.0}, "Maximizer": {"Character": 1}},
+        reload=False,
+        save_impl=lambda: {"saved": True},
+        reload_impl=lambda p, n: {"reloaded": True},
+        read_als=lambda p: XML,
+        write_als=lambda p, x: written.update(xml=x),
+        resolve_path=lambda: "/x.als", title_fn=lambda: "x")
+    assert res["ok"] is True
+    got = {(a["module"], a["param"]) for a in res["applied"]}
+    # both aliased entries survived the merge - neither silently dropped
+    assert ("Maximizer", "Target Loudness [dB]") in got
+    assert ("Maximizer", "Character") in got
+
+
+def test_read_impl_summary_lists_modules():
+    res = server._ozone_state_read_impl(
+        0, 0, "master", None,
+        save_impl=lambda: {"saved": True},
+        read_als=lambda p: XML,
+        resolve_path=lambda: "/x.als", title_fn=lambda: "x")
+    assert res["ok"] is True
+    names = {m["name"]: m for m in res["modules"]}
+    assert "Maximizer" in names
+    assert names["Maximizer"]["param_count"] > 0

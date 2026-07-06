@@ -80,3 +80,8 @@ def test_normalize_module_maps_aliases_to_blob_names():
     assert oz.normalize_module("Maximizer") == "Maximizer"
     # unknown passes through unchanged
     assert oz.normalize_module("Whatever") == "Whatever"
+
+
+def test_normalize_module_maps_friendly_names():
+    assert oz.normalize_module("Imager") == "Stereo Imager"
+    assert oz.normalize_module("Equalizer 2") == "Post Equalizer"
