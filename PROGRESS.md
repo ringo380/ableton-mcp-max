@@ -1,5 +1,40 @@
 # ableton-mcp-max — Progress
 
+## Ozone 12 deep mastering support - Phase 2 - native param authoring - LIVE-VERIFIED, pending ship v0.30.0 (2026-07-05)
+Removes Phase 1's two hard limits (128-slot Configure cap + identity-normalization clamp that forced
+Hz/dB args to [0,1]) by reading/writing ALL Ozone params directly in the plugin's `<ProcessorState>`
+JSON blob inside the `.als`. **2 new `@mcp.tool()`s** (built via SDD, plan
+`docs/superpowers/plans/2026-07-05-ozone12-phase2-native-param-authoring.md`, tasks 1-6 offline + task-7
+live): `get_ozone_state` (read native param values by module, or a whole-instance module summary) and
+`set_ozone_state` (batch-author native params across modules in one call, splice + reload in place).
+Non-breaking: Phase 1's 8 module-aware tools stay. **182 tools total.**
+
+**Blob format (cracked in the spike):** the `<ProcessorState>` hex = 16-byte header
+`[4B magic DE8A6800][4B version LE][4B field3 LE = 4 + len(zlib payload)][4B raw_len LE]` + a zlib
+(deflate `78 9C`) stream that decompresses to ~321KB of UTF-8 JSON in iZotope's typed-dict format
+(`{"Type": Float|Bool|UInt|String|Base64|Dictionary, "Value": v}`). Unlike Serum's XferJson+zstd+CBOR,
+Ozone is plain zlib+JSON. Params live at `tree["DSP State"]["Value"]["DSP Elements"]["Value"][<module>]
+["Value"][<param>]["Value"]` with FRIENDLY names + REAL NATIVE values (`Maximizer/Target Loudness [dB]`
+= -11 dB, `Dynamics/Sidechain HPF` = 200 Hz). Re-encode rule: `field3 = 4 + len(compressed)`; compact
+`json.dumps` is accepted on reload (whitespace insignificant). CHAIN order is NOT in the JSON (all ~40
+modules always present) -> add/remove/reorder is a deferred later phase, not Phase 2.
+Codec in `ozone_state_utils.py` (decode/encode/get_param/set_param/apply_changes, bool-guarded coercion);
+module-name aliasing in `ozone_utils.normalize_module` (22 short keys + friendly names -> blob names);
+`plugin_config_utils.locate_processor_state` (ProcessorState-only, tolerates Ozone's self-closing
+`<ControllerState />` which `locate_plugin_state` rejects).
+
+**LIVE-VERIFIED 2026-07-05 (Live 12.4, master track, ozone_idbase_probe scratch set):**
+- READ: `get_ozone_state(0, master, "MAX")` -> native `Target Loudness [dB]` = -11 (un-clamped),
+  set_path resolved (decode + path resolution + self-closing-ControllerState locate all work live).
+- WRITE gate (make-or-break): `set_ozone_state(0, master, {"MAX":{"Target Loudness [dB]":-9}})`
+  reload=True -> reloaded:true, applied has it, skipped:[]; read-back == -9, Live stayed alive
+  (no crash/recovery modal). Ozone re-accepts the recompressed JSON blob.
+- MULTI-MODULE author: `{"MAX":{"Target Loudness [dB]":-10}, "Dynamics":{"Sidechain HPF":120}}` in one
+  reload -> both applied un-clamped (read-back confirmed HPF 120 vs baseline 200), skipped:[]. Baseline
+  restored afterward.
+Offline gate: 1070 passed / 2 skipped, server import clean. Final whole-branch review: merge WITH FIXES
+(1 Important alias-collapse silent-drop + minors) - all applied in fix wave f9466c2. HEAD = f9466c2.
+
 ## Ozone 12 deep mastering support - Phase 1 - LIVE-VERIFIED, pending ship (2026-07-05)
 Module-aware control of an iZotope **Ozone 12** instance on the master, via the generic plugin-exposure
 engine (`_expose_plugin_impl`): Ozone reports 873 params but Ableton Configures at most 128 at once, so

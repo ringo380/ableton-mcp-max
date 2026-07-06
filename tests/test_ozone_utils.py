@@ -69,3 +69,19 @@ def test_value_mapping_roundtrip():
     assert abs(oz.to_normalized(p, 20000.0) - 1.0) < 1e-6
     # clamp
     assert oz.to_normalized(p, 40000.0) == 1.0
+
+
+def test_normalize_module_maps_aliases_to_blob_names():
+    assert oz.normalize_module("MAX") == "Maximizer"
+    assert oz.normalize_module("DYNEQ") == "Dynamic EQ"
+    assert oz.normalize_module("IMG") == "Stereo Imager"
+    assert oz.normalize_module("MATCH EQ") == "Match Equalizer"
+    # already blob-native passes through
+    assert oz.normalize_module("Maximizer") == "Maximizer"
+    # unknown passes through unchanged
+    assert oz.normalize_module("Whatever") == "Whatever"
+
+
+def test_normalize_module_maps_friendly_names():
+    assert oz.normalize_module("Imager") == "Stereo Imager"
+    assert oz.normalize_module("Equalizer 2") == "Post Equalizer"

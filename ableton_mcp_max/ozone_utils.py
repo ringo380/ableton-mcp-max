@@ -31,6 +31,53 @@ MODULES = {
     "GAIN": "Gain",
 }
 
+# Phase 1 short key -> Ozone state-blob native module name (DSP Elements key).
+# Blob-native names are canonical for the Phase 2 state tools.
+ALIAS_TO_BLOB = {
+    "EQ": "Equalizer",
+    "EQ2": "Post Equalizer",
+    "IMG": "Stereo Imager",
+    "MAX": "Maximizer",
+    "DYN": "Dynamics",
+    "DYNEQ": "Dynamic EQ",
+    "EXC": "Exciter",
+    "VCOMP": "Vintage Compressor",
+    "VEQ": "Vintage EQ",
+    "VLIM": "Vintage Limiter",
+    "VTAPE": "Vintage Tape",
+    "SPSHPR": "Spectral Shaper",
+    "MREBAL": "Master Rebalance",
+    "MATCH EQ": "Match Equalizer",
+    "LEF": "Low End Focus",
+    "IMP": "Impact",
+    "STBL": "Stabilizer",
+    "CLA": "Clarity",
+    "BAS": "Bass Control",
+    "STEMEQ": "Stem EQ",
+    "UNLIMITER": "Unlimiter",
+    "GAIN": "Gain Output",
+}
+
+# Phase 1 friendly name (MODULES value) -> blob-native, for callers who pass the
+# friendly form. Only the ones whose friendly name differs from the blob name.
+_FRIENDLY_TO_BLOB = {
+    "Imager": "Stereo Imager",
+    "Match EQ": "Match Equalizer",
+    "Gain": "Gain Output",
+    "Equalizer 2": "Post Equalizer",
+}
+
+
+def normalize_module(name):
+    """Map a Phase 1 short key or friendly name to the Ozone state-blob native
+    module name. Already-blob-native or unrecognized names pass through
+    unchanged (the blob's own key set is the final validator)."""
+    if name in ALIAS_TO_BLOB:
+        return ALIAS_TO_BLOB[name]
+    if name in _FRIENDLY_TO_BLOB:
+        return _FRIENDLY_TO_BLOB[name]
+    return name
+
 
 def parse_param_name(name):
     """Parse one Ozone host param name into a structured record.

@@ -155,6 +155,7 @@ from ableton_mcp_max import catalog_adapt
 from ableton_mcp_max import instrument_select
 from ableton_mcp_max import ozone_utils as _oz
 from ableton_mcp_max import ozone_param_catalog as _ozcat
+from ableton_mcp_max import ozone_state_utils as _osu
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -3101,6 +3102,169 @@ def set_ozone_dynamics_band(ctx: Context, track_index: int, band: int,
     except Exception as e:
         logger.error("set_ozone_dynamics_band error: %s", e)
         return _err("set_ozone_dynamics_band error: %s" % e)
+
+
+def _resolve_track_span(xml, track_index, track_type):
+    if track_type == "regular":
+        return als.find_track_span(xml, track_index)
+    if track_type == "return":
+        return als.find_return_track_span(xml, track_index)
+    if track_type == "master":
+        return als.find_master_track_span(xml)
+    raise ValueError("track_type must be regular, return, or master")
+
+
+def _ozone_state_read_impl(track_index, device_index, track_type, module, *,
+                           save_impl, read_als=als.read_als,
+                           resolve_path=None, title_fn=None):
+    """Save the set, decode the target Ozone device's ProcessorState from disk,
+    and return native param values. module=None -> a per-module summary.
+    Returns {ok, set_path, ...} or {ok:False, error}."""
+    save_res = save_impl()
+    if not save_res.get("saved"):
+        return {"ok": False, "error": "save_set failed: %s" % save_res.get("error", save_res)}
+    path = _serum_fx_resolve_path(title_fn, resolve_path)
+    xml = read_als(path)
+    ts, te = _resolve_track_span(xml, track_index, track_type)
+    s, e = pcu.locate_processor_state(xml, ts, te, device_index)
+    if not _osu.is_ozone_state(xml[s:e]):
+        return {"ok": False, "set_path": path,
+                "error": "device %d on track %d is not an Ozone 12 plugin"
+                         % (device_index, track_index)}
+    tree = _osu.decode(_osu.from_hex(xml[s:e])).tree
+    if module is None:
+        elems = tree["DSP State"]["Value"]["DSP Elements"]["Value"]
+        mods = []
+        for name in sorted(elems):
+            leaves = _osu.module_leaves(tree, name)
+            byp = leaves.get("Bypass") or leaves.get("Global Bypass")
+            mods.append({"name": name, "param_count": len(leaves),
+                         "bypass": byp["value"] if byp else None})
+        return {"ok": True, "set_path": path, "modules": mods}
+    blob_module = _oz.normalize_module(module)
+    try:
+        leaves = _osu.module_leaves(tree, blob_module)
+    except ValueError:
+        return {"ok": False, "set_path": path,
+                "error": "unknown module %r (normalized %r)" % (module, blob_module)}
+    params = [{"name": n, "type": v["type"], "value": v["value"]}
+              for n, v in sorted(leaves.items())]
+    return {"ok": True, "set_path": path, "module": blob_module, "params": params}
+
+
+def _ozone_state_mutate_impl(track_index, device_index, track_type, changes, *,
+                             reload, save_impl, reload_impl,
+                             read_als=als.read_als, write_als=als.write_als,
+                             resolve_path=None, title_fn=None):
+    """Save, patch the target Ozone device's ProcessorState with `changes`
+    ({module: {param: value}}, module names normalized), re-encode, splice, write,
+    and optionally reload. Returns {ok, reloaded, set_path, applied, skipped}."""
+    save_res = save_impl()
+    if not save_res.get("saved"):
+        return {"ok": False, "reloaded": False,
+                "error": "save_set failed: %s" % save_res.get("error", save_res)}
+    path = _serum_fx_resolve_path(title_fn, resolve_path)
+    xml = read_als(path)
+    ts, te = _resolve_track_span(xml, track_index, track_type)
+    s, e = pcu.locate_processor_state(xml, ts, te, device_index)
+    if not _osu.is_ozone_state(xml[s:e]):
+        return {"ok": False, "reloaded": False, "set_path": path,
+                "error": "device %d on track %d is not an Ozone 12 plugin"
+                         % (device_index, track_index)}
+    normalized = {}
+    for m, p in changes.items():
+        normalized.setdefault(_oz.normalize_module(m), {}).update(p)
+    st = _osu.decode(_osu.from_hex(xml[s:e]))
+    applied, skipped = _osu.apply_changes(st.tree, normalized)
+    if not applied:
+        return {"ok": True, "reloaded": False, "set_path": path,
+                "applied": applied, "skipped": skipped}
+    new_hex = _osu.to_hex(_osu.encode(st, st.tree))
+    xml = xml[:s] + new_hex + xml[e:]
+    write_als(path, xml)
+    reloaded = False
+    if reload:
+        rr = reload_impl(path, set_name_from_path(path))
+        reloaded = bool(rr.get("reloaded", False)) if isinstance(rr, dict) else bool(rr)
+    return {"ok": True, "reloaded": reloaded, "set_path": path,
+            "applied": applied, "skipped": skipped}
+
+
+@mcp.tool()
+def get_ozone_state(ctx: Context, track_index: int, device_index: int = 0,
+                    track_type: str = "master", module: str = None) -> str:
+    """Read Ozone 12 params directly from the plugin state blob (native values).
+
+    Unlike get_ozone_module, this needs NO Configure/exposure and returns REAL
+    native units (Hz/dB, not clamped 0-1) for ANY module. Saves the set, then
+    decodes the device's ProcessorState from the .als on disk (no reload).
+
+    Parameters:
+    - track_index: track holding the Ozone 12 instance.
+    - device_index: which plugin device on the track (0 = first).
+    - track_type: 'master' (default), 'return', or 'regular'.
+    - module: a module name (blob-native like 'Maximizer', or a Phase 1 key like
+      'MAX'). Omit for a per-module summary of the whole instance.
+
+    Returns JSON {ok, data:{set_path, module, params:[{name,type,value}]}} for one
+    module, or {ok, data:{set_path, modules:[{name,param_count,bypass}]}} for all.
+    """
+    try:
+        get_ableton_connection()  # fail fast if Live is unreachable
+        res = _ozone_state_read_impl(
+            track_index, device_index, track_type, module,
+            save_impl=lambda: _save_set_impl(name=""))
+        if not res.get("ok"):
+            return _err(res.get("error", "get_ozone_state failed"))
+        res.pop("ok", None)
+        return _ok(res)
+    except (ValueError, RuntimeError, FileNotFoundError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("get_ozone_state error: %s", e)
+        return _err("get_ozone_state error: %s" % e)
+
+
+@mcp.tool()
+def set_ozone_state(ctx: Context, track_index: int, changes: dict,
+                    device_index: int = 0, track_type: str = "master",
+                    reload: bool = True) -> str:
+    """Author Ozone 12 params in native units by patching the state blob.
+
+    Batch authoring: `changes` sets many params across many modules in ONE
+    save+patch+reload. Native units land un-clamped (unlike the Phase 1 wrappers),
+    with no 128-slot cap. Only changes existing params (never adds modules);
+    unknown module/param or a wrong type is reported in `skipped`, not silently
+    dropped. The set must be saved to a real file first (save_set_as).
+
+    Parameters:
+    - track_index: track holding the Ozone 12 instance.
+    - changes: {module: {param: value}}. module is blob-native ('Maximizer',
+      'Dynamic EQ') or a Phase 1 key ('MAX','DYNEQ'). value is native and typed
+      per the param (Float dB/Hz, Bool bypass, UInt mode); see get_ozone_state.
+    - device_index: which plugin device on the track (0 = first).
+    - track_type: 'master' (default), 'return', or 'regular'.
+    - reload: reload the set in place after patching (default True).
+
+    Returns JSON {ok, data:{set_path, reloaded, applied:[...], skipped:[...]}}.
+    """
+    try:
+        get_ableton_connection()
+        res = _ozone_state_mutate_impl(
+            track_index, device_index, track_type, changes, reload=reload,
+            save_impl=lambda: _save_set_impl(name=""),
+            reload_impl=lambda p, n: _reload_set(
+                p, n, probe=lambda: get_ableton_connection().send_command(
+                    "get_session_info")))
+        if not res.get("ok"):
+            return _err(res.get("error", "set_ozone_state failed"))
+        res.pop("ok", None)
+        return _ok(res)
+    except (ValueError, RuntimeError, FileNotFoundError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("set_ozone_state error: %s", e)
+        return _err("set_ozone_state error: %s" % e)
 
 
 def _serum_fx_resolve_path(title_fn, resolve_path):

@@ -19,3 +19,23 @@ def test_missing_device_raises():
     xml = "<Tracks><MidiTrack></MidiTrack></Tracks>"
     with pytest.raises(ValueError):
         pcu.locate_plugin_state(xml, 0, len(xml), 0)
+
+
+def test_locate_processor_state_ignores_self_closing_controller():
+    # Ozone emits a self-closing <ControllerState /> that the paired locator
+    # rejects. The processor-only locator must still find the ProcessorState.
+    xml = ("<MainTrack><DeviceChain>"
+           "<ProcessorState>DE8A6800AA</ProcessorState>"
+           "<ControllerState />"
+           "</DeviceChain></MainTrack>")
+    s, e = pcu.locate_processor_state(xml, 0, len(xml), 0)
+    assert xml[s:e] == "DE8A6800AA"
+    # the paired locator fails on the same input:
+    with pytest.raises(ValueError):
+        pcu.locate_plugin_state(xml, 0, len(xml), 0)
+
+
+def test_locate_processor_state_missing_device_raises():
+    xml = "<MainTrack></MainTrack>"
+    with pytest.raises(ValueError):
+        pcu.locate_processor_state(xml, 0, len(xml), 0)
