@@ -153,6 +153,8 @@ from ableton_mcp_max import catalog_query as _cat_query
 from ableton_mcp_max import catalog_decide as _cat_decide
 from ableton_mcp_max import catalog_adapt
 from ableton_mcp_max import instrument_select
+from ableton_mcp_max import ozone_utils as _oz
+from ableton_mcp_max import ozone_param_catalog as _ozcat
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -2728,9 +2730,14 @@ def _expose_plugin_impl(track_index, device_index, track_type, params, manual,
     plugin device's <ParameterList> with the pack params (filling empty Configure
     slots + allocating target ids from <NextPointeeId>), writes the .als, and
     reloads. Returns the result dict."""
-    if track_type != "regular":
-        raise ValueError("expose_plugin_parameters supports regular tracks only "
-                         "in v1 (VST/AU instruments load on regular tracks).")
+    if track_type == "regular":
+        _span = lambda x: find_track_span(x, track_index)
+    elif track_type == "return":
+        _span = lambda x: als.find_return_track_span(x, track_index)
+    elif track_type == "master":
+        _span = lambda x: als.find_master_track_span(x)
+    else:
+        raise ValueError("track_type must be regular, return, or master")
     title = (title_fn or _live_window_title)()
     if is_untitled_title(title):
         raise ValueError("Set is untitled — save it first via save_set_as, then "
@@ -2752,7 +2759,7 @@ def _expose_plugin_impl(track_index, device_index, track_type, params, manual,
 
     xml = read_als(path)
     # Count how many params will actually fit (empty slots in the target list).
-    ts, te = find_track_span(xml, track_index)
+    ts, te = _span(xml)
     pl_s, pl_e = pcu.locate_param_list(xml, ts, te, device_index)
     n_empty = len(pcu.find_empty_slots(xml[pl_s:pl_e]))
     n_filled_existing = pcu.count_slots(xml[pl_s:pl_e]) - n_empty
@@ -2768,7 +2775,7 @@ def _expose_plugin_impl(track_index, device_index, track_type, params, manual,
     # set if any target id >= NextPointeeId). The bump rewrites one token, which
     # can shift offsets, so re-locate the list on the bumped doc before filling.
     xml, start_id = pcu.bump_next_pointee_id(xml, count)
-    ts, te = find_track_span(xml, track_index)
+    ts, te = _span(xml)
     pl_s, pl_e = pcu.locate_param_list(xml, ts, te, device_index)
 
     fill_params = []
@@ -2851,6 +2858,249 @@ def expose_plugin_parameters(
     except Exception as e:
         logger.error("expose_plugin_parameters error: %s", e)
         return _err("expose_plugin_parameters error: %s" % e)
+
+
+@mcp.tool()
+def get_ozone_modules(ctx: Context, track_index: int, device_index: int = 0,
+                      track_type: str = "master") -> str:
+    """List an Ozone 12 instance's modules with exposed/bypassed state.
+
+    Reads the device's currently-exposed LOM params (get_device_parameters) and
+    reports, per Ozone module, whether any of its params are exposed and whether
+    its Bypass is engaged. Ozone 12 lives on the master by default.
+    """
+    try:
+        pack = _ozcat.load()
+        conn = get_ableton_connection()
+        dp = conn.send_command("get_device_parameters", {
+            "track_index": track_index, "device_index": device_index,
+            "track_type": track_type})
+        exposed_names = {p["name"] for p in dp.get("parameters", [])}
+        bypassed = {}
+        for p in dp.get("parameters", []):
+            info = _oz.parse_param_name(p["name"])
+            if info["module"] and info["role"] == "bypass":
+                # Prefer the module-level (section=None) bypass -- that's the one
+                # set_ozone_module_enabled writes. A per-section bypass (EQ has
+                # stereo_main/aux) must not overwrite it, else the summary can
+                # disagree with the module-level enable state.
+                if info["section"] is None or info["module"] not in bypassed:
+                    bypassed[info["module"]] = p["value"] >= 0.5
+        groups = _ozcat.catalog_by_module(pack)
+        modules = []
+        for key in sorted(k for k in groups if k != "GLOBAL"):
+            names = {p["name"] for p in groups[key]}
+            modules.append({
+                "key": key, "name": _oz.MODULES.get(key, key),
+                "exposed": bool(names & exposed_names),
+                "bypassed": bypassed.get(key),
+            })
+        return _ok({"modules": modules})
+    except Exception as e:
+        logger.error("get_ozone_modules error: %s", e)
+        return _err("get_ozone_modules error: %s" % e)
+
+
+@mcp.tool()
+def expose_ozone_modules(ctx: Context, track_index: int, modules: list,
+                         device_index: int = 0, track_type: str = "master",
+                         reload: bool = True) -> str:
+    """Configure the given Ozone 12 modules' params as settable LOM params.
+
+    Ozone exposes 873 params but Ableton Configures at most 128 at once; this
+    fills the device's Configure slots with the requested modules' params (in
+    order), reloads the set in place, and reports overflow. The set must be saved
+    first (save_set_as). modules: list of module keys (e.g. ["EQ","MAX","IMG"]);
+    see get_ozone_modules for keys.
+    """
+    try:
+        pack = _ozcat.load()
+        plan = _oz.pack_modules(pack["params"], modules, cap=128)
+        if not plan["selected"]:
+            return _err("no catalog params for modules %s" % modules)
+        get_ableton_connection()  # ensure reachable before save
+        data = _expose_plugin_impl(
+            track_index, device_index, track_type, plan["selected"],
+            _EXPOSE_DEFAULT_MANUAL, reload,
+            save_impl=lambda: _save_set_impl(name=""),
+            reload_impl=lambda p, n: _reload_set(
+                p, n, probe=lambda: get_ableton_connection().send_command(
+                    "get_session_info")),
+        )
+        data["overflow"] = plan["overflow"]
+        return _ok(data)
+    except (ValueError, RuntimeError, FileNotFoundError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("expose_ozone_modules error: %s", e)
+        return _err("expose_ozone_modules error: %s" % e)
+
+
+def _oz_set_by_name(track_index, device_index, track_type, name, normalized):
+    # set_device_parameter's send_command contract takes parameter_index (int),
+    # not a name -- resolve name -> index against the live param list first.
+    conn = get_ableton_connection()
+    info = conn.send_command("get_device_parameters", {
+        "track_index": track_index, "device_index": device_index,
+        "track_type": track_type})
+    params = info.get("parameters", [])
+    idx = resolve_parameter_index(params, name)
+    return conn.send_command("set_device_parameter", {
+        "track_index": track_index, "device_index": device_index,
+        "track_type": track_type, "parameter_index": idx, "value": normalized})
+
+
+@mcp.tool()
+def get_ozone_module(ctx: Context, track_index: int, module: str,
+                     device_index: int = 0, track_type: str = "master") -> str:
+    """Read the currently-exposed params of one Ozone 12 module (native + normalized)."""
+    try:
+        pack = _ozcat.load()
+        by_name = {p["name"]: p for p in pack["params"]}
+        conn = get_ableton_connection()
+        dp = conn.send_command("get_device_parameters", {
+            "track_index": track_index, "device_index": device_index,
+            "track_type": track_type})
+        out = []
+        for p in dp.get("parameters", []):
+            info = _oz.parse_param_name(p["name"])
+            if info["module"] != module:
+                continue
+            cat_p = by_name.get(p["name"], {})
+            out.append({"name": p["name"], "role": info["role"],
+                        "band": info["band"], "section": info["section"],
+                        "normalized": p["value"],
+                        "native": _oz.to_native(cat_p, p["value"]) if cat_p else None})
+        if not out:
+            return _err("module %s not exposed; call expose_ozone_modules first" % module)
+        return _ok({"module": module, "name": _oz.MODULES.get(module, module),
+                    "params": out})
+    except Exception as e:
+        logger.error("get_ozone_module error: %s", e)
+        return _err("get_ozone_module error: %s" % e)
+
+
+@mcp.tool()
+def set_ozone_module_param(ctx: Context, track_index: int, module: str, role: str,
+                           value: float, band: int = None, section: str = None,
+                           native: bool = True, device_index: int = 0,
+                           track_type: str = "master") -> str:
+    """Set one Ozone 12 module param. role/band/section identify the param (see
+    get_ozone_module); value is native units by default (native=False for 0-1).
+    The param must be exposed first (expose_ozone_modules)."""
+    try:
+        pack = _ozcat.load()
+        p = _ozcat.find_param(pack, module, role.lower(), band=band, section=section)
+        if p is None:
+            return _err("no Ozone param for module=%s role=%s band=%s section=%s"
+                        % (module, role, band, section))
+        normalized = _oz.to_normalized(p, value) if native else max(0.0, min(1.0, value))
+        res = _oz_set_by_name(track_index, device_index, track_type, p["name"], normalized)
+        return _ok({"name": p["name"], "normalized": normalized, "result": res})
+    except Exception as e:
+        logger.error("set_ozone_module_param error: %s", e)
+        return _err("set_ozone_module_param error: %s" % e)
+
+
+@mcp.tool()
+def set_ozone_module_enabled(ctx: Context, track_index: int, module: str, on: bool,
+                             device_index: int = 0, track_type: str = "master") -> str:
+    """Enable/disable an Ozone 12 module via its Bypass param (on=True -> not
+    bypassed). The module's Bypass must be exposed (expose_ozone_modules)."""
+    try:
+        pack = _ozcat.load()
+        p = _ozcat.find_param(pack, module, "bypass")
+        if p is None:
+            return _err("no Bypass param for module %s" % module)
+        # Bypass = 1 means bypassed; on=True -> value 0
+        res = _oz_set_by_name(track_index, device_index, track_type, p["name"],
+                              0.0 if on else 1.0)
+        return _ok({"name": p["name"], "on": on, "result": res})
+    except Exception as e:
+        logger.error("set_ozone_module_enabled error: %s", e)
+        return _err("set_ozone_module_enabled error: %s" % e)
+
+
+def _oz_apply(track_index, device_index, track_type, module, items):
+    """items: list of (role, band, section, native_value); None values are not
+    requested (skipped silently). A requested role that doesn't resolve to a
+    catalog param is recorded in `skipped` so a no-op isn't reported as success.
+    Returns (applied_names, skipped_roles)."""
+    pack = _ozcat.load()
+    applied = []
+    skipped = []
+    for role, band, section, val in items:
+        if val is None:
+            continue
+        p = _ozcat.find_param(pack, module, role, band=band, section=section)
+        if p is None:
+            skipped.append(role)
+            continue
+        normalized = _oz.to_normalized(p, val)
+        _oz_set_by_name(track_index, device_index, track_type, p["name"], normalized)
+        applied.append(p["name"])
+    return applied, skipped
+
+
+@mcp.tool()
+def set_ozone_eq_band(ctx: Context, track_index: int, band: int, freq: float = None,
+                      gain: float = None, q: float = None, enable: float = None,
+                      section: str = "stereo_main", device_index: int = 0,
+                      track_type: str = "master") -> str:
+    """Set an Ozone 12 EQ band (freq Hz / gain dB / q / enable) in one call.
+    The EQ module must be exposed first (expose_ozone_modules ["EQ"])."""
+    try:
+        applied, skipped = _oz_apply(track_index, device_index, track_type, "EQ", [
+            ("frequency", band, section, freq),
+            ("gain", band, section, gain),
+            ("q", band, section, q),
+            ("enable", band, section, enable),
+        ])
+        return _ok({"module": "EQ", "band": band, "applied": applied,
+                    "skipped": skipped})
+    except Exception as e:
+        logger.error("set_ozone_eq_band error: %s", e)
+        return _err("set_ozone_eq_band error: %s" % e)
+
+
+@mcp.tool()
+def set_ozone_maximizer(ctx: Context, track_index: int, threshold: float = None,
+                        ceiling: float = None, character: float = None,
+                        device_index: int = 0, track_type: str = "master") -> str:
+    """Set Ozone 12 Maximizer controls (threshold via input gain, output ceiling,
+    character). Maximizer must be exposed first (expose_ozone_modules ["MAX"])."""
+    try:
+        applied, skipped = _oz_apply(track_index, device_index, track_type, "MAX", [
+            ("input gain", None, None, threshold),
+            ("output level", None, None, ceiling),
+            ("character", None, None, character),
+        ])
+        return _ok({"module": "MAX", "applied": applied, "skipped": skipped})
+    except Exception as e:
+        logger.error("set_ozone_maximizer error: %s", e)
+        return _err("set_ozone_maximizer error: %s" % e)
+
+
+@mcp.tool()
+def set_ozone_dynamics_band(ctx: Context, track_index: int, band: int,
+                            comp_threshold: float = None, comp_ratio: float = None,
+                            comp_attack: float = None, comp_release: float = None,
+                            section: str = "stereo_main", device_index: int = 0,
+                            track_type: str = "master") -> str:
+    """Set an Ozone 12 Dynamics band's compressor controls in one call. Dynamics
+    must be exposed first (expose_ozone_modules ["DYN"])."""
+    try:
+        applied, skipped = _oz_apply(track_index, device_index, track_type, "DYN", [
+            ("band comp threshold", band, section, comp_threshold),
+            ("band comp ratio", band, section, comp_ratio),
+            ("band comp attack", band, section, comp_attack),
+            ("band comp release", band, section, comp_release),
+        ])
+        return _ok({"module": "DYN", "band": band, "applied": applied,
+                    "skipped": skipped})
+    except Exception as e:
+        logger.error("set_ozone_dynamics_band error: %s", e)
+        return _err("set_ozone_dynamics_band error: %s" % e)
 
 
 def _serum_fx_resolve_path(title_fn, resolve_path):

@@ -1,5 +1,43 @@
 # ableton-mcp-max — Progress
 
+## Ozone 12 deep mastering support - Phase 1 - LIVE-VERIFIED, pending ship (2026-07-05)
+Module-aware control of an iZotope **Ozone 12** instance on the master, via the generic plugin-exposure
+engine (`_expose_plugin_impl`): Ozone reports 873 params but Ableton Configures at most 128 at once, so
+we selectively fill the device's Configure slots with a requested module's params, patch the `.als` on
+disk, and reload in place. **8 new `@mcp.tool()`s** (built via SDD, plan
+`docs/superpowers/plans/2026-07-01-ozone12-support-phase1.md`, tasks 1-8 offline + task-9 live):
+`get_ozone_modules`, `expose_ozone_modules`, `get_ozone_module`, `set_ozone_module_param`,
+`set_ozone_module_enabled`, `set_ozone_eq_band`, `set_ozone_maximizer`, `set_ozone_dynamics_band`.
+Pure logic in `ozone_utils.py` (param-name parse, module map, `pack_modules` selection/overflow,
+identity `to_native`/`to_normalized`) + `ozone_catalog.py` loader over a generated 873-param catalog;
+imported by server.py only. `id_base=0` positional for Ozone Configure slots (confirmed in the Task 2
+spike).
+
+**Live 12 bug found + fixed during Task 9 (commit ba6f2b6):** `expose_ozone_modules` failed with
+"no <MasterTrack> in document" - Live 12 renamed the master-track `.als` element `<MasterTrack>` ->
+`<MainTrack SelectedToolPanel="7" ...>` (now carries attributes). `find_master_track_span`
+(`als_automation_utils.py`) matched only a bare `<MasterTrack>`; fixed to regex-match either name with
+optional attributes (+ Live 12 regression test). This helper is ALSO used by `set_arrangement_automation`'s
+master path (issue 30), which had never been exercised on a Live 12 master - so the fix closes a latent
+bug there too.
+
+**LIVE-VERIFIED 2026-07-05 (Live 12.4.2, master track, scratch set):** `expose_ozone_modules ["EQ","MAX"]`
+-> reloaded:true, exposed_count:113, dropped:0, overflow:[] (MainTrack fix resolves the master span on the
+real Live 12 `.als`); `get_ozone_modules` (22 modules), `get_ozone_module` EQ/MAX (full native+normalized
+read), `set_ozone_eq_band` band 3 (freq/gain/q/enable all round-tripped), `set_ozone_maximizer` (input
+gain/output/character round-tripped), `set_ozone_module_enabled` EQ off ("EQ: Bypass" 0->1 by direct read),
+`set_ozone_module_param` native=False (restore pass). All changed values restored afterward.
+`set_ozone_dynamics_band` shares the verified `_oz_apply` path. Offline gate: server import OK, 1050 pass /
+2 skip.
+
+**Known behaviors / limits:** Ozone params are identity-normalized (native==normalized), so the convenience
+wrappers' Hz/dB args CLAMP to [0,1] rather than mapping true units (documented in the tool behavior).
+`.als` path resolution finds common-folder saves only; an iCloud "Expanded Projects" save is not located.
+Minor: `get_ozone_modules` `bypassed` reflects the last-seen bypass param for modules with several
+(EQ has module + per-section), so its summary can disagree with the module-level bypass the write set -
+flagged for the final review. **NEXT = final whole-branch review, then ship; Phase 2 (state-blob/chain
+structure) + Phase 3 (mastering-skill + recommend integration) are separate cycles.**
+
 ## Instrument-selection intelligence - SHIPPED v0.28.0 (2026-07-01)
 New tool `recommend_instrument(intent, prefer_native=None)`: choose which instrument ENGINE to reach for
 from a free-text intent (e.g. "gritty evolving reese bass for dnb"), ranking Serum vs native Wavetable/

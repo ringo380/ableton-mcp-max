@@ -220,6 +220,47 @@ def find_track_span(xml, track_index):
     raise ValueError("regular track index %d not found" % track_index)
 
 
+def find_master_track_span(xml):
+    """Char span (start, end) of the master track element.
+
+    Live 11 names it <MasterTrack>; Live 12 renamed it to <MainTrack>, and the
+    open tag may carry attributes (e.g. <MainTrack SelectedToolPanel="7" ...>).
+    Accept either name, with or without attributes, so master-targeting .als
+    patches work on both versions.
+    """
+    for name in ("MasterTrack", "MainTrack"):
+        m = re.search(r"<%s(?:\s[^>]*)?>" % name, xml)
+        if not m:
+            continue
+        close = "</%s>" % name
+        e = xml.find(close, m.end())
+        if e == -1:
+            raise ValueError("unterminated <%s>" % name)
+        return (m.start(), e + len(close))
+    raise ValueError("no <MasterTrack> or <MainTrack> in document")
+
+
+def find_return_track_span(xml, return_index):
+    """Char span (start, end) of the return_index-th <ReturnTrack> (doc order).
+
+    Real Live 11/12 sets emit return tracks with attributes
+    (e.g. <ReturnTrack Id="2" SelectedToolPanel="7" ...>), so match the open
+    tag by regex rather than a bare literal. The `(?:\\s[^>]*)?>` bound also
+    excludes sibling tags that merely share the prefix (<ReturnTracksListWrapper>).
+    """
+    close = "</ReturnTrack>"
+    open_re = re.compile(r"<ReturnTrack(?:\s[^>]*)?>")
+    idx = 0
+    for m in open_re.finditer(xml):
+        if idx == return_index:
+            e = xml.find(close, m.end())
+            if e == -1:
+                raise ValueError("unterminated <ReturnTrack> %d" % return_index)
+            return (m.start(), e + len(close))
+        idx += 1
+    raise ValueError("return track index %d not found" % return_index)
+
+
 def _matching_close(xml, tag, open_index):
     """Index just past the close tag matching the element opening at open_index,
     accounting for nested same-name elements and self-closing tags."""

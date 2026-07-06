@@ -45,6 +45,11 @@ GROUPS = [
         "set_serum_wavetable", "add_serum_mod_route", "clear_serum_mod_route",
         "create_serum_patch",
     ]),
+    ("Mastering (Ozone)", [
+        "get_ozone_modules", "expose_ozone_modules", "get_ozone_module",
+        "set_ozone_module_param", "set_ozone_module_enabled",
+        "set_ozone_eq_band", "set_ozone_maximizer", "set_ozone_dynamics_band",
+    ]),
     ("Clips & MIDI notes", [
         "create_clip", "get_clip_info", "set_clip_name", "set_clip_property",
         "set_clip_loop", "duplicate_clip", "delete_clip", "quantize_clip",
