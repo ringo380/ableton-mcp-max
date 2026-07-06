@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **180 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **182 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -49,7 +49,7 @@ Expose and control third-party VST3/AU plugin parameters via the Configure-slot 
 
 Module-aware control of an iZotope Ozone 12 instance on the master track. Ozone exposes 873 host params but Ableton Configures at most 128 at once, so expose a chosen module's params into the Configure slots (patching the .als and reloading in place), then read/set them per module: EQ bands, Maximizer, Dynamics bands, and any module's params or bypass.
 
-`get_ozone_modules`, `expose_ozone_modules`, `get_ozone_module`, `set_ozone_module_param`, `set_ozone_module_enabled`, `set_ozone_eq_band`, `set_ozone_maximizer`, `set_ozone_dynamics_band`
+`get_ozone_modules`, `expose_ozone_modules`, `get_ozone_module`, `set_ozone_module_param`, `set_ozone_module_enabled`, `set_ozone_eq_band`, `set_ozone_maximizer`, `set_ozone_dynamics_band`, `get_ozone_state`, `set_ozone_state`
 
 ## [Mixer & Routing](./mixer-routing.html)
 

@@ -153,3 +153,61 @@ set_ozone_dynamics_band(
 Set an Ozone 12 Dynamics band's compressor controls in one call. Dynamics
 must be exposed first (expose_ozone_modules ["DYN"]).
 
+## get_ozone_state
+
+```python
+get_ozone_state(
+    track_index: int,
+    device_index: int = 0,
+    track_type: str = 'master',
+    module: str = None,
+)
+```
+
+Read Ozone 12 params directly from the plugin state blob (native values).
+
+Unlike get_ozone_module, this needs NO Configure/exposure and returns REAL
+native units (Hz/dB, not clamped 0-1) for ANY module. Saves the set, then
+decodes the device's ProcessorState from the .als on disk (no reload).
+
+Parameters:
+- track_index: track holding the Ozone 12 instance.
+- device_index: which plugin device on the track (0 = first).
+- track_type: 'master' (default), 'return', or 'regular'.
+- module: a module name (blob-native like 'Maximizer', or a Phase 1 key like
+  'MAX'). Omit for a per-module summary of the whole instance.
+
+Returns JSON {ok, data:{set_path, module, params:[{name,type,value}]}} for one
+module, or {ok, data:{set_path, modules:[{name,param_count,bypass}]}} for all.
+
+## set_ozone_state
+
+```python
+set_ozone_state(
+    track_index: int,
+    changes: dict,
+    device_index: int = 0,
+    track_type: str = 'master',
+    reload: bool = True,
+)
+```
+
+Author Ozone 12 params in native units by patching the state blob.
+
+Batch authoring: `changes` sets many params across many modules in ONE
+save+patch+reload. Native units land un-clamped (unlike the Phase 1 wrappers),
+with no 128-slot cap. Only changes existing params (never adds modules);
+unknown module/param or a wrong type is reported in `skipped`, not silently
+dropped. The set must be saved to a real file first (save_set_as).
+
+Parameters:
+- track_index: track holding the Ozone 12 instance.
+- changes: {module: {param: value}}. module is blob-native ('Maximizer',
+  'Dynamic EQ') or a Phase 1 key ('MAX','DYNEQ'). value is native and typed
+  per the param (Float dB/Hz, Bool bypass, UInt mode); see get_ozone_state.
+- device_index: which plugin device on the track (0 = first).
+- track_type: 'master' (default), 'return', or 'regular'.
+- reload: reload the set in place after patching (default True).
+
+Returns JSON {ok, data:{set_path, reloaded, applied:[...], skipped:[...]}}.
+

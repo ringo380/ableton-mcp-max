@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_180 tools._
+_182 tools._
 
 ## Session & view
 
@@ -111,6 +111,8 @@ _180 tools._
 - **`set_ozone_eq_band`** - Set an Ozone 12 EQ band (freq Hz / gain dB / q / enable) in one call.
 - **`set_ozone_maximizer`** - Set Ozone 12 Maximizer controls (threshold via input gain, output ceiling,
 - **`set_ozone_dynamics_band`** - Set an Ozone 12 Dynamics band's compressor controls in one call. Dynamics
+- **`get_ozone_state`** - Read Ozone 12 params directly from the plugin state blob (native values).
+- **`set_ozone_state`** - Author Ozone 12 params in native units by patching the state blob.
 
 ## Clips & MIDI notes
 

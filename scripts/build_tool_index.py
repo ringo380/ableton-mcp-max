@@ -49,6 +49,7 @@ GROUPS = [
         "get_ozone_modules", "expose_ozone_modules", "get_ozone_module",
         "set_ozone_module_param", "set_ozone_module_enabled",
         "set_ozone_eq_band", "set_ozone_maximizer", "set_ozone_dynamics_band",
+        "get_ozone_state", "set_ozone_state",
     ]),
     ("Clips & MIDI notes", [
         "create_clip", "get_clip_info", "set_clip_name", "set_clip_property",
