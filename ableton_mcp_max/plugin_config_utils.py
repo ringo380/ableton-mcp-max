@@ -261,6 +261,27 @@ def locate_plugin_state(full_xml, track_start, track_end, device_index):
     return {"processor": proc, "controller": ctrl}
 
 
+def locate_processor_state(full_xml, track_start, track_end, device_index):
+    """Return the inner-hex span (start, end) of the device_index-th
+    <ProcessorState> within [track_start, track_end).
+
+    Unlike locate_plugin_state, does NOT require a paired non-empty
+    <ControllerState> - Ozone 12 emits a self-closing <ControllerState /> that
+    the paired locator rejects. Raises ValueError if the device is absent or the
+    ProcessorState close tag is missing.
+    """
+    proc_iter = list(re.finditer(r"<ProcessorState[^>]*>",
+                                 full_xml[track_start:track_end]))
+    if device_index >= len(proc_iter):
+        raise ValueError("no plugin ProcessorState #%d in track" % device_index)
+    proc_start = track_start + proc_iter[device_index].start()
+    span = _state_inner_span(full_xml, proc_start, track_end, "ProcessorState")
+    if span is None:
+        raise ValueError("ProcessorState close tag not found for device %d"
+                         % device_index)
+    return span
+
+
 def is_serum_state(inner_hex):
     """Return True if inner_hex is the hex-encoded XferJson blob for a Serum2 plugin.
 
