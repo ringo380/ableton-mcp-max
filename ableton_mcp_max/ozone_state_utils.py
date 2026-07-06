@@ -56,3 +56,75 @@ def is_ozone_state(inner_hex):
         return from_hex(inner_hex)[:4] == MAGIC
     except Exception:
         return False
+
+
+_SETTABLE = ("Float", "Bool", "UInt")
+
+
+def _module_dict(tree, module):
+    elems = tree["DSP State"]["Value"]["DSP Elements"]["Value"]
+    if module not in elems:
+        raise ValueError("unknown module")
+    return elems[module]["Value"]
+
+
+def module_leaves(tree, module):
+    md = _module_dict(tree, module)
+    out = {}
+    for name, node in md.items():
+        if isinstance(node, dict) and "Type" in node and "Value" in node:
+            out[name] = {"type": node["Type"], "value": node["Value"]}
+    return out
+
+
+def get_param(tree, module, param):
+    md = _module_dict(tree, module)
+    node = md.get(param)
+    if not (isinstance(node, dict) and "Type" in node and "Value" in node):
+        raise ValueError("unknown param")
+    return {"type": node["Type"], "value": node["Value"]}
+
+
+def _coerce(t, value):
+    # bool is a subclass of int; guard it explicitly per target type.
+    if t == "Bool":
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, int) and value in (0, 1):
+            return bool(value)
+        raise ValueError("type mismatch")
+    if t == "Float":
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("type mismatch")
+        return float(value)
+    if t == "UInt":
+        if isinstance(value, bool):
+            raise ValueError("type mismatch")
+        if isinstance(value, float) and value.is_integer():
+            value = int(value)
+        if not isinstance(value, int) or value < 0:
+            raise ValueError("type mismatch")
+        return value
+    raise ValueError("unsupported type")
+
+
+def set_param(tree, module, param, value):
+    md = _module_dict(tree, module)          # raises "unknown module"
+    node = md.get(param)
+    if not (isinstance(node, dict) and "Type" in node and "Value" in node):
+        raise ValueError("unknown param")
+    coerced = _coerce(node["Type"], value)   # raises "unsupported type"/"type mismatch"
+    node["Value"] = coerced
+    return coerced
+
+
+def apply_changes(tree, changes):
+    applied, skipped = [], []
+    for module, params in changes.items():
+        for param, value in params.items():
+            try:
+                coerced = set_param(tree, module, param, value)
+                applied.append({"module": module, "param": param, "value": coerced})
+            except ValueError as e:
+                skipped.append({"module": module, "param": param, "reason": str(e)})
+    return applied, skipped

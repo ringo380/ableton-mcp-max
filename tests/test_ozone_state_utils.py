@@ -37,3 +37,51 @@ def test_hex_roundtrip_and_is_ozone_state():
     assert osu.from_hex(h) == BLOB
     assert osu.is_ozone_state(h) is True
     assert osu.is_ozone_state("DEADBEEF") is False
+
+
+def _tree():
+    return osu.decode(BLOB).tree
+
+
+def test_module_leaves_and_get_param():
+    tree = _tree()
+    leaves = osu.module_leaves(tree, "Maximizer")
+    assert leaves["Character"] == {"type": "Float", "value": 2}
+    assert leaves["Mode"]["type"] == "UInt"
+    assert osu.get_param(tree, "Dynamics", "Sidechain HPF") == {"type": "Float", "value": 200}
+    with pytest.raises(ValueError):
+        osu.module_leaves(tree, "NoSuchModule")
+
+
+def test_set_param_coerces_by_type():
+    tree = _tree()
+    assert osu.set_param(tree, "Maximizer", "Target Loudness [dB]", -9) == -9.0
+    assert osu.get_param(tree, "Maximizer", "Target Loudness [dB]")["value"] == -9.0
+    assert osu.set_param(tree, "Global", "Global Bypass", 1) is True
+    assert osu.get_param(tree, "Global", "Global Bypass")["value"] is True
+    assert osu.set_param(tree, "Maximizer", "Mode", 2) == 2  # UInt
+
+
+def test_set_param_rejects_bad_input():
+    tree = _tree()
+    with pytest.raises(ValueError):
+        osu.set_param(tree, "Maximizer", "NoParam", 1)          # unknown param
+    with pytest.raises(ValueError):
+        osu.set_param(tree, "Maximizer", "Element Name", "x")   # String unsupported
+    with pytest.raises(ValueError):
+        osu.set_param(tree, "Maximizer", "Mode", -1)            # UInt negative
+    with pytest.raises(ValueError):
+        osu.set_param(tree, "Maximizer", "Character", True)     # bool into Float
+
+
+def test_apply_changes_reports_applied_and_skipped():
+    tree = _tree()
+    applied, skipped = osu.apply_changes(tree, {
+        "Maximizer": {"Target Loudness [dB]": -8.0, "NoParam": 1},
+        "Ghost": {"x": 1},
+    })
+    assert {"module": "Maximizer", "param": "Target Loudness [dB]", "value": -8.0} in applied
+    assert osu.get_param(tree, "Maximizer", "Target Loudness [dB]")["value"] == -8.0
+    reasons = {(s["module"], s["param"]): s["reason"] for s in skipped}
+    assert reasons[("Maximizer", "NoParam")] == "unknown param"
+    assert reasons[("Ghost", "x")] == "unknown module"
