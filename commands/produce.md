@@ -20,7 +20,7 @@ If it does not exist, suggest `/ableton:init-project`. Append what you do to `de
 ## Honest limits (state these to the user up front)
 
 - Sample selection is by name/path keyword, not by listening - no audio-content matching.
-- Real mix/master levels need MCP Tap devices loaded; without taps the mix/master pass is configuration-only and is marked un-metered (never invent dB/LUFS).
+- Mastering uses `recommend_master` + `apply_master` against Ozone 12 on the master (propose a chain, write it, then a live measure/nudge trim loop). Without Ozone 12 on the master, or without MCP Tap devices loaded, the master pass degrades to configuration-only and is marked un-metered (never invent dB/LUFS).
 - Per-track taps are PRE-FADER (the tap is a device, the fader is after the chain): per-track LUFS reflects instrument level, not the fader, so you cannot verify a fader balance by re-measuring the same taps. Master/program loudness needs a tap on the MASTER (the only post-fader point); `deploy_taps` auto-adds one by default (`include_master=True`), and `measure_mix` reports it under `data.master`. State master loudness as un-measured only if no master tap is present.
 - Arrangement TIMELINE automation IS available via `set_arrangement_automation` (writes param/macro breakpoint envelopes bound to song position by patching the .als + reloading the set; macros and native-unit params only - LOM-normalized Volume/Pan and quantized params are unsupported). The lighter "self-animating FX" route (Auto Filter / Auto Pan LFOs + static return sends) is still useful for constant-across-arrangement movement. Clip envelopes don't survive `build_arrangement`.
 - Generated parts are musically-sensible but algorithmic starting points - the checkpoint loop is how you shape them.
@@ -99,8 +99,15 @@ These are constant across the arrangement (no per-section automation). Checkpoin
 
 ## Stage 6 - Master
 
-- `analyze_set(focus="mastering", measure=<True if taps present>)`, then `apply_findings` for the deterministic master-bus corrections against the genre LUFS target. Report judgment-required findings; do not auto-apply them. NOTE: `apply_findings` has NO deterministic action for `mastering.limiter_present` - adding the limiter is judgment-required. The standard finishing move is a Limiter as the last master device (ceiling ~-1 dB, Mode=True Peak); add it explicitly via `load_instrument_or_effect(track_type="master")` + `set_device_parameter`.
-- Program loudness vs the LUFS target and `mastering.true_peak` are DEFERRED unless a MASTER tap is connected (per-track taps don't cover the master bus). `deploy_taps` auto-adds a master tap by default, so a normal Stage 5 deploy already covers this; without one, state loudness as un-measured - do not fabricate it.
+Primary path (Ozone 12 on the master):
+1. Pull the genre's Master LUFS target from the genre table (or the brief).
+2. `recommend_master(<brief text>, target=<LUFS>)` -> a proposed Ozone chain (character bucket + target). Report the bucket + target to the user. PROPOSE ONLY.
+3. `apply_master(chain)` -> writes the chain (one reload), exposes the Maximizer, deploys a master tap. If it returns "not an Ozone 12 plugin", use the degrade path below.
+4. Trim loop (<= 4 iters, all live/no reload): play the densest section, `measure_loudness`; if |integrated LUFS - target| > 1 LU or true-peak > ceiling, nudge `set_ozone_maximizer` live (raise input gain to get louder; lower ceiling / back off gain to tame true-peak), re-measure. Stop at target +/- 1 LU with true-peak within ceiling, or at 4 iterations (report the gap).
+5. `check_clipping` and confirm true-peak <= ceiling.
+
+Degrade path (no Ozone 12 on the master, or no master tap): `analyze_set(focus="mastering", measure=<True if taps present>)`, then `apply_findings` for the deterministic master-bus corrections against the genre LUFS target. Report judgment-required findings; do not auto-apply them. NOTE: `apply_findings` has NO deterministic action for `mastering.limiter_present` - adding the limiter is judgment-required. The standard finishing move is a Limiter as the last master device (ceiling ~-1 dB, Mode=True Peak); add it explicitly via `load_instrument_or_effect(track_type="master")` + `set_device_parameter`. Without a master tap, state loudness as un-measured - never fabricate dB/LUFS.
+
 - Checkpoint: final playback from the top + a closing summary (tracks, structure, measured vs target loudness, what was and wasn't auto-applied).
 
 ## Failure and cleanup
