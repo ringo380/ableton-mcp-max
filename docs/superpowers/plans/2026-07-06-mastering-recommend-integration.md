@@ -55,7 +55,7 @@ This is a controller step, run in the main loop against a live Ableton with Ozon
 - Consumes: `ableton_mcp_max.ozone_utils.ALIAS_TO_BLOB` (to validate emitted aliases).
 - Produces:
   - `BUCKETS: tuple[str]` = `("transparent", "warm", "loud_club", "punchy", "bright")`
-  - `PARAM_KEYS: dict[str, tuple[str, str] | None]` - semantic slot -> `(module_alias, blob_param_name)` or `None`.
+  - `PARAM_KEYS: dict[str, tuple[str, str]]` - semantic slot -> `(module_alias, blob_param_name)` (real keys from the Task 0 spike).
   - `build_chain(bucket: str, target_lufs: float, true_peak: float) -> dict` - `{module_alias: {param_name: value}}`, ready for `set_ozone_state`.
 
 - [ ] **Step 1: Write the failing test**
@@ -73,9 +73,22 @@ def test_buckets_are_five():
 
 def test_build_chain_passes_target_through_to_maximizer():
     chain = mp.build_chain("transparent", -14.0, -1.0)
-    # max_target is a confirmed key, so MAX must carry the target verbatim
     alias, pname = mp.PARAM_KEYS["max_target"]
     assert chain[alias][pname] == -14.0
+
+
+def test_build_chain_always_sets_ceiling_and_isc():
+    chain = mp.build_chain("transparent", -14.0, -1.0)
+    a, ck = mp.PARAM_KEYS["max_ceiling"]
+    _, ik = mp.PARAM_KEYS["max_isc"]
+    assert chain["MAX"][ck] == -1.0        # Margin = ceiling
+    assert chain["MAX"][ik] is True        # Prevent Intersample Clipping
+
+
+def test_build_chain_enables_maximizer():
+    chain = mp.build_chain("transparent", -12.0, -1.0)
+    _, bk = mp.PARAM_KEYS["max_bypass"]
+    assert chain["MAX"][bk] is False       # bypass False == module on
 
 
 def test_build_chain_louder_target_is_higher_value():
@@ -92,16 +105,25 @@ def test_build_chain_only_emits_known_aliases():
             assert alias in ALIAS_TO_BLOB, "unknown module alias %s" % alias
 
 
-def test_build_chain_drops_unconfigured_slots():
-    # A slot whose PARAM_KEYS entry is None must not appear in the chain.
-    none_slots = [s for s, v in mp.PARAM_KEYS.items() if v is None]
-    chain = mp.build_chain("warm", -12.0, -1.0)
-    flat = {(a, p) for a, params in chain.items() for p in params}
-    for s in none_slots:
-        assert s not in mp.PARAM_KEYS or mp.PARAM_KEYS[s] is None  # sanity
-    # No (alias, param) in the chain comes from a None slot (None has no key).
-    assert all(mp.PARAM_KEYS.get(s) is not None
-               for s in mp.PARAM_KEYS if mp.PARAM_KEYS.get(s) in flat)
+def test_warm_bucket_lifts_low_and_enables_band():
+    chain = mp.build_chain("warm", -14.0, -1.0)
+    _, le = mp.PARAM_KEYS["eq_low_enable"]
+    _, lg = mp.PARAM_KEYS["eq_low_gain"]
+    # A nonzero shelf gain must be accompanied by enabling that band.
+    assert chain["EQ"][lg] > 0
+    assert chain["EQ"][le] is True
+
+
+def test_transparent_bucket_has_no_eq_shaping():
+    # Flat EQ (0/0) -> no EQ block emitted (nothing to enable).
+    chain = mp.build_chain("transparent", -14.0, -1.0)
+    assert "EQ" not in chain
+
+
+def test_buckets_have_distinct_eq_fingerprints():
+    shapes = {b: (mp.BUCKET_SHAPES[b]["eq_low_gain"],
+                  mp.BUCKET_SHAPES[b]["eq_high_gain"]) for b in mp.BUCKETS}
+    assert len(set(shapes.values())) == len(mp.BUCKETS)  # all five differ
 
 
 def test_unknown_bucket_raises():
@@ -116,6 +138,14 @@ Expected: FAIL (module not found).
 
 - [ ] **Step 3: Write the implementation**
 
+Real blob keys are from the Task 0 spike. IMPORTANT CAVEAT (Phase 2 limit): the
+state blob does NOT encode chain membership - all ~40 Ozone modules are always
+present. Only the Maximizer is guaranteed to be in the default Ozone chain, so it
+reliably affects sound. EQ shelves are BEST-EFFORT: audible only if the user has
+the Equalizer in their active Ozone chain, harmless otherwise. That is why the
+Maximizer settings are unconditional and the EQ block is emitted only when a
+bucket asks for a nonzero shelf (and always paired with enabling that band).
+
 ```python
 # ableton_mcp_max/master_profiles.py
 """Curated Ozone-12 mastering profiles: character bucket -> chain.
@@ -123,80 +153,83 @@ Expected: FAIL (module not found).
 Pure module imported by server.py only. Each bucket maps to concrete Ozone
 state-blob params, emitted as a {module_alias: {param_name: value}} dict in the
 exact shape set_ozone_state accepts. PARAM_KEYS holds the real blob key strings
-(filled from a get_ozone_state spike, see plan Task 0); a slot whose key is None
-is dropped, so tonal shaping is additive as keys are confirmed.
+captured from a get_ozone_state spike (plan Task 0).
+
+Reliability note: the state blob does not encode chain membership, so only the
+Maximizer (always in the default Ozone chain) reliably affects sound. The EQ
+shelves are best-effort - they shape tone only if the Equalizer is in the user's
+active chain, and are harmless otherwise.
 """
 
 BUCKETS = ("transparent", "warm", "loud_club", "punchy", "bright")
 
-# Semantic slot -> (module alias, real blob param name), or None if unconfirmed.
-# Confirmed live (Phase 2): Maximizer "Target Loudness [dB]".
-# Module enable is a per-module bypass leaf ("Bypass"); set False to turn on.
+# Semantic slot -> (module alias, real blob param name). From the Task 0 spike.
 PARAM_KEYS = {
-    "max_bypass":    ("MAX", "Bypass"),
-    "max_target":    ("MAX", "Target Loudness [dB]"),
-    "max_ceiling":   None,   # fill from spike (e.g. ("MAX", "Ceiling [dB]"))
-    "max_character": None,   # fill from spike
-    "eq_bypass":     None,   # fill from spike (("EQ", "Bypass"))
-    "eq_low_gain":   None,   # fill from spike
-    "eq_high_gain":  None,   # fill from spike
-    "dyn_bypass":    None,   # fill from spike (("DYN", "Bypass"))
+    "max_bypass":     ("MAX", "Bypass"),                        # False = module on
+    "max_target":     ("MAX", "Target Loudness [dB]"),
+    "max_ceiling":    ("MAX", "Margin"),                        # dB; 0 default, negative = headroom
+    "max_isc":        ("MAX", "Prevent Intersample Clipping"),  # True = true-peak safe
+    "eq_bypass":      ("EQ", "Bypass"),                         # False = module on
+    "eq_low_enable":  ("EQ", "Band 1 Enable"),                 # ~100 Hz low shelf
+    "eq_low_gain":    ("EQ", "Band 1 Gain"),
+    "eq_high_enable": ("EQ", "Band 8 Enable"),                 # ~16 kHz high shelf
+    "eq_high_gain":   ("EQ", "Band 8 Gain"),
 }
 
-# Per-bucket semantic settings. Values are consumed by build_chain; a setting
-# whose PARAM_KEYS slot is None is silently dropped.
+# Per-bucket EQ shelf gains (dB). Each bucket has a distinct fingerprint. Tonal
+# EQ is best-effort (see module docstring); the Maximizer loudness/ceiling is the
+# reliable part of every chain.
 BUCKET_SHAPES = {
-    "transparent": {"modules_on": ["max"],
-                    "character": 0.2, "eq_low_gain": 0.0, "eq_high_gain": 0.0},
-    "warm":        {"modules_on": ["max", "eq"],
-                    "character": 0.3, "eq_low_gain": 1.0, "eq_high_gain": -0.5},
-    "loud_club":   {"modules_on": ["max", "eq", "dyn"],
-                    "character": 0.8, "eq_low_gain": 0.5, "eq_high_gain": 0.5},
-    "punchy":      {"modules_on": ["max", "dyn"],
-                    "character": 0.6, "eq_low_gain": 0.0, "eq_high_gain": 0.0},
-    "bright":      {"modules_on": ["max", "eq"],
-                    "character": 0.4, "eq_low_gain": -0.5, "eq_high_gain": 1.5},
+    "transparent": {"eq_low_gain": 0.0,  "eq_high_gain": 0.0},
+    "warm":        {"eq_low_gain": 1.0,  "eq_high_gain": -0.5},
+    "loud_club":   {"eq_low_gain": 0.5,  "eq_high_gain": 0.5},
+    "punchy":      {"eq_low_gain": -0.5, "eq_high_gain": 0.5},
+    "bright":      {"eq_low_gain": -0.5, "eq_high_gain": 1.5},
 }
-
-# Which bypass slot enables each module name in "modules_on".
-_ENABLE_SLOT = {"max": "max_bypass", "eq": "eq_bypass", "dyn": "dyn_bypass"}
 
 
 def _put(chain, slot, value):
-    """Place value at PARAM_KEYS[slot] into the chain, unless the slot is
-    unconfigured (None key) or value is None."""
-    key = PARAM_KEYS.get(slot)
-    if key is None or value is None:
+    """Place value at PARAM_KEYS[slot] into the chain (value None -> skip)."""
+    if value is None:
         return
-    alias, pname = key
+    alias, pname = PARAM_KEYS[slot]
     chain.setdefault(alias, {})[pname] = value
 
 
 def build_chain(bucket, target_lufs, true_peak):
     """Build a set_ozone_state-shaped changes dict for a character bucket.
 
-    target_lufs passes through to the Maximizer target (louder = higher, e.g.
-    -8 > -14); true_peak sets the ceiling. Raises KeyError for an unknown bucket.
+    Maximizer settings (enable, target, ceiling, true-peak safety) are always
+    emitted - they are the reliable part of the chain. target_lufs passes through
+    to the Maximizer target (louder = higher, e.g. -8 > -14); true_peak sets the
+    Margin (ceiling). EQ shelves are emitted only for a nonzero bucket gain, each
+    paired with enabling its band. Raises KeyError for an unknown bucket.
     """
     shape = BUCKET_SHAPES[bucket]  # KeyError on unknown bucket (tested)
     chain = {}
-    # Enable the bucket's modules (bypass = False).
-    for m in shape["modules_on"]:
-        _put(chain, _ENABLE_SLOT[m], False)
-    # Loudness + peak.
+    # Maximizer - unconditional (always in the default Ozone chain).
+    _put(chain, "max_bypass", False)
     _put(chain, "max_target", float(target_lufs))
     _put(chain, "max_ceiling", float(true_peak))
-    _put(chain, "max_character", float(shape["character"]))
-    # Tonal shaping.
-    _put(chain, "eq_low_gain", float(shape["eq_low_gain"]))
-    _put(chain, "eq_high_gain", float(shape["eq_high_gain"]))
+    _put(chain, "max_isc", True)
+    # EQ shelves - best-effort, only when the bucket asks for a nonzero gain.
+    low = float(shape["eq_low_gain"])
+    high = float(shape["eq_high_gain"])
+    if low != 0.0:
+        _put(chain, "eq_bypass", False)
+        _put(chain, "eq_low_enable", True)
+        _put(chain, "eq_low_gain", low)
+    if high != 0.0:
+        _put(chain, "eq_bypass", False)
+        _put(chain, "eq_high_enable", True)
+        _put(chain, "eq_high_gain", high)
     return chain
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH" uv run --with pytest pytest tests/test_master_profiles.py -q`
-Expected: PASS (6 tests).
+Expected: PASS (9 tests).
 
 - [ ] **Step 5: Commit**
 
