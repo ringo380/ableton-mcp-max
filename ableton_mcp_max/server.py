@@ -8845,6 +8845,47 @@ def recommend_master(ctx: Context, intent: str, target: float = None,
 
 
 @mcp.tool()
+def apply_master(ctx: Context, chain: dict, track_index: int = 0,
+                 device_index: int = 0, track_type: str = "master",
+                 deploy_tap: bool = True) -> str:
+    """Apply a mastering chain (from recommend_master) to an Ozone 12 instance in
+    one shot, then set up the live trim loop. Writes the chain via set_ozone_state
+    (one reload, un-clamped native values), exposes the Maximizer so the skill can
+    nudge ceiling/gain without further reloads, and deploys a master tap so
+    measure_loudness has post-fader audio. Errors clearly if the target device is
+    not Ozone 12. Returns {ok, data:{applied, skipped, reloaded, exposed, tap,
+    target, next}}. deploy_tap=False skips the tap (loop then runs un-metered)."""
+    try:
+        get_ableton_connection()  # fail fast if Live is unreachable
+        # 1. Write the chain (this also detects non-Ozone via set_ozone_state).
+        sos = json.loads(set_ozone_state(ctx, track_index, chain, device_index,
+                                         track_type, reload=True))
+        if not sos.get("ok"):
+            return _err(sos.get("error", "apply_master: chain write failed"))
+        wrote = sos["data"]
+        # 2. Expose the Maximizer for the reload-free live trim loop.
+        exp = json.loads(expose_ozone_modules(ctx, track_index, ["MAX"],
+                                              device_index, track_type))
+        exposed = exp.get("data") if exp.get("ok") else {"error": exp.get("error")}
+        # 3. Deploy a master tap (non-fatal on failure).
+        tap = {"status": "skipped"}
+        if deploy_tap:
+            td = json.loads(deploy_taps(ctx, track_indices=[-1]))
+            deployed = td.get("data", {}).get("deployed") if td.get("ok") else None
+            tap = {"status": "deployed" if deployed else "failed",
+                   "detail": td.get("data", td.get("error"))}
+        return _ok({"applied": wrote.get("applied"), "skipped": wrote.get("skipped"),
+                    "reloaded": wrote.get("reloaded"), "exposed": exposed,
+                    "tap": tap,
+                    "next": ("run the trim loop: play the densest section, "
+                             "measure_loudness, nudge set_ozone_maximizer toward "
+                             "target")})
+    except Exception as e:
+        logger.error("apply_master error: %s", e)
+        return _err("apply_master error: %s" % e)
+
+
+@mcp.tool()
 def recommend_instrument(ctx: Context, intent: str,
                          prefer_native: bool = None) -> str:
     """Choose which instrument engine to reach for from a free-text intent
