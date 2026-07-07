@@ -211,3 +211,43 @@ Parameters:
 
 Returns JSON {ok, data:{set_path, reloaded, applied:[...], skipped:[...]}}.
 
+## recommend_master
+
+```python
+recommend_master(
+    intent: str,
+    target: float = None,
+    true_peak: float = -1.0,
+    prefer_reuse: bool = True,
+)
+```
+
+Propose an Ozone 12 mastering chain from a free-text intent + loudness
+target. Picks a character bucket (transparent/warm/loud_club/punchy/bright)
+and resolves the LUFS target (explicit arg > platform keyword like
+spotify/apple/club > default -14). Returns a chain dict in set_ozone_state's
+shape. Best-effort: if a saved master/Ozone preset in the catalog matches,
+proposes reuse instead. PROPOSE ONLY - pass the returned chain to
+apply_master to write it. Returns {ok, data:{intent, parsed, target,
+true_peak, chain, decision, top_matches, reason, next}}.
+
+## apply_master
+
+```python
+apply_master(
+    chain: dict,
+    track_index: int = 0,
+    device_index: int = 0,
+    track_type: str = 'master',
+    deploy_tap: bool = True,
+)
+```
+
+Apply a mastering chain (from recommend_master) to an Ozone 12 instance in
+one shot, then set up the live trim loop. Writes the chain via set_ozone_state
+(one reload, un-clamped native values), exposes the Maximizer so the skill can
+nudge ceiling/gain without further reloads, and deploys a master tap so
+measure_loudness has post-fader audio. Errors clearly if the target device is
+not Ozone 12. Returns {ok, data:{applied, skipped, reloaded, exposed, tap,
+target, next}}. deploy_tap=False skips the tap (loop then runs un-metered).
+
