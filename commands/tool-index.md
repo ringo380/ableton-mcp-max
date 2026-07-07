@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_182 tools._
+_184 tools._
 
 ## Session & view
 
@@ -113,6 +113,8 @@ _182 tools._
 - **`set_ozone_dynamics_band`** - Set an Ozone 12 Dynamics band's compressor controls in one call. Dynamics
 - **`get_ozone_state`** - Read Ozone 12 params directly from the plugin state blob (native values).
 - **`set_ozone_state`** - Author Ozone 12 params in native units by patching the state blob.
+- **`recommend_master`** - Propose an Ozone 12 mastering chain from a free-text intent + loudness
+- **`apply_master`** - Apply a mastering chain (from recommend_master) to an Ozone 12 instance in
 
 ## Clips & MIDI notes
 

@@ -1,5 +1,33 @@
 # ableton-mcp-max — Progress
 
+## Phase 3 - mastering recommend integration - LIVE-VERIFIED, pending ship v0.31.0 (2026-07-06)
+Gives mastering the same recommend-then-apply intelligence the instrument flow has. **2 new `@mcp.tool()`s**
+(built via SDD, plan `docs/superpowers/plans/2026-07-06-mastering-recommend-integration.md`; spec
+`docs/superpowers/specs/2026-07-06-mastering-recommend-integration-design.md`), **182 -> 184 tools**, both
+under the "Mastering (Ozone)" category (23 categories unchanged):
+- `recommend_master(intent, target=None, true_peak=-1, prefer_reuse=True)` - PROPOSE-ONLY. Parses a free-text
+  intent into one of 5 character buckets (transparent/warm/loud_club/punchy/bright) + resolves the LUFS target
+  (explicit arg > platform keyword spotify/apple/club > default -14), emits an Ozone chain dict in
+  `set_ozone_state`'s `{module:{param:val}}` shape, and layers a best-effort catalog "reuse" check (degrades to
+  `top_matches:[]` when the catalog is unavailable).
+- `apply_master(chain, ...)` - one-shot: `set_ozone_state` write (detects non-Ozone via its own guard) ->
+  expose the Maximizer (for the reload-free trim loop) -> deploy a master tap. Tap failure is NON-FATAL.
+
+New pure modules `master_profiles.py` (`build_chain`; PARAM_KEYS = REAL blob keys from a live spike: Maximizer
+`Bypass`/`Target Loudness [dB]`/`Margin`[=ceiling]/`Prevent Intersample Clipping`, EQ `Band 1`&`Band 8`
+`Enable`/`Gain`) + `master_select.py` (intent parse + target resolve). **KEY LIMIT baked in:** the Ozone blob
+does NOT encode chain membership (all ~40 modules always present), so ONLY the Maximizer reliably affects sound;
+EQ shelves are BEST-EFFORT (audible only if EQ is in the user's active chain). Rewrote
+`skills/ableton-mastering/SKILL.md` (recommend -> apply -> live measure/nudge trim loop via `set_ozone_maximizer`,
+NOT `set_ozone_state` which reloads) + wired `/ableton:produce` Stage 6 (Ozone primary path + non-Ozone degrade).
+
+**SDD:** 7 tasks all review-clean; opus final whole-branch review = MERGE (no Critical/Important). Offline gate
+1094 passed / 2 skipped, import clean. **LIVE-VERIFIED (Live 12 + Ozone on master):** recommend_master parsed
+loud_club + hit the live catalog (reuse "DJ Master Channel"); apply_master applied all 9 params un-clamped
+(skipped:[]) + exposed the Maximizer + non-fatal tap handling; `set_ozone_maximizer` nudged live with no reload.
+measure_loudness convergence not run (empty probe set / master tap couldn't load - env limit, degrade path is documented).
+DEFERRED minor: apply_master always `deploy_taps([-1])` with no skip-if-present check (re-run could stack a 2nd master tap).
+
 ## Ozone 12 deep mastering support - Phase 2 - native param authoring - LIVE-VERIFIED, pending ship v0.30.0 (2026-07-05)
 Removes Phase 1's two hard limits (128-slot Configure cap + identity-normalization clamp that forced
 Hz/dB args to [0,1]) by reading/writing ALL Ozone params directly in the plugin's `<ProcessorState>`

@@ -156,6 +156,8 @@ from ableton_mcp_max import instrument_select
 from ableton_mcp_max import ozone_utils as _oz
 from ableton_mcp_max import ozone_param_catalog as _ozcat
 from ableton_mcp_max import ozone_state_utils as _osu
+from ableton_mcp_max import master_select as _msel
+from ableton_mcp_max import catalog_query
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -8800,6 +8802,87 @@ def _resolve_instrument_env(prefer_native):
         return {"serum_installed": installed, "serum_instances": 0,
                 "prefer_native": bool(prefer_native) if prefer_native is not None
                 else False, "live_connected": False}
+
+
+def _is_master_preset(row):
+    """Best-effort filter: catalog rows that look like a master/Ozone preset."""
+    hay = ("%s %s" % (row.get("name", ""), row.get("path", ""))).lower()
+    return "ozone" in hay or "master" in hay
+
+
+@mcp.tool()
+def recommend_master(ctx: Context, intent: str, target: float = None,
+                     true_peak: float = -1.0, prefer_reuse: bool = True) -> str:
+    """Propose an Ozone 12 mastering chain from a free-text intent + loudness
+    target. Picks a character bucket (transparent/warm/loud_club/punchy/bright)
+    and resolves the LUFS target (explicit arg > platform keyword like
+    spotify/apple/club > default -14). Returns a chain dict in set_ozone_state's
+    shape. Best-effort: if a saved master/Ozone preset in the catalog matches,
+    proposes reuse instead. PROPOSE ONLY - pass the returned chain to
+    apply_master to write it. Returns {ok, data:{intent, parsed, target,
+    true_peak, chain, decision, top_matches, reason, next}}."""
+    try:
+        result = _msel.recommend(intent, target=target, true_peak=true_peak)
+        top_matches = []
+        try:
+            conn = _catalog_conn()
+            _ensure_device_index(conn)
+            rows = catalog_query.find_similar(conn, intent, "device_preset",
+                                              limit=5)
+            top_matches = [r for r in rows if _is_master_preset(r)]
+            if (prefer_reuse and top_matches
+                    and top_matches[0].get("score", 0) >= _msel.REUSE_MIN_SCORE):
+                result["decision"] = "reuse"
+                result["reason"] += " Catalog match available (reuse)."
+        except Exception as e:
+            logger.warning("recommend_master catalog fallback: %s", e)
+        result["top_matches"] = top_matches
+        result["next"] = "Pass chain to apply_master to write it."
+        return _ok(result)
+    except Exception as e:
+        logger.error("recommend_master error: %s", e)
+        return _err("recommend_master error: %s" % e)
+
+
+@mcp.tool()
+def apply_master(ctx: Context, chain: dict, track_index: int = 0,
+                 device_index: int = 0, track_type: str = "master",
+                 deploy_tap: bool = True) -> str:
+    """Apply a mastering chain (from recommend_master) to an Ozone 12 instance in
+    one shot, then set up the live trim loop. Writes the chain via set_ozone_state
+    (one reload, un-clamped native values), exposes the Maximizer so the skill can
+    nudge ceiling/gain without further reloads, and deploys a master tap so
+    measure_loudness has post-fader audio. Errors clearly if the target device is
+    not Ozone 12. Returns {ok, data:{applied, skipped, reloaded, exposed, tap,
+    next}}. deploy_tap=False skips the tap (loop then runs un-metered)."""
+    try:
+        get_ableton_connection()  # fail fast if Live is unreachable
+        # 1. Write the chain (this also detects non-Ozone via set_ozone_state).
+        sos = json.loads(set_ozone_state(ctx, track_index, chain, device_index,
+                                         track_type, reload=True))
+        if not sos.get("ok"):
+            return _err(sos.get("error", "apply_master: chain write failed"))
+        wrote = sos["data"]
+        # 2. Expose the Maximizer for the reload-free live trim loop.
+        exp = json.loads(expose_ozone_modules(ctx, track_index, ["MAX"],
+                                              device_index, track_type))
+        exposed = exp.get("data") if exp.get("ok") else {"error": exp.get("error")}
+        # 3. Deploy a master tap (non-fatal on failure).
+        tap = {"status": "skipped"}
+        if deploy_tap:
+            td = json.loads(deploy_taps(ctx, track_indices=[-1]))
+            deployed = td.get("data", {}).get("deployed") if td.get("ok") else None
+            tap = {"status": "deployed" if deployed else "failed",
+                   "detail": td.get("data", td.get("error"))}
+        return _ok({"applied": wrote.get("applied"), "skipped": wrote.get("skipped"),
+                    "reloaded": wrote.get("reloaded"), "exposed": exposed,
+                    "tap": tap,
+                    "next": ("run the trim loop: play the densest section, "
+                             "measure_loudness, nudge set_ozone_maximizer toward "
+                             "target")})
+    except Exception as e:
+        logger.error("apply_master error: %s", e)
+        return _err("apply_master error: %s" % e)
 
 
 @mcp.tool()
