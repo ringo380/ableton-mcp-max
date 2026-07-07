@@ -46,6 +46,9 @@ master.
 - The live `set_ozone_maximizer` path does NOT reload; use it in the loop.
   `set_ozone_state` DOES reload (stops playback) - use it only at apply time.
 - Ozone-12-only: there is no native-limiter fallback in this flow.
+- After `apply_master`, check `data.exposed` for an `error`: if the Maximizer
+  failed to expose, the live `set_ozone_maximizer` trim loop cannot run - fall
+  back to authoring the Maximizer via `set_ozone_state` (reloads) or report it.
 
 ## Checklist
 - [ ] Target read from brief (or default applied + noted).

@@ -8854,7 +8854,7 @@ def apply_master(ctx: Context, chain: dict, track_index: int = 0,
     nudge ceiling/gain without further reloads, and deploys a master tap so
     measure_loudness has post-fader audio. Errors clearly if the target device is
     not Ozone 12. Returns {ok, data:{applied, skipped, reloaded, exposed, tap,
-    target, next}}. deploy_tap=False skips the tap (loop then runs un-metered)."""
+    next}}. deploy_tap=False skips the tap (loop then runs un-metered)."""
     try:
         get_ableton_connection()  # fail fast if Live is unreachable
         # 1. Write the chain (this also detects non-Ozone via set_ozone_state).
