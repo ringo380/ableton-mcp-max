@@ -1,35 +1,55 @@
 ---
 name: ableton-mastering
-description: Finalizing a mix to a target loudness with limiting, metering, and reference matching on the Ableton master chain. Use when mastering, hitting a LUFS target, taming true-peaks, or matching a reference loudness.
+description: Finalizing a mix to a target loudness with an Ozone 12 chain, limiting, metering, and reference matching on the Ableton master. Use when mastering, hitting a LUFS target, taming true-peaks, or matching a reference loudness.
 ---
 
 # Ableton mastering
 
-Goal: hit a platform loudness target while preserving dynamics and avoiding true-peak
-clipping. Master only a clean, headroom-safe mix.
+Goal: hit a platform loudness target while preserving dynamics and avoiding
+true-peak clipping. Master only a clean, headroom-safe mix, with Ozone 12 on the
+master.
+
+## Flow
+1. Read the loudness target from the project brief. If unstated, default
+   -14 LUFS / -1 dBTP and note it. See `loudness-targets.md`.
+2. `recommend_master(intent, target)` -> a proposed Ozone chain (character
+   bucket + target). Show the user the decision, chain summary, and target.
+   PROPOSE ONLY - it writes nothing.
+3. `apply_master(chain)` -> writes the chain (one reload), exposes the
+   Maximizer, and deploys a master tap. If it errors "not an Ozone 12 plugin",
+   tell the user to load Ozone 12 on the master first.
+4. Trim loop (<= 4 iterations), all live (no reloads):
+   - Jump to the densest section, `start_playback`, then `measure_loudness`.
+   - If integrated LUFS is within 1 LU of target AND true-peak <= ceiling, stop.
+   - Otherwise nudge `set_ozone_maximizer` live: raise `threshold` (input gain)
+     to get louder; lower `ceiling` or back off gain to tame true-peak.
+   - Re-measure. After 4 iterations, report the best reading and the gap.
+5. `check_clipping` and confirm true-peak <= ceiling.
+6. Log the target, the applied chain, and the final readings to `decisions.md`.
 
 ## Tools
-- Measure: `measure_loudness` (integrated LUFS / peaks), `check_clipping`,
-  the master audio tap for metering.
-- Master chain: inspect/adjust with the `track_type='master'` device tools -
-  `get_device_info`, `get_device_parameters`, `set_device_parameter` all support
-  `track_type='master'` (since PR #24); use `get_rack_macros`/`set_chain_property` for rack
-  chains and `set_device_on` to bypass.
-- Load master devices with `load_instrument_or_effect` / `load_preset` (`track_type='master'`).
+- Propose/apply: `recommend_master`, `apply_master`.
+- Live trim (no reload): `set_ozone_maximizer` (threshold/ceiling/character).
+- Measure: `measure_loudness` (integrated LUFS / peaks), `check_clipping`.
+- Direct Ozone param authoring when needed: `get_ozone_state` /
+  `set_ozone_state` (native units, un-clamped) - but NOT inside the trim loop
+  (they reload the set and stop playback).
 
 ## Principles
-- Read `loudness-targets.md` and pick the target from the project brief (default -14 LUFS,
-  -1 dBTP if unstated).
-- Gain into the limiter, do not slam it; aim for <= 3 dB gain reduction on peaks.
-- Re-measure after every change - master by the meter, then by ear against a reference.
+- Gain into the limiter; do not slam it. Aim for <= 3 dB gain reduction.
+- Master by the meter, then by ear against a reference.
+- Re-measure after every change.
 
 ## Gotchas
-- `measure_loudness` needs audio actually playing through the master.
-- Master-device raw param read/write IS available via `get_device_parameters`/`set_device_parameter`
-  with `track_type='master'` (since PR #24); use these for direct param control on the master chain.
+- `measure_loudness` needs audio actually playing through a master tap
+  (apply_master deploys one; without it the loop runs un-metered - say so).
+- The live `set_ozone_maximizer` path does NOT reload; use it in the loop.
+  `set_ozone_state` DOES reload (stops playback) - use it only at apply time.
+- Ozone-12-only: there is no native-limiter fallback in this flow.
 
 ## Checklist
 - [ ] Target read from brief (or default applied + noted).
+- [ ] recommend_master proposal shown before applying.
 - [ ] Integrated LUFS within ~1 LU of target; true-peak <= -1 dBTP.
 - [ ] Compared against a reference track.
-- [ ] Logged target + final readings to decisions.md.
+- [ ] Logged target + chain + final readings to decisions.md.
