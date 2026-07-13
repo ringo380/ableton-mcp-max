@@ -158,6 +158,7 @@ from ableton_mcp_max import ozone_param_catalog as _ozcat
 from ableton_mcp_max import ozone_state_utils as _osu
 from ableton_mcp_max import master_select as _msel
 from ableton_mcp_max import catalog_query
+from ableton_mcp_max import master_ozone_utils
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -1807,8 +1808,21 @@ def _as_literal(s):
 
 
 def _live_window_title(proc=_LIVE_PROC):
-    """Front window title of the Live process ('' if unreadable). 'Untitled' for
-    a set with no file on disk (see save_utils.is_untitled_title)."""
+    """Title of Live's main SET window ('' if unreadable). 'Untitled' for a set
+    with no file on disk (see save_utils.is_untitled_title).
+
+    Reads the first AXStandardWindow, NOT `window 1`: a plugin's custom editor
+    (e.g. a freshly loaded Ozone 12) opens as an AXFloatingWindow that sits ON
+    TOP of the set window and persists, so `window 1` returns the PLUGIN's title
+    ("Ozone 12/1-Serum 2"). That wrong title poisons every consumer - the set
+    looks mis-titled to the .als path resolver (_current_set_path filters log
+    lines by it) and save_set reports a save that never landed. Falls back to
+    `window 1` when no standard window is readable."""
+    title = _osa_get(
+        'tell application "System Events" to tell process "%s" to get name of '
+        '(first window whose subrole is "AXStandardWindow")' % proc)
+    if title:
+        return title
     return _osa_get(
         'tell application "System Events" to tell process "%s" '
         'to get name of window 1' % proc)
@@ -8883,6 +8897,92 @@ def apply_master(ctx: Context, chain: dict, track_index: int = 0,
     except Exception as e:
         logger.error("apply_master error: %s", e)
         return _err("apply_master error: %s" % e)
+
+
+def _enumerate_master_devices(ctx, track_index, track_type, limit=64):
+    """Walk device indices until one is absent; return [{index,name,is_on}].
+    Out-of-range returns ok:false (normal end); a raised error propagates to
+    the caller's handler rather than silently truncating the list."""
+    devices = []
+    for di in range(limit):
+        raw = json.loads(get_device_info(ctx, track_index, di, track_type))
+        if not raw.get("ok"):
+            break
+        d = raw["data"]
+        devices.append({"index": di, "name": d.get("name"),
+                        "is_on": d.get("is_on")})
+    return devices
+
+
+def _master_blob_ready(ctx, track_index, target_index, track_type,
+                       attempts=5):
+    """Save-with-retry, then probe get_ozone_state. Works around the racy
+    empty-title / stale-.als-path window right after a structural change.
+    Returns (ready: bool, last_error: str|None)."""
+    last = None
+    for _ in range(attempts):
+        saved = json.loads(save_set(ctx, "")).get("data", {})
+        if not saved.get("saved") or saved.get("untitled"):
+            last = saved.get("error") or "save did not land (transient title)"
+            time.sleep(0.6)
+            continue
+        probe = json.loads(get_ozone_state(ctx, track_index, target_index,
+                                           track_type, None))
+        if probe.get("ok"):
+            return True, None
+        last = probe.get("error")
+        time.sleep(0.6)
+    return False, last
+
+
+@mcp.tool()
+def ensure_ozone_master(ctx: Context, track_index: int = 0,
+                        track_type: str = "master") -> str:
+    """Prepare the master for mastering: guarantee exactly one enabled Ozone 12,
+    with older Ozone versions (9/10/11) disabled (never deleted), and confirm the
+    instance's state blob is authorable before returning. Reuses an existing
+    Ozone 12 (re-enabling it if off; lowest index if several), else loads one onto
+    the master (appends - existing master devices are untouched). Detection is
+    exact-name so the single-module 'Ozone 12 <Module>' component plugins are
+    ignored. The set must already be saved to a file (an untitled set errors).
+    Hand data.device_index straight to apply_master. Returns {ok, data:{
+    device_index, action: reused|reused_reenabled|loaded, disabled_indices,
+    blob_ready}}."""
+    try:
+        get_ableton_connection()  # fail fast if Live is unreachable
+        # Precondition: window is settled pre-change, so this read is reliable.
+        pre = json.loads(save_set(ctx, "")).get("data", {})
+        if pre.get("untitled"):
+            return _err("Save the set to a file first (it is untitled), then retry.")
+        before = _enumerate_master_devices(ctx, track_index, track_type)
+        plan = master_ozone_utils.plan_master_ozone(before)
+        for di in plan["disable_indices"]:
+            set_device_on(ctx, track_index, di, False, track_type)
+        if plan["load_required"]:
+            loaded = json.loads(load_instrument_or_effect(
+                ctx, track_index, master_ozone_utils.OZONE_12_URI, track_type))
+            if not loaded.get("ok"):
+                return _err("ensure_ozone_master: load failed: %s"
+                            % loaded.get("error"))
+            after = _enumerate_master_devices(ctx, track_index, track_type)
+            target = master_ozone_utils.pick_loaded_target(before, after)
+            if target is None:
+                return _err("ensure_ozone_master: Ozone 12 did not appear after load.")
+        else:
+            target = plan["target_index"]
+            if plan["action"] == "reused_reenabled":
+                set_device_on(ctx, track_index, target, True, track_type)
+        ready, err = _master_blob_ready(ctx, track_index, target, track_type)
+        if not ready:
+            return _err("ensure_ozone_master: master prepared (action=%s, "
+                        "device_index=%s) but the Ozone blob was not authorable "
+                        "after retries: %s" % (plan["action"], target, err))
+        return _ok({"device_index": target, "action": plan["action"],
+                    "disabled_indices": plan["disable_indices"],
+                    "blob_ready": True})
+    except Exception as e:
+        logger.error("ensure_ozone_master error: %s", e)
+        return _err("ensure_ozone_master error: %s" % e)
 
 
 @mcp.tool()

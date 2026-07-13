@@ -50,7 +50,7 @@ GROUPS = [
         "set_ozone_module_param", "set_ozone_module_enabled",
         "set_ozone_eq_band", "set_ozone_maximizer", "set_ozone_dynamics_band",
         "get_ozone_state", "set_ozone_state",
-        "recommend_master", "apply_master",
+        "recommend_master", "apply_master", "ensure_ozone_master",
     ]),
     ("Clips & MIDI notes", [
         "create_clip", "get_clip_info", "set_clip_name", "set_clip_property",

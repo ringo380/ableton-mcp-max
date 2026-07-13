@@ -102,3 +102,27 @@ def test_tool_wrapper_bad_name_clean(monkeypatch):
     _stub(monkeypatch, title="Untitled")
     out = json.loads(server.save_set_as(None, "a/b"))
     assert out["ok"] is False and "/" in out["error"]
+
+
+# --- _live_window_title: ignore a plugin's floating editor window -------------
+# A freshly loaded VST3 (e.g. Ozone 12) opens an AXFloatingWindow that sits on
+# top of the set window and persists, so `window 1` returns the PLUGIN's title.
+# _live_window_title must read the main AXStandardWindow instead, or the .als
+# path resolver and the untitled check both get a bogus title.
+
+def test_live_window_title_prefers_standard_window(monkeypatch):
+    def _osa_get(script):
+        if "AXStandardWindow" in script:
+            return "ozone_idbase_probe"
+        return "Ozone 12/1-Serum 2"          # window 1 = plugin editor
+    monkeypatch.setattr(server, "_osa_get", _osa_get)
+    assert server._live_window_title() == "ozone_idbase_probe"
+
+
+def test_live_window_title_falls_back_to_window_1(monkeypatch):
+    def _osa_get(script):
+        if "AXStandardWindow" in script:
+            return ""                        # no standard window readable
+        return "SomeSet"
+    monkeypatch.setattr(server, "_osa_get", _osa_get)
+    assert server._live_window_title() == "SomeSet"
