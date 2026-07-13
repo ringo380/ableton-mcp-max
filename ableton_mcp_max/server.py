@@ -1808,8 +1808,21 @@ def _as_literal(s):
 
 
 def _live_window_title(proc=_LIVE_PROC):
-    """Front window title of the Live process ('' if unreadable). 'Untitled' for
-    a set with no file on disk (see save_utils.is_untitled_title)."""
+    """Title of Live's main SET window ('' if unreadable). 'Untitled' for a set
+    with no file on disk (see save_utils.is_untitled_title).
+
+    Reads the first AXStandardWindow, NOT `window 1`: a plugin's custom editor
+    (e.g. a freshly loaded Ozone 12) opens as an AXFloatingWindow that sits ON
+    TOP of the set window and persists, so `window 1` returns the PLUGIN's title
+    ("Ozone 12/1-Serum 2"). That wrong title poisons every consumer - the set
+    looks mis-titled to the .als path resolver (_current_set_path filters log
+    lines by it) and save_set reports a save that never landed. Falls back to
+    `window 1` when no standard window is readable."""
+    title = _osa_get(
+        'tell application "System Events" to tell process "%s" to get name of '
+        '(first window whose subrole is "AXStandardWindow")' % proc)
+    if title:
+        return title
     return _osa_get(
         'tell application "System Events" to tell process "%s" '
         'to get name of window 1' % proc)
