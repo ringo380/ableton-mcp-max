@@ -249,5 +249,22 @@ one shot, then set up the live trim loop. Writes the chain via set_ozone_state
 nudge ceiling/gain without further reloads, and deploys a master tap so
 measure_loudness has post-fader audio. Errors clearly if the target device is
 not Ozone 12. Returns {ok, data:{applied, skipped, reloaded, exposed, tap,
-target, next}}. deploy_tap=False skips the tap (loop then runs un-metered).
+next}}. deploy_tap=False skips the tap (loop then runs un-metered).
+
+## ensure_ozone_master
+
+```python
+ensure_ozone_master(track_index: int = 0, track_type: str = 'master')
+```
+
+Prepare the master for mastering: guarantee exactly one enabled Ozone 12,
+with older Ozone versions (9/10/11) disabled (never deleted), and confirm the
+instance's state blob is authorable before returning. Reuses an existing
+Ozone 12 (re-enabling it if off; lowest index if several), else loads one onto
+the master (appends - existing master devices are untouched). Detection is
+exact-name so the single-module 'Ozone 12 <Module>' component plugins are
+ignored. The set must already be saved to a file (an untitled set errors).
+Hand data.device_index straight to apply_master. Returns {ok, data:{
+device_index, action: reused|reused_reenabled|loaded, disabled_indices,
+blob_ready}}.
 
