@@ -21,15 +21,20 @@ def plan_master_ozone(devices):
 
     devices: ordered list of {"index": int, "name": str, "is_on": bool}.
     Returns {"target_index", "action", "disable_indices", "load_required"}.
+    Every full-suite Ozone except the chosen target goes in disable_indices
+    (so exactly one Ozone 12 stays enabled); older versions are never deleted.
     """
-    disable_indices = [d["index"] for d in devices
-                       if _name(d) in OZONE_SUITE_NAMES and _name(d) != OZONE_12]
     twelves = [d for d in devices if _name(d) == OZONE_12]
     if twelves:
         target = min(twelves, key=lambda d: d["index"])
         action = "reused" if target.get("is_on") else "reused_reenabled"
+        disable_indices = [d["index"] for d in devices
+                           if _name(d) in OZONE_SUITE_NAMES
+                           and d["index"] != target["index"]]
         return {"target_index": target["index"], "action": action,
                 "disable_indices": disable_indices, "load_required": False}
+    disable_indices = [d["index"] for d in devices
+                       if _name(d) in OZONE_SUITE_NAMES]
     return {"target_index": None, "action": "loaded",
             "disable_indices": disable_indices, "load_required": True}
 

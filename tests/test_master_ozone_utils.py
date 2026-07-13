@@ -43,10 +43,21 @@ def test_mixed_older_and_12_reuses_and_disables_older():
     assert plan["load_required"] is False
 
 
-def test_multiple_ozone12_picks_lowest_index():
+def test_multiple_ozone12_picks_lowest_and_disables_others():
     plan = mou.plan_master_ozone([_dev(3, "Ozone 12", True),
                                   _dev(1, "Ozone 12", True)])
     assert plan["target_index"] == 1
+    assert plan["disable_indices"] == [3]
+    assert plan["action"] == "reused"
+
+
+def test_multiple_ozone12_with_older_disables_all_non_target():
+    plan = mou.plan_master_ozone([_dev(0, "Ozone 10", True),
+                                  _dev(1, "Ozone 12", True),
+                                  _dev(2, "Ozone 12", True)])
+    assert plan["target_index"] == 1
+    assert sorted(plan["disable_indices"]) == [0, 2]
+    assert plan["action"] == "reused"
 
 
 def test_component_plugins_do_not_match():

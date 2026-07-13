@@ -8887,13 +8887,12 @@ def apply_master(ctx: Context, chain: dict, track_index: int = 0,
 
 
 def _enumerate_master_devices(ctx, track_index, track_type, limit=64):
-    """Walk device indices until one is absent; return [{index,name,is_on}]."""
+    """Walk device indices until one is absent; return [{index,name,is_on}].
+    Out-of-range returns ok:false (normal end); a raised error propagates to
+    the caller's handler rather than silently truncating the list."""
     devices = []
     for di in range(limit):
-        try:
-            raw = json.loads(get_device_info(ctx, track_index, di, track_type))
-        except Exception:
-            break
+        raw = json.loads(get_device_info(ctx, track_index, di, track_type))
         if not raw.get("ok"):
             break
         d = raw["data"]

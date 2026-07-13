@@ -115,3 +115,15 @@ def test_blob_never_ready_returns_error(monkeypatch):
     out = json.loads(server.ensure_ozone_master(ctx=None))
     assert out["ok"] is False
     assert "blob" in out["error"].lower()
+
+
+def test_transport_error_during_enumeration_aborts(monkeypatch):
+    _install(monkeypatch, [{"index": 0, "name": "Ozone 12", "is_on": True}])
+
+    def boom(ctx, track_index, device_index, track_type="regular"):
+        raise RuntimeError("socket closed")
+    monkeypatch.setattr(server, "get_device_info", boom)
+
+    out = json.loads(server.ensure_ozone_master(ctx=None))
+    assert out["ok"] is False
+    assert "error" in out
