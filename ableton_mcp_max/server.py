@@ -1331,11 +1331,16 @@ def deploy_taps(ctx: Context, track_indices: List[int] = None,
     When track_indices is given explicitly, include_master is ignored (add -1 to
     the list yourself).
 
+    Idempotent: a target that ALREADY holds an MCP Tap is skipped (reported in
+    already_present) rather than getting a second, duplicate tap stacked on it.
+    Use remove_taps to clear taps before re-deploying.
+
     Returns JSON {ok, data:{targets, deployed:[{track_index,device}],
-    failed:[{track_index,error}]}}. If EVERY load fails (e.g. the device isn't in
-    the browser), data.manual is true with a drag-it-yourself message listing the
-    target tracks - the registry still works once the device is dragged on by
-    hand. After deploying, run measure_mix or analyze_set(measure=True).
+    already_present:[{track_index,device}], failed:[{track_index,error}]}}. If
+    EVERY load fails (e.g. the device isn't in the browser), data.manual is true
+    with a drag-it-yourself message listing the target tracks - the registry
+    still works once the device is dragged on by hand. After deploying, run
+    measure_mix or analyze_set(measure=True).
 
     A slow Max-for-Live / Node-for-Max boot (notably Live 12 / Max 8.6) can
     outlast the socket read timeout, so the load reply is lost even though the
@@ -1350,9 +1355,18 @@ def deploy_taps(ctx: Context, track_indices: List[int] = None,
                 targets.append(-1)
         else:
             targets = list(track_indices)
-        deployed, failed = [], []
+        # Idempotent: a track that ALREADY holds an MCP Tap is left alone.
+        # Without this, re-running deploy stacks a second identical metering
+        # device on the same track - apply_master always taps the master, so
+        # every mastering pass used to append another tap to it.
+        existing = {(tt, ti) for tt, ti, _di in _find_taps()}
+        deployed, failed, already = [], [], []
         for i in targets:
             track_type = "master" if i == -1 else "regular"
+            # _find_taps reports the master as ("master", 0), not index -1.
+            if (track_type, 0 if i == -1 else i) in existing:
+                already.append({"track_index": i, "device": TAP_DEVICE_NAME})
+                continue
             before = {t.get("uuid") for t in _tap_registry.state.tracks()}
             try:
                 label = _load_tap_on_track(i, track_type)
@@ -1368,8 +1382,11 @@ def deploy_taps(ctx: Context, track_indices: List[int] = None,
                                      "confirmed_via": "registry"})
                 else:
                     failed.append({"track_index": i, "error": str(e)})
-        data = {"targets": targets, "deployed": deployed, "failed": failed}
-        if targets and not deployed:
+        data = {"targets": targets, "deployed": deployed,
+                "already_present": already, "failed": failed}
+        # Only a genuine all-failed run warrants the drag-it-yourself message -
+        # targets skipped because a tap is already there are a success.
+        if targets and not deployed and not already:
             data["manual"] = True
             data["message"] = (
                 "Could not auto-load the tap (is 'MCP Tap.amxd' in your User "
@@ -8885,9 +8902,14 @@ def apply_master(ctx: Context, chain: dict, track_index: int = 0,
         tap = {"status": "skipped"}
         if deploy_tap:
             td = json.loads(deploy_taps(ctx, track_indices=[-1]))
-            deployed = td.get("data", {}).get("deployed") if td.get("ok") else None
-            tap = {"status": "deployed" if deployed else "failed",
-                   "detail": td.get("data", td.get("error"))}
+            d = td.get("data", {}) if td.get("ok") else {}
+            if d.get("deployed"):
+                status = "deployed"
+            elif d.get("already_present"):
+                status = "present"      # master already tapped - reuse it
+            else:
+                status = "failed"
+            tap = {"status": status, "detail": td.get("data", td.get("error"))}
         return _ok({"applied": wrote.get("applied"), "skipped": wrote.get("skipped"),
                     "reloaded": wrote.get("reloaded"), "exposed": exposed,
                     "tap": tap,
