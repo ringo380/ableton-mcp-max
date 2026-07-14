@@ -810,6 +810,15 @@ class AbletonMCP(ControlSurface):
                 response["result"] = self._get_transport()
             elif command_type == "get_view_selection":
                 response["result"] = self._get_view_selection()
+            elif command_type == "focus_view":
+                view = params.get("view", "Arranger")
+                if view not in ("Arranger", "Session"):
+                    raise Exception("view must be 'Arranger' or 'Session'")
+                app = Live.Application.get_application()
+                if not app.view.is_view_visible(view):
+                    app.view.show_view(view)
+                app.view.focus_view(view)
+                response["result"] = {"view": view, "focused": True}
             elif command_type == "get_cue_points":
                 response["result"] = self._get_cue_points()
             elif command_type == "get_groove_pool":

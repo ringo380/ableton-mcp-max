@@ -2597,6 +2597,25 @@ def set_selected_track(
         logger.error(f"Error setting selected track: {str(e)}")
         return _err(f"Error setting selected track: {str(e)}")
 @mcp.tool()
+def focus_view(ctx: Context, view: str = "Arranger") -> str:
+    """
+    Show and focus one of Live's main views: "Arranger" (default) or "Session".
+
+    Deterministic, unlike the View menu's Toggle item - some commands are only
+    available in one view (Edit > Select Loop, which render_audio relies on,
+    is disabled in Session view).
+    """
+    try:
+        v = (view or "Arranger").strip()
+        if v not in ("Arranger", "Session"):
+            return _err(f"view must be 'Arranger' or 'Session' (got {view!r}).")
+        ableton = get_ableton_connection()
+        result = ableton.send_command("focus_view", {"view": v})
+        return _ok(result)
+    except Exception as e:
+        logger.error(f"Error focusing view: {str(e)}")
+        return _err(f"Error focusing view: {str(e)}")
+@mcp.tool()
 def set_selected_scene(ctx: Context, scene_index: int) -> str:
     """
     Select a scene in the Session view.
