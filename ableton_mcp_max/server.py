@@ -139,6 +139,9 @@ from ableton_mcp_max.save_utils import (
 )
 from ableton_mcp_max.export_utils import (
     plan_export,
+    choose_menu_item,
+    popup_matches,
+    strip_menu_check,
     clean_render_name,
     loop_range_for,
 )
@@ -306,7 +309,7 @@ MUTATING_COMMANDS = frozenset({
     "set_groove_amount", "set_swing_amount", "set_clip_trigger_quantization",
     "set_midi_recording_quantization", "set_nudge", "set_selected_track",
     "set_selected_scene", "set_detail_clip", "set_highlighted_clip_slot",
-    "set_track_fold", "capture_midi", "capture_and_insert_scene",
+    "set_track_fold", "focus_view", "capture_midi", "capture_and_insert_scene",
     "trigger_session_record", "stop_all_clips", "tap_tempo",
     "select_drum_pad", "assign_groove_to_clip", "set_song_scale",
 })
@@ -2258,17 +2261,55 @@ class _ExportUI:
         _osa(self._tell('click (%s)' % self._elem("button", desc)))
 
     def read_popup(self, desc):
+        # A pop-up's VALUE reads back clean ("WAV") - only the dropdown's item
+        # names carry the selected-item check mark.
         return _osa_get(self._tell('get value of (%s)'
                                    % self._elem("pop up button", desc)))
 
+    def _dropdown_group(self):
+        # Live does NOT hang an AXMenu off the pop-up button ('menu 1 of <pop up
+        # button>' raises "Invalid index" - it has zero menu children). The open
+        # dropdown is a SEPARATE, UNNAMED window on the Live process, with the
+        # AXMenuItems two AXGroups deep.
+        return ('UI element 1 of UI element 1 of (first window whose name is "" '
+                'and (count of UI elements) > 0)')
+
+    def open_popup(self, desc):
+        _osa(self._tell('click (%s)' % self._elem("pop up button", desc)))
+
+    def menu_items(self):
+        """Names of the open dropdown's items (in Live's order), '' if none."""
+        out = _osa_get(
+            'tell application "System Events" to tell process "%s"\n'
+            '  set _items to {}\n'
+            '  repeat with m in (menu items of %s)\n'
+            '    set end of _items to (name of m as text)\n'
+            '  end repeat\n'
+            '  set AppleScript\'s text item delimiters to (ASCII character 10)\n'
+            '  return _items as text\n'
+            'end tell' % (_LIVE_PROC, self._dropdown_group()))
+        return [n for n in out.split("\n") if n.strip()]
+
+    def click_menu_item(self, name):
+        _osa(self._tell('click (first menu item of %s whose name is "%s")'
+                        % (self._dropdown_group(), _as_literal(name))))
+
     def set_popup(self, desc, value):
-        _osa('tell application "System Events" to tell process "%s"\n'
-             '  set pu to %s\n'
-             '  click pu\n'
-             '  click menu item "%s" of menu 1 of pu\n'
-             'end tell'
-             % (_LIVE_PROC, self._elem("pop up button", desc),
-                _as_literal(value)))
+        """Open the pop-up's dropdown and click the wanted item. Raises if the
+        dropdown does not offer it (Escape first, so Live is not left with an
+        open menu)."""
+        self.open_popup(desc)
+        _rsleep(0.3)
+        names = self.menu_items()
+        pick = choose_menu_item(names, value)
+        if pick is None:
+            _live_press_escape()
+            raise RuntimeError(
+                "The '%s' dropdown has no '%s' option (it offers: %s)."
+                % (desc, value,
+                   ", ".join(strip_menu_check(n) for n in names) or "nothing"))
+        self.click_menu_item(pick)
+        _rsleep(0.2)
 
     def read_slider(self, desc):
         out = _osa_get(self._tell('get value of (%s)'
@@ -2341,9 +2382,40 @@ def _verify_dialog_state(ui, plan):
         if ui.read_toggle(t["description"]) != t["want"]:
             bad.append(t["description"])
     for p in plan["popups"]:
-        if ui.read_popup(p["description"]) != p["value"]:
+        # popup_matches, not ==: Live 11 reports the main output as "Master"
+        # where Live 12 says "Main".
+        if not popup_matches(ui.read_popup(p["description"]), p["value"]):
             bad.append(p["description"])
     return bad
+
+
+def _dialog_is_open():
+    return (_live_window_exists(_EXPORT_WINDOW)
+            or _live_window_exists(_SAVE_WINDOW))
+
+
+def _dismiss_export_dialog(ui):
+    """Best-effort: leave Live with NO modal export dialog up. While one is
+    modal Live's main thread stops pumping scheduled messages, so any Remote
+    Script command (the loop restore below) blocks for the full socket timeout
+    and every later MCP call times out too - the dialog must go first. Returns
+    True if nothing is left open."""
+    for _ in range(3):
+        if not _dialog_is_open():
+            return True
+        try:
+            if _live_window_exists(_SAVE_WINDOW):
+                _live_press_escape()      # the Save panel has no AX Cancel
+            else:
+                ui.press("Cancel")
+        except Exception as e:
+            logger.error("render_audio: could not dismiss the dialog: %s", e)
+            _live_press_escape()
+        _rsleep(0.5)
+    left = _dialog_is_open()
+    if left:
+        logger.error("render_audio: an export dialog is still open in Live.")
+    return not left
 
 
 def _mdfind_named(basename):
@@ -2425,6 +2497,13 @@ def _render_audio_impl(name, start_bar=None, end_bar=None, file_type="WAV",
                                    start_beats, length_beats, start_bar,
                                    end_bar, timeout)
     finally:
+        # Dismiss BEFORE restoring: a still-open modal dialog would block the
+        # loop restore for the Remote Script's whole socket timeout and then
+        # swallow the failure. Never let either step overwrite the real result.
+        try:
+            _dismiss_export_dialog(_export_ui)
+        except Exception as e:
+            logger.error("render_audio: dialog cleanup failed: %s", e)
         try:
             ableton.send_command("set_arrangement_loop", prior_loop)
         except Exception as e:
@@ -2462,7 +2541,11 @@ def _render_with_dialog(ableton, app, basename, plan, sig, start_beats,
     # Dither popups are disabled and setting them silently no-ops.
     clicked = _apply_toggles(plan["toggles"], ui)
     for popup in plan["popups"]:
-        ui.set_popup(popup["description"], popup["value"])
+        try:
+            ui.set_popup(popup["description"], popup["value"])
+        except Exception as e:
+            ui.press("Cancel")
+            return _err("%s - cancelled without rendering." % e)
 
     bad = _verify_dialog_state(ui, plan)
     if bad:

@@ -1,4 +1,5 @@
 import pytest
+from ableton_mcp_max import export_utils as eu
 from ableton_mcp_max.export_utils import (
     plan_export, clean_render_name, loop_range_for,
 )
@@ -81,3 +82,42 @@ def test_loop_range_defaults_to_whole_song():
 def test_loop_range_rejects_empty_spans(args):
     with pytest.raises(ValueError):
         loop_range_for(*args)
+
+
+# --- dropdown item matching (Live check-marks the SELECTED item) -----------
+
+CHECK = u"✔ "
+
+
+def test_choose_menu_item_matches_the_checkmarked_selected_item():
+    names = [CHECK + "WAV", "AIFF", "FLAC"]
+    assert eu.choose_menu_item(names, "WAV") == CHECK + "WAV"
+    assert eu.choose_menu_item(names, "FLAC") == "FLAC"
+
+
+def test_choose_menu_item_returns_none_for_a_missing_option():
+    assert eu.choose_menu_item(["16", CHECK + "24", "32"], "8") is None
+    assert eu.choose_menu_item([], "WAV") is None
+
+
+def test_choose_menu_item_falls_back_to_live_11_master():
+    assert eu.choose_menu_item([CHECK + "Master", "All Individual Tracks"],
+                               "Main") == CHECK + "Master"
+    assert eu.choose_menu_item([CHECK + "Main"], "Main") == CHECK + "Main"
+
+
+def test_popup_matches_is_alias_and_checkmark_tolerant():
+    assert eu.popup_matches("Main", "Main")
+    assert eu.popup_matches("Master", "Main")        # Live 11
+    assert eu.popup_matches(CHECK + "WAV", "WAV")
+    assert not eu.popup_matches("AIFF", "WAV")
+
+
+def test_plan_export_drops_the_dither_popup_at_32_bit():
+    # Live disables Dither Options at 32-bit float; setting it would no-op and
+    # the post-set verify would cancel the render.
+    descs = [p["description"] for p in eu.plan_export(bit_depth=32)["popups"]]
+    assert "Dither Options" not in descs
+    assert "Recording Bit Depth" in descs
+    assert "Dither Options" in [
+        p["description"] for p in eu.plan_export(bit_depth=24)["popups"]]

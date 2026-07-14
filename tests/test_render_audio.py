@@ -47,12 +47,17 @@ class _FakeUI:
 
 
 class _FakeConn:
-    def __init__(self, song_length=232.0, sig=4):
+    def __init__(self, song_length=232.0, sig=4, windows=None):
         self.sent = []
         self.song_length = song_length
         self.sig = sig
+        self.windows = windows if windows is not None else {}
 
     def send_command(self, cmd, params=None):
+        # A modal export dialog stops Live pumping scheduled messages, so a
+        # Remote Script command issued while one is up would block, then fail.
+        if any(self.windows.values()):
+            raise RuntimeError("Live is busy (a modal dialog is open)")
         self.sent.append((cmd, params or {}))
         if cmd == "get_transport":
             return {"song_length": self.song_length,
@@ -106,7 +111,7 @@ def wired(monkeypatch):
     """Fully monkeypatched UI + Live connection. Never touches a real Live."""
     windows = {"Export Audio/Video": False, "Save": False}
     ui = _correct_state(windows)
-    conn = _FakeConn()
+    conn = _FakeConn(windows=windows)
 
     monkeypatch.setattr(server, "_live_app_and_pid",
                         lambda: ("/Applications/Live.app", 123))
@@ -120,6 +125,12 @@ def wired(monkeypatch):
                         lambda title: bool(windows.get(title)))
     monkeypatch.setattr(server, "_click_edit_menu",
                         lambda item: ui.menus.append(("Edit", item)))
+
+    def _escape():
+        ui.pressed.append("Escape")
+        windows["Save"] = False
+
+    monkeypatch.setattr(server, "_live_press_escape", _escape)
 
     def _open():
         ui.menus.append(("File", "Export Audio/Video..."))
@@ -418,3 +429,138 @@ def test_no_running_live_is_an_error(monkeypatch, wired):
     out = json.loads(server.render_audio(None, "track"))
     assert out["ok"] is False
     assert wired.pressed == []
+
+
+# --- the dropdown is a separate window; the selected item is check-marked ---
+
+class _FakeAX:
+    """AppleScript seam for the real _ExportUI (no fake dialog object)."""
+
+    def __init__(self, items):
+        self.items = list(items)
+        self.scripts = []
+        self.escapes = 0
+
+    def osa(self, script):
+        self.scripts.append(script)
+
+    def osa_get(self, script):
+        return "\n".join(self.items)
+
+    def clicked_items(self):
+        return [s for s in self.scripts if "menu item" in s]
+
+
+@pytest.fixture
+def ax(monkeypatch):
+    fake = _FakeAX([])
+    monkeypatch.setattr(server, "_osa", fake.osa)
+    monkeypatch.setattr(server, "_osa_get", fake.osa_get)
+    monkeypatch.setattr(server, "_rsleep", lambda s: None)
+
+    def _esc():
+        fake.escapes += 1
+
+    monkeypatch.setattr(server, "_live_press_escape", _esc)
+    return fake
+
+
+CHECK = u"✔ "
+
+
+def test_set_popup_matches_the_already_selected_checkmarked_item(ax):
+    # The idempotent re-run: WAV is already selected, so Live names it
+    # "<check> WAV" - an exact-name match would miss it.
+    ax.items = [CHECK + "WAV", "AIFF", "FLAC"]
+    server._ExportUI().set_popup("File Type", "WAV")
+    assert ax.escapes == 0
+    clicked = ax.clicked_items()
+    assert len(clicked) == 1
+    assert (CHECK + "WAV") in clicked[0]
+
+
+def test_set_popup_clicks_an_unselected_item_by_its_plain_name(ax):
+    ax.items = [CHECK + "WAV", "AIFF", "FLAC"]
+    server._ExportUI().set_popup("File Type", "FLAC")
+    clicked = ax.clicked_items()
+    assert len(clicked) == 1 and '"FLAC"' in clicked[0]
+
+
+def test_set_popup_fails_loudly_when_the_item_is_missing(ax):
+    ax.items = [CHECK + "24", "16", "32"]
+    with pytest.raises(RuntimeError) as e:
+        server._ExportUI().set_popup("Recording Bit Depth", "8")
+    assert "8" in str(e.value)
+    assert ax.escapes == 1                 # the open dropdown is closed again
+    assert ax.clicked_items() == []
+
+
+def test_set_popup_accepts_the_live_11_master_naming(ax):
+    ax.items = [CHECK + "Master", "All Individual Tracks", "Selected Tracks Only"]
+    server._ExportUI().set_popup("Rendered Track Chooser", "Main")
+    clicked = ax.clicked_items()
+    assert len(clicked) == 1 and (CHECK + "Master") in clicked[0]
+    assert ax.escapes == 0
+
+
+def test_verify_dialog_state_accepts_master_for_main(wired):
+    wired.popups["Rendered Track Chooser"] = "Master"      # Live 11
+    plan = server.plan_export()
+    assert server._verify_dialog_state(wired, plan) == []
+
+
+def test_unknown_popup_option_cancels_and_never_exports(wired):
+    def _boom(desc, value):
+        if desc == "Sample Rate":
+            raise RuntimeError("The 'Sample Rate' dropdown has no '44100' option")
+        wired.popups[desc] = value
+
+    wired.set_popup = _boom
+    out = json.loads(server.render_audio(None, "track", start_bar=1, end_bar=3))
+    assert out["ok"] is False
+    assert "Cancel" in wired.pressed
+    assert "Export" not in wired.pressed
+    assert _loop_writes(wired.conn)[-1] == {"enabled": True, "start": 0.0,
+                                            "length": 4.0}
+
+
+# --- 32-bit float has no dither popup -------------------------------------
+
+def test_32_bit_render_does_not_touch_the_disabled_dither_popup(wired):
+    del wired.popups["Dither Options"]          # Live disables it at 32 bit
+    out = json.loads(server.render_audio(None, "track", start_bar=1, end_bar=3,
+                                         bit_depth=32))
+    assert out["ok"] is True
+    assert ("popup", "Dither Options") not in wired.ops
+    assert out["data"]["bit_depth"] == 32
+
+
+# --- a failure must not leave Live sitting in a modal dialog ---------------
+
+def test_dialog_is_dismissed_and_the_loop_restored_on_the_timeout_path(
+        monkeypatch, wired):
+    monkeypatch.setattr(server, "_press_return", lambda: None)   # windows stay up
+    out = json.loads(server.render_audio(None, "track", start_bar=1, end_bar=3,
+                                         timeout=0.0))
+    assert out["ok"] is False and out["rendered"] is False
+    assert wired.windows == {"Export Audio/Video": False, "Save": False}
+    # the restore only lands because the modal dialog was dismissed FIRST
+    assert _loop_writes(wired.conn)[-1] == {"enabled": True, "start": 0.0,
+                                            "length": 4.0}
+
+
+def test_dialog_is_dismissed_when_the_save_panel_never_appears(wired):
+    def _press(desc):
+        wired.pressed.append(desc)
+        if desc == "Cancel":
+            wired.windows["Export Audio/Video"] = False
+
+    wired.press = _press                     # Export never raises the Save panel
+    out = json.loads(server.render_audio(None, "track", start_bar=1, end_bar=3))
+    assert out["ok"] is False
+    assert out["rendered"] is False
+    assert "Save panel" in out["error"]
+    assert wired.windows["Export Audio/Video"] is False
+    assert "Cancel" in wired.pressed
+    assert _loop_writes(wired.conn)[-1] == {"enabled": True, "start": 0.0,
+                                            "length": 4.0}

@@ -91,8 +91,10 @@ Repo-standard pure-resolver + thin-executor split (as in `master_ozone_utils.py`
 
 ### Remote Script: new `focus_view` handler
 
-`remote_script/AbletonMCP/__init__.py` gains a `focus_view` command (read-style,
-inline in `_process_command`):
+`remote_script/AbletonMCP/__init__.py` gains a `focus_view` command. `show_view` /
+`focus_view` are WRITES into Live's UI state, so it is a MUTATION: listed in the
+`elif command_type in [...]` dispatch and handled on the main thread (`_focus_view`),
+like every other mutation:
 
 ```python
 # view = "Arranger" | "Session"

@@ -12,6 +12,42 @@ DITHER_OPTIONS = ("No Dither", "Triangular", "Rectangular",
                   "POW-r 1", "POW-r 2", "POW-r 3")
 
 
+# Live marks the CURRENTLY-SELECTED item of a dropdown by prefixing its name
+# with a check mark (U+2714 + a space, e.g. "<check> WAV"), so an exact-name
+# match misses precisely when the value is already correct - i.e. every
+# idempotent re-run.
+MENU_CHECK = u"\u2714"
+# Live 11 calls the main output "Master"; Live 12 renamed it "Main". Both are
+# supported, so the Rendered Track chooser must accept either spelling.
+_MENU_ALIASES = {"Main": ("Master",), "Master": ("Main",)}
+
+
+def strip_menu_check(name):
+    """A dropdown item's name without Live's leading selected-item check mark."""
+    n = (name or "").strip()
+    if n.startswith(MENU_CHECK):
+        n = n[1:].strip()
+    return n
+
+
+def choose_menu_item(names, wanted):
+    """The EXACT item name to click for `wanted` (check mark included, since that
+    is what the AX name matcher sees), or None if the dropdown has no such
+    item."""
+    for want in (wanted,) + tuple(_MENU_ALIASES.get(wanted, ())):
+        for n in names:
+            if strip_menu_check(n) == want:
+                return n
+    return None
+
+
+def popup_matches(got, wanted):
+    """True if a pop-up's read-back value is `wanted` (alias- and check-mark
+    tolerant)."""
+    g = strip_menu_check(got)
+    return g == wanted or g in _MENU_ALIASES.get(wanted, ())
+
+
 def _one_of(value, allowed, label):
     v = str(value).strip()
     if v not in allowed:
@@ -80,7 +116,12 @@ def plan_export(file_type="WAV", bit_depth=24, sample_rate=44100,
     if pcm_on:
         popups.append({"description": "File Type", "value": ft})
         popups.append({"description": "Recording Bit Depth", "value": depth})
-        popups.append({"description": "Dither Options", "value": dith})
+        # 32-bit float has no dithering, so Live DISABLES the Dither popup at
+        # that depth: setting it would no-op and the post-set verify would then
+        # cancel every 32-bit render. Same reason the PCM popups are dropped
+        # when Encode PCM is off.
+        if depth != "32":
+            popups.append({"description": "Dither Options", "value": dith})
 
     def flag(b):
         return "On" if b else "Off"
