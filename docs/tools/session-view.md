@@ -84,3 +84,15 @@ Parameters:
 - track_index: index of the (regular) track
 - scene_index: index of the scene (the clip slot row)
 
+## focus_view
+
+```python
+focus_view(view: str = 'Arranger')
+```
+
+Show and focus one of Live's main views: "Arranger" (default) or "Session".
+
+Deterministic, unlike the View menu's Toggle item - some commands are only
+available in one view (Edit > Select Loop, which render_audio relies on,
+is disabled in Session view).
+

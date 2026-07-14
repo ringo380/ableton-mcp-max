@@ -159,11 +159,16 @@ fader) and do not reflect fader moves. Pass include_master=False to skip it.
 When track_indices is given explicitly, include_master is ignored (add -1 to
 the list yourself).
 
+Idempotent: a target that ALREADY holds an MCP Tap is skipped (reported in
+already_present) rather than getting a second, duplicate tap stacked on it.
+Use remove_taps to clear taps before re-deploying.
+
 Returns JSON {ok, data:{targets, deployed:[{track_index,device}],
-failed:[{track_index,error}]}}. If EVERY load fails (e.g. the device isn't in
-the browser), data.manual is true with a drag-it-yourself message listing the
-target tracks - the registry still works once the device is dragged on by
-hand. After deploying, run measure_mix or analyze_set(measure=True).
+already_present:[{track_index,device}], failed:[{track_index,error}]}}. If
+EVERY load fails (e.g. the device isn't in the browser), data.manual is true
+with a drag-it-yourself message listing the target tracks - the registry
+still works once the device is dragged on by hand. After deploying, run
+measure_mix or analyze_set(measure=True).
 
 A slow Max-for-Live / Node-for-Max boot (notably Live 12 / Max 8.6) can
 outlast the socket read timeout, so the load reply is lost even though the

@@ -562,6 +562,9 @@ class AbletonMCP(ControlSurface):
             result = self._set_track_fold(
                 params.get("track_index", 0),
                 params.get("folded", False))
+        elif command_type == "focus_view":
+            result = self._focus_view(
+                params.get("view", "Arranger"))
         elif command_type == "capture_midi":
             result = self._capture_midi(
                 params.get("destination", "auto"))
@@ -688,7 +691,7 @@ class AbletonMCP(ControlSurface):
                                  "set_midi_recording_quantization", "set_nudge",
                                  "set_selected_track", "set_selected_scene",
                                  "set_detail_clip", "set_highlighted_clip_slot",
-                                 "set_track_fold",
+                                 "set_track_fold", "focus_view",
                                  "capture_midi", "capture_and_insert_scene",
                                  "trigger_session_record", "stop_all_clips",
                                  "tap_tempo", "select_drum_pad",
@@ -3038,6 +3041,18 @@ class AbletonMCP(ControlSurface):
         except Exception as e:
             self.log_message("Error setting highlighted clip slot: " + str(e))
             raise
+
+    def _focus_view(self, view):
+        """Show + focus a main Live view. show_view/focus_view are WRITES into
+        Live's UI state, so this runs on the main thread like any other
+        mutation."""
+        if view not in ("Arranger", "Session"):
+            raise Exception("view must be 'Arranger' or 'Session'")
+        app = Live.Application.get_application()
+        if not app.view.is_view_visible(view):
+            app.view.show_view(view)
+        app.view.focus_view(view)
+        return {"view": view, "focused": True}
 
     def _set_track_fold(self, track_index, folded):
         """Fold/unfold a group track. Rejected if the track is not foldable."""

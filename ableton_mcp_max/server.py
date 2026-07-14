@@ -137,6 +137,14 @@ from ableton_mcp_max.save_utils import (
     clean_set_name,
     set_name_from_path,
 )
+from ableton_mcp_max.export_utils import (
+    plan_export,
+    choose_menu_item,
+    popup_matches,
+    strip_menu_check,
+    clean_render_name,
+    loop_range_for,
+)
 from ableton_mcp_max import als_automation_utils as als
 from ableton_mcp_max import stem_utils
 from ableton_mcp_max import key_detection_utils as kd
@@ -171,9 +179,13 @@ def _ok(data):
     return json.dumps({"ok": True, "data": data}, indent=2)
 
 
-def _err(message):
-    """Wrap a tool failure in the uniform {ok, error} envelope."""
-    return json.dumps({"ok": False, "error": str(message)}, indent=2)
+def _err(message, **extra):
+    """Wrap a tool failure in the uniform {ok, error} envelope. `extra` adds
+    top-level facts a caller must not have to infer (render_audio's
+    rendered=False: a timed-out render must never look like a delivered file)."""
+    payload = {"ok": False, "error": str(message)}
+    payload.update(extra)
+    return json.dumps(payload, indent=2)
 
 
 def _vol_value(v):
@@ -297,7 +309,7 @@ MUTATING_COMMANDS = frozenset({
     "set_groove_amount", "set_swing_amount", "set_clip_trigger_quantization",
     "set_midi_recording_quantization", "set_nudge", "set_selected_track",
     "set_selected_scene", "set_detail_clip", "set_highlighted_clip_slot",
-    "set_track_fold", "capture_midi", "capture_and_insert_scene",
+    "set_track_fold", "focus_view", "capture_midi", "capture_and_insert_scene",
     "trigger_session_record", "stop_all_clips", "tap_tempo",
     "select_drum_pad", "assign_groove_to_clip", "set_song_scale",
 })
@@ -2176,6 +2188,535 @@ def save_set_as(ctx: Context, name: str) -> str:
         return _err("save_set_as error: %s" % e)
 
 
+# === Render / export ======================================================
+# The LOM has no render/bounce/export API, so render_audio drives Live's Export
+# Audio/Video dialog over Accessibility. Two hard constraints shape everything
+# below (both verified against Live 12.4.2, see the design spec):
+#   * The Render Start/Length sliders are UNWRITABLE (AXSetValue silently no-ops
+#     and click-then-type is ignored), so the range is established BEFORE the
+#     dialog opens: arrangement loop -> focus Arranger -> Edit > Select Loop,
+#     which turns the loop into the time selection the dialog actually reads.
+#   * Dialog toggles CLICK-TOGGLE, they do not set - so every toggle is read and
+#     clicked only on a mismatch; a blind click inverts an already-correct one.
+
+_EXPORT_WINDOW = "Export Audio/Video"
+_SAVE_WINDOW = "Save"
+_EXPORT_MENU_ITEM = "Export Audio/Video..."
+_RENDER_START_BAR = "Start of Rendered Sample (Bar)"
+_RENDER_START_BEAT = "Start of Rendered Sample (Beat)"
+_RENDER_START_16TH = "Start of Rendered Sample (Sixteenths)"
+_RENDER_LENGTH_BAR = "Length of Rendered Sample (Bar)"
+_RENDER_LENGTH_BEAT = "Length of Rendered Sample (Beat)"
+_RENDER_LENGTH_16TH = "Length of Rendered Sample (Sixteenths)"
+# Live writes AIFF as .aif on 12.4 but the extension is not contractual - accept
+# both spellings rather than resolving to a null path on a good render.
+_RENDER_EXT = {"WAV": ("wav",), "AIFF": ("aif", "aiff"),
+               "FLAC": ("flac",), "MP3": ("mp3",)}
+# The dialog's range boxes are quantised to 1/16, so a span that is not a whole
+# number of sixteenths can be seeded up to one sixteenth away from the request.
+_RANGE_TOL = 0.25 + 1e-6
+
+
+def _rsleep(seconds):
+    """Sleep seam for the render executor (patched out in tests)."""
+    time.sleep(seconds)
+
+
+def _click_edit_menu(item, proc=_LIVE_PROC):
+    """Click a Live Edit-menu item by name (same focus-independent path as
+    _click_file_menu)."""
+    _osa('tell application "System Events" to tell process "%s" to click '
+         'menu item "%s" of menu 1 of menu bar item "Edit" of menu bar 1'
+         % (proc, _as_literal(item)))
+
+
+def _live_window_exists(title, proc=_LIVE_PROC):
+    """True if Live currently has a window named `title`."""
+    out = _osa_get('tell application "System Events" to tell process "%s" to get '
+                   '(count of (windows whose name is "%s"))'
+                   % (proc, _as_literal(title)))
+    try:
+        return int(out) > 0
+    except ValueError:
+        return False
+
+
+class _ExportUI:
+    """Thin AX seam over the Export dialog. Every control is addressed by its AX
+    `description` (the dialog's titles are all `missing value`)."""
+
+    def _elem(self, kind, desc):
+        return ('first %s of group 1 of window "%s" whose description is "%s"'
+                % (kind, _EXPORT_WINDOW, _as_literal(desc)))
+
+    def _tell(self, body):
+        return ('tell application "System Events" to tell process "%s" to %s'
+                % (_LIVE_PROC, body))
+
+    def read_toggle(self, desc):
+        return _osa_get(self._tell('get value of (%s)'
+                                   % self._elem("button", desc)))
+
+    def click_toggle(self, desc):
+        _osa(self._tell('click (%s)' % self._elem("button", desc)))
+
+    def read_popup(self, desc):
+        # A pop-up's VALUE reads back clean ("WAV") - only the dropdown's item
+        # names carry the selected-item check mark.
+        return _osa_get(self._tell('get value of (%s)'
+                                   % self._elem("pop up button", desc)))
+
+    def _dropdown_prelude(self):
+        # Live does NOT hang an AXMenu off the pop-up button ('menu 1 of <pop up
+        # button>' raises "Invalid index" - it has zero menu children). The open
+        # dropdown is a SEPARATE, UNNAMED window on the Live process, with the
+        # AXMenuItems two AXGroups deep.
+        #
+        # An open dropdown leaves TWO unnamed windows behind, and only one of
+        # them holds the items - but the empty one cannot be filtered out with a
+        # compound `whose` clause: System Events' filter engine cannot evaluate
+        # `(count of UI elements) > 0` and fails the whole query with -1700
+        # ("Can't make 5 into type specifier"). So find it by iterating.
+        return (
+            '  set _dd to missing value\n'
+            '  repeat with w in (every window whose name is "")\n'
+            '    if (count of UI elements of w) > 0 then\n'
+            '      set _dd to UI element 1 of UI element 1 of w\n'
+            '      exit repeat\n'
+            '    end if\n'
+            '  end repeat\n'
+            '  if _dd is missing value then return ""\n')
+
+    def open_popup(self, desc):
+        _osa(self._tell('click (%s)' % self._elem("pop up button", desc)))
+
+    def menu_items(self):
+        """Names of the open dropdown's items (in Live's order), [] if none."""
+        out = _osa_get(
+            'tell application "System Events"\n'
+            ' tell process "%s"\n'
+            '%s'
+            '  set _items to {}\n'
+            '  repeat with m in (menu items of _dd)\n'
+            '    set end of _items to (name of m as text)\n'
+            '  end repeat\n'
+            '  set AppleScript\'s text item delimiters to (ASCII character 10)\n'
+            '  return _items as text\n'
+            ' end tell\n'
+            'end tell' % (_LIVE_PROC, self._dropdown_prelude()))
+        return [n for n in out.split("\n") if n.strip()]
+
+    def click_menu_item(self, name):
+        _osa(
+            'tell application "System Events"\n'
+            ' tell process "%s"\n'
+            '%s'
+            '  click (first menu item of _dd whose name is "%s")\n'
+            ' end tell\n'
+            'end tell' % (_LIVE_PROC, self._dropdown_prelude(), _as_literal(name)))
+
+    def set_popup(self, desc, value):
+        """Open the pop-up's dropdown and click the wanted item. Raises if the
+        dropdown does not offer it (Escape first, so Live is not left with an
+        open menu)."""
+        self.open_popup(desc)
+        _rsleep(0.3)
+        names = self.menu_items()
+        pick = choose_menu_item(names, value)
+        if pick is None:
+            _live_press_escape()
+            raise RuntimeError(
+                "The '%s' dropdown has no '%s' option (it offers: %s)."
+                % (desc, value,
+                   ", ".join(strip_menu_check(n) for n in names) or "nothing"))
+        self.click_menu_item(pick)
+        _rsleep(0.2)
+
+    def read_slider(self, desc):
+        out = _osa_get(self._tell('get value of (%s)'
+                                  % self._elem("slider", desc)))
+        try:
+            return float(out)
+        except ValueError:
+            return None
+
+    def press(self, desc):
+        _osa(self._tell('click (%s)' % self._elem("button", desc)))
+
+
+_export_ui = _ExportUI()
+
+
+def _apply_toggles(toggles, ui):
+    """Read each toggle and click ONLY on a mismatch (a click TOGGLES - blindly
+    clicking a correct control inverts it). Returns the clicked descriptions."""
+    clicked = []
+    for t in toggles:
+        desc, want = t["description"], t["want"]
+        if ui.read_toggle(desc) != want:
+            ui.click_toggle(desc)
+            clicked.append(desc)
+    return clicked
+
+
+def _open_export_dialog():
+    """Click File > Export Audio/Video... and wait for the dialog. False if it
+    never appears."""
+    _click_file_menu(_EXPORT_MENU_ITEM)
+    return _wait_until(lambda: _live_window_exists(_EXPORT_WINDOW),
+                       timeout=10.0, interval=0.4, sleep=_rsleep)
+
+
+def _verify_export_range(ui, start_beats, length_beats, sig):
+    """(ok, detail) for the range the dialog seeded itself with, checked in
+    BEATS across all six range boxes - so a span that is not a whole number of
+    bars (the whole-song default) is verified too."""
+    if sig <= 0:
+        return True, {"verified": False, "reason": "unknown time signature"}
+    got = {d: ui.read_slider(d) for d in
+           (_RENDER_START_BAR, _RENDER_START_BEAT, _RENDER_START_16TH,
+            _RENDER_LENGTH_BAR, _RENDER_LENGTH_BEAT, _RENDER_LENGTH_16TH)}
+    if any(v is None for v in got.values()):
+        return True, {"verified": False, "reason": "range sliders unreadable"}
+    # Start is displayed 1-based (bar 1 beat 1 sixteenth 1 == beat 0); length is
+    # 0-based (0 bars 0 beats 1 sixteenth == one sixteenth long).
+    got_start = ((got[_RENDER_START_BAR] - 1) * sig
+                 + (got[_RENDER_START_BEAT] - 1)
+                 + (got[_RENDER_START_16TH] - 1) * 0.25)
+    got_length = (got[_RENDER_LENGTH_BAR] * sig
+                  + got[_RENDER_LENGTH_BEAT]
+                  + got[_RENDER_LENGTH_16TH] * 0.25)
+    detail = {"verified": True,
+              "start_beats": round(got_start, 4),
+              "length_beats": round(got_length, 4),
+              "want_start_beats": round(float(start_beats), 4),
+              "want_length_beats": round(float(length_beats), 4)}
+    ok = (abs(got_start - float(start_beats)) <= _RANGE_TOL
+          and abs(got_length - float(length_beats)) <= _RANGE_TOL)
+    return ok, detail
+
+
+def _verify_dialog_state(ui, plan):
+    """Descriptions whose value does not match the plan after we set it."""
+    bad = []
+    for t in plan["toggles"]:
+        if ui.read_toggle(t["description"]) != t["want"]:
+            bad.append(t["description"])
+    for p in plan["popups"]:
+        # popup_matches, not ==: Live 11 reports the main output as "Master"
+        # where Live 12 says "Main".
+        if not popup_matches(ui.read_popup(p["description"]), p["value"]):
+            bad.append(p["description"])
+    return bad
+
+
+def _dialog_is_open():
+    return (_live_window_exists(_EXPORT_WINDOW)
+            or _live_window_exists(_SAVE_WINDOW))
+
+
+def _dismiss_export_dialog(ui):
+    """Best-effort: leave Live with NO modal export dialog up. While one is
+    modal Live's main thread stops pumping scheduled messages, so any Remote
+    Script command (the loop restore below) blocks for the full socket timeout
+    and every later MCP call times out too - the dialog must go first. Returns
+    True if nothing is left open."""
+    for _ in range(3):
+        if not _dialog_is_open():
+            return True
+        try:
+            if _live_window_exists(_SAVE_WINDOW):
+                _live_press_escape()      # the Save panel has no AX Cancel
+            else:
+                ui.press("Cancel")
+        except Exception as e:
+            logger.error("render_audio: could not dismiss the dialog: %s", e)
+            _live_press_escape()
+        _rsleep(0.5)
+    left = _dialog_is_open()
+    if left:
+        logger.error("render_audio: an export dialog is still open in Live.")
+    return not left
+
+
+_REPLACE_BUTTON = "Replace"
+
+
+def _replace_sheet_open():
+    """True if the Save panel is showing its '... already exists. Do you want to
+    replace it?' sheet."""
+    out = _osa_get('tell application "System Events" to tell process "%s" to get '
+                   '(count of sheets of (first window whose name is "%s"))'
+                   % (_LIVE_PROC, _SAVE_WINDOW))
+    try:
+        return int(out) > 0
+    except ValueError:
+        return False
+
+
+def _confirm_replace_sheet():
+    """Click the replace-confirmation sheet's Replace button. The sheet's buttons
+    ARE AX-pressable and carry real NAMES (unlike the Save panel's, which has
+    none) - so this is focus-independent, where a Return keystroke is not."""
+    _osa('tell application "System Events" to tell process "%s" to click '
+         '(first button of sheet 1 of (first window whose name is "%s") '
+         'whose name is "%s")' % (_LIVE_PROC, _SAVE_WINDOW, _REPLACE_BUTTON))
+
+
+def _mdfind_named(basename):
+    try:
+        out = subprocess.check_output(["/usr/bin/mdfind", "-name", basename],
+                                      stderr=subprocess.DEVNULL, timeout=30)
+        return out.decode("utf-8", "replace").splitlines()
+    except Exception:
+        return []
+
+
+def _resolve_render_path(basename, exts, since):
+    """Newest '<basename>.<ext>' (any ext in `exts`) modified at/after `since`,
+    or ''. Spotlight, NOT a `find ~ -not -path "*/Library/*"` walk: Live renders
+    into its last-used export directory, which is commonly iCloud Drive under
+    ~/Library/Mobile Documents - such a walk silently misses the file. `since` is
+    taken before the dialog opens, so a same-named file older than it is a stale
+    leftover and must not be claimed."""
+    want = set(("%s.%s" % (basename, e)).lower() for e in exts)
+    best, best_mtime = "", -1.0
+    for path in _mdfind_named(basename):
+        if os.path.basename(path).lower() not in want:
+            continue
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            continue
+        if mtime < since or mtime <= best_mtime:
+            continue
+        best, best_mtime = path, mtime
+    return best
+
+
+def _file_stats(path):
+    """(bytes, duration_s) for a rendered file; duration only for PCM formats
+    the stdlib can read."""
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return None, None
+    duration = None
+    try:
+        import wave
+        with wave.open(path, "rb") as w:
+            rate = w.getframerate()
+            if rate:
+                duration = round(w.getnframes() / float(rate), 3)
+    except Exception:
+        duration = None
+    return size, duration
+
+
+def _render_audio_impl(name, start_bar=None, end_bar=None, file_type="WAV",
+                       bit_depth=24, sample_rate=44100, normalize=False,
+                       mp3=False, mono=False,
+                       analysis_file=True, dither="No Dither", timeout=600.0):
+    basename = clean_render_name(name)             # raises ValueError if bad
+    plan = plan_export(file_type=file_type, bit_depth=bit_depth,
+                       sample_rate=sample_rate, normalize=normalize, mp3=mp3,
+                       mono=mono,
+                       analysis_file=analysis_file, dither=dither)
+    app, _pid = _live_app_and_pid()
+    if not app:
+        raise RuntimeError("No running Ableton Live found on port %d." % LIVE_PORT)
+
+    ableton = get_ableton_connection()
+    transport = ableton.send_command("get_transport") or {}
+    sig = int(transport.get("signature_numerator", 4) or 4)
+    song_length = float(transport.get("song_length", 0.0) or 0.0)
+    start_beats, length_beats = loop_range_for(start_bar, end_bar,
+                                               song_length, sig)
+    # The loop brace is user-visible state we are about to overwrite; restore it
+    # on EVERY exit path.
+    prior_loop = {"enabled": bool(transport.get("loop", False)),
+                  "start": float(transport.get("loop_start", 0.0) or 0.0),
+                  "length": float(transport.get("loop_length", 4.0) or 4.0)}
+    try:
+        return _render_with_dialog(ableton, app, basename, plan, sig,
+                                   start_beats, length_beats, start_bar,
+                                   end_bar, timeout)
+    finally:
+        # Dismiss BEFORE restoring: a still-open modal dialog would block the
+        # loop restore for the Remote Script's whole socket timeout and then
+        # swallow the failure. Never let either step overwrite the real result.
+        try:
+            _dismiss_export_dialog(_export_ui)
+        except Exception as e:
+            logger.error("render_audio: dialog cleanup failed: %s", e)
+        try:
+            ableton.send_command("set_arrangement_loop", prior_loop)
+        except Exception as e:
+            logger.error("render_audio: could not restore the loop: %s", e)
+
+
+def _render_with_dialog(ableton, app, basename, plan, sig, start_beats,
+                        length_beats, start_bar, end_bar, timeout):
+    # The dialog reads the arrangement TIME SELECTION, and its own range sliders
+    # cannot be written - so seed the range here, before it opens.
+    ableton.send_command("set_arrangement_loop",
+                         {"enabled": True, "start": start_beats,
+                          "length": length_beats})
+    ableton.send_command("focus_view", {"view": "Arranger"})
+    appname = _app_name(app)
+    _osa('tell application "%s" to activate' % appname)
+    _rsleep(0.4)
+    _click_edit_menu("Select Loop")
+    _rsleep(0.3)
+
+    since = time.time()
+    if not _open_export_dialog():
+        return _err("The Export Audio/Video dialog did not appear (System Events "
+                    "may lack Accessibility permission, or the screen is locked).")
+
+    ui = _export_ui
+    ok, range_detail = _verify_export_range(ui, start_beats, length_beats, sig)
+    if not ok:
+        ui.press("Cancel")
+        return _err("The Export dialog seeded the wrong range (%s) - not "
+                    "rendering. Check that the Arrangement view is reachable and "
+                    "that Edit > Select Loop is enabled." % range_detail)
+
+    # Toggles FIRST: with Encode PCM off, the File Type / Recording Bit Depth /
+    # Dither popups are disabled and setting them silently no-ops.
+    clicked = _apply_toggles(plan["toggles"], ui)
+    for popup in plan["popups"]:
+        try:
+            ui.set_popup(popup["description"], popup["value"])
+        except Exception as e:
+            ui.press("Cancel")
+            return _err("%s - cancelled without rendering." % e)
+
+    bad = _verify_dialog_state(ui, plan)
+    if bad:
+        ui.press("Cancel")
+        return _err("The Export dialog would not accept: %s - cancelled without "
+                    "rendering." % ", ".join(bad))
+
+    ui.press("Export")
+    if not _wait_until(lambda: _live_window_exists(_SAVE_WINDOW),
+                       timeout=15.0, interval=0.4, sleep=_rsleep):
+        return _err("Export was pressed but the Save panel never appeared.",
+                    rendered=False)
+
+    # The Save panel has no AX-pressable Save button: confirm by typing the name
+    # and pressing Return (the _save_as_impl pattern).
+    _osa('tell application "%s" to activate' % appname)
+    _rsleep(0.3)
+    _osa('tell application "System Events" to keystroke "a" using {command down}')
+    _rsleep(0.2)
+    _keystroke(basename)
+    _rsleep(0.3)
+    _press_return()
+    # Re-rendering an existing name raises a '"x.wav" already exists. Do you want
+    # to replace it?' sheet. It is a SHEET OF THE SAVE PANEL (not of the Export
+    # dialog), and Return does NOT confirm it - but unlike the Save panel itself
+    # it has real AX buttons, addressable by NAME. Click "Replace" outright; a
+    # blind Return loop here hangs to the render timeout with the sheet up.
+    _wait_until(lambda: not _live_window_exists(_SAVE_WINDOW)
+                or _replace_sheet_open(),
+                timeout=5.0, interval=0.5, sleep=_rsleep)
+    if _replace_sheet_open():
+        _confirm_replace_sheet()
+
+    done = _wait_until(lambda: not _live_window_exists(_EXPORT_WINDOW)
+                       and not _live_window_exists(_SAVE_WINDOW),
+                       timeout=timeout, interval=1.0, sleep=_rsleep)
+    if not done:
+        return _err("The render did not finish within %ss (the Export/Save "
+                    "windows are still open). No file is claimed; check Live."
+                    % timeout, rendered=False)
+
+    primary_exts = (_RENDER_EXT[plan["file_type"]] if plan["pcm"]
+                    else _RENDER_EXT["MP3"])
+    # Spotlight does not index the file the instant Live closes it, so a single
+    # mdfind right after the render loses the race and reports path=null for a
+    # file that is sitting on disk. Poll briefly.
+    _wait_until(lambda: bool(_resolve_render_path(basename, primary_exts, since)),
+                timeout=15.0, interval=1.0, sleep=_rsleep)
+    path = _resolve_render_path(basename, primary_exts, since)
+    extra = []
+    if plan["pcm"] and plan["mp3"]:
+        _wait_until(
+            lambda: bool(_resolve_render_path(basename, _RENDER_EXT["MP3"], since)),
+            timeout=15.0, interval=1.0, sleep=_rsleep)
+        mp3_path = _resolve_render_path(basename, _RENDER_EXT["MP3"], since)
+        if mp3_path:
+            extra.append(mp3_path)
+    size, duration = _file_stats(path) if path else (None, None)
+
+    return _ok({
+        "name": basename,
+        "path": path or None,
+        "extra_paths": extra,
+        "bytes": size,
+        "duration_s": duration,
+        "file_type": plan["file_type"],
+        "bit_depth": int(plan["bit_depth"]),
+        "sample_rate": int(plan["sample_rate"]),
+        "pcm": plan["pcm"],
+        "mp3": plan["mp3"],
+        "range": {"start_bar": start_bar, "end_bar": end_bar},
+        "toggles_clicked": clicked,
+        "range_check": range_detail,
+        "rendered": True,
+    })
+
+
+@mcp.tool()
+def render_audio(ctx: Context, name: str, start_bar: Optional[int] = None,
+                 end_bar: Optional[int] = None, file_type: str = "WAV",
+                 bit_depth: int = 24, sample_rate: int = 44100,
+                 normalize: bool = False, mp3: bool = False, mono: bool = False,
+                 analysis_file: bool = True,
+                 dither: str = "No Dither", timeout: float = 600.0) -> str:
+    """Bounce the set's Main output to an audio file on disk (there is no LOM
+    render API - this drives Live's Export Audio/Video dialog via System Events,
+    so Live needs Accessibility permission; it briefly focuses Live and switches
+    it to the Arrangement view).
+
+    name: the file name (not a path; may not contain '/' or ':'). Re-using a
+      name overwrites the existing file (the panel's Replace prompt is confirmed).
+    start_bar / end_bar: 1-based bar range, end EXCLUSIVE (5..13 = 8 bars). Pass
+      neither to render the whole song. The range is applied by setting the
+      arrangement loop and selecting it - the dialog's own range sliders are not
+      writable. The loop brace is restored afterwards, but Live is LEFT IN THE
+      ARRANGEMENT VIEW and the arrangement TIME SELECTION is left on the rendered
+      range (the LOM cannot restore a time selection).
+    file_type: WAV | AIFF | FLAC | MP3. bit_depth: 16 | 24 | 32.
+    sample_rate: 44100 | 48000 | 88200 | 96000 | 176400 | 192000.
+    mp3: also emit an MP3 alongside a PCM file_type.
+    Return and Main effects are always included: this bounces the Main output,
+      whose signal contains them by definition (Live disables that option here).
+    dither: No Dither | Triangular | Rectangular | POW-r 1 | POW-r 2 | POW-r 3.
+    timeout: seconds to wait for the render to finish (a full track takes real
+      time; the tool polls, it never sleeps a fixed amount).
+
+    The output DIRECTORY is Live's last-used export location and is not
+    controllable; 'path' is resolved afterwards via Spotlight and may be null
+    even on a successful render (the file exists, we just could not locate it).
+
+    Returns JSON {ok, data:{name, path, extra_paths, bytes, duration_s,
+    file_type, bit_depth, sample_rate, range, rendered}}.
+    """
+    try:
+        return _render_audio_impl(
+            name, start_bar=start_bar, end_bar=end_bar, file_type=file_type,
+            bit_depth=bit_depth, sample_rate=sample_rate, normalize=normalize,
+            mp3=mp3, mono=mono,
+            analysis_file=analysis_file, dither=dither, timeout=timeout)
+    except (ValueError, RuntimeError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("render_audio error: %s", e)
+        return _err("render_audio error: %s" % e)
+
+
 # === Arrangement-timeline automation (#30) ============================== #
 # The LOM cannot write arrangement automation, so set_arrangement_automation
 # patches the saved .als and reloads Live in place. Targeting is by value PROBE
@@ -2596,6 +3137,25 @@ def set_selected_track(
     except Exception as e:
         logger.error(f"Error setting selected track: {str(e)}")
         return _err(f"Error setting selected track: {str(e)}")
+@mcp.tool()
+def focus_view(ctx: Context, view: str = "Arranger") -> str:
+    """
+    Show and focus one of Live's main views: "Arranger" (default) or "Session".
+
+    Deterministic, unlike the View menu's Toggle item - some commands are only
+    available in one view (Edit > Select Loop, which render_audio relies on,
+    is disabled in Session view).
+    """
+    try:
+        v = (view or "Arranger").strip()
+        if v not in ("Arranger", "Session"):
+            return _err(f"view must be 'Arranger' or 'Session' (got {view!r}).")
+        ableton = get_ableton_connection()
+        result = ableton.send_command("focus_view", {"view": v})
+        return _ok(result)
+    except Exception as e:
+        logger.error(f"Error focusing view: {str(e)}")
+        return _err(f"Error focusing view: {str(e)}")
 @mcp.tool()
 def set_selected_scene(ctx: Context, scene_index: int) -> str:
     """
