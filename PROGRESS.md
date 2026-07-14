@@ -1,5 +1,47 @@
 # ableton-mcp-max — Progress
 
+## render_audio + focus_view - SHIPPED v0.33.0 (2026-07-14)
+Bounce the set's Main output to disk. **2 new `@mcp.tool()`s** (built via SDD; spec
+`docs/superpowers/specs/2026-07-13-render-audio-design.md`, plan
+`docs/superpowers/plans/2026-07-13-render-audio.md`), **185 -> 187 tools**, new **"Export"** category
+(23 -> 24):
+- `render_audio(name, start_bar=None, end_bar=None, ...)` - bounces the Main output. Optional 1-based,
+  end-EXCLUSIVE bar range (or the whole song). WAV/AIFF/FLAC/MP3, bit depth, sample rate, dither, mono,
+  normalize, and an optional MP3 alongside a PCM file.
+- `focus_view(view="Arranger"|"Session")` - deterministically shows + focuses a main view (the View menu
+  only offers a *toggle*).
+
+There is **no LOM render API**, so this drives Live's Export Audio/Video dialog via System Events (Live
+needs Accessibility permission). Pure `export_utils.py` (`plan_export` / `clean_render_name` /
+`loop_range_for` / menu-item matching) + a thin `_ExportUI` AX seam in server.py. 1182 offline tests.
+
+**The load-bearing design fact:** the dialog's Render Start/Length sliders are **not writable by any
+means**, so the range must be established BEFORE it opens. The dialog seeds Start from the *playhead* and
+Length from the *arrangement time selection* - NOT from the loop brace. Chain: set the arrangement loop ->
+`Edit > Select Loop` -> open the dialog. The loop is restored afterwards; the time selection cannot be
+(no LOM call). `Select Loop` is disabled in Session view - hence `focus_view`.
+
+PR #57 squash-merged @29caf2d; bump @55a2b53 = origin/main = tag v0.33.0; marketplace `ableton` ref
+v0.32.1 -> v0.33.0 @05fcbef.
+
+**LIVE-VERIFIED (Live 12.4)**: bar range rendered from Session view, whole song (116.0s = 232 beats @120),
+identical-name re-run (Replace prompt confirmed, zero toggle re-clicks), `mp3=True` (both files), bad name
+rejected before any dialog opens, arrangement loop restored.
+
+**The live gate caught 4 defects a green 1180-test suite could not** (all fixed @01dfed2, folded into the
+PR): (1) the dropdown selector used a compound `whose` clause - System Events cannot evaluate its `count`
+term, fails the query with -1700, and `_osa_get` swallows every error into `""`, so EVERY popup silently
+reported zero options; (2) `Include Return and Main Effects` is DISABLED when rendering the Main output
+(that signal already contains them) so no click can move it - managing it failed every render, and the
+`include_returns` param is gone with it; (3) the "already exists / Replace?" prompt is a **sheet of the
+Save panel** and Return does NOT confirm it - the blind-Return loop hung to the render timeout; its
+buttons are AX-pressable by name; (4) Spotlight does not index the file the instant Live closes it, so a
+single `mdfind` lost the race and reported `path:null` for a file on disk. Also note the output directory
+is Live's last-used export location (uncontrollable, commonly **iCloud** - so a
+`find ~ -not -path "*/Library/*"` walk silently misses the file).
+
+**Next action: nothing functional queued.**
+
 ## Phase 3 - mastering recommend integration - LIVE-VERIFIED, pending ship v0.31.0 (2026-07-06)
 Gives mastering the same recommend-then-apply intelligence the instrument flow has. **2 new `@mcp.tool()`s**
 (built via SDD, plan `docs/superpowers/plans/2026-07-06-mastering-recommend-integration.md`; spec
