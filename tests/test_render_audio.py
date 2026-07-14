@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -17,17 +18,21 @@ class _FakeUI:
         self.menus = []
         self.pressed = []
 
+        self.ops = []
+
     def read_toggle(self, desc):
         return self.toggles.get(desc, "Off")
 
     def click_toggle(self, desc):
         self.clicks.append(desc)
+        self.ops.append(("toggle", desc))
         self.toggles[desc] = "On" if self.toggles.get(desc) == "Off" else "Off"
 
     def read_popup(self, desc):
         return self.popups.get(desc, "")
 
     def set_popup(self, desc, value):
+        self.ops.append(("popup", desc))
         self.popups[desc] = value
 
     def read_slider(self, desc):
@@ -59,6 +64,23 @@ class _FakeConn:
         return [c for c, _ in self.sent]
 
 
+def _range_sliders(start_beats, length_beats, sig=4):
+    """The six range boxes as Live seeds them: start is 1-based, length 0-based."""
+    def split(beats, base):
+        bars, rest = divmod(beats, sig)
+        beat, rest = divmod(rest, 1.0)
+        return [bars + base, beat + base, round(rest / 0.25) + base]
+
+    s = split(float(start_beats), 1)
+    ln = split(float(length_beats), 0)
+    names = ("Bar", "Beat", "Sixteenths")
+    out = {}
+    for i, n in enumerate(names):
+        out["Start of Rendered Sample (%s)" % n] = float(s[i])
+        out["Length of Rendered Sample (%s)" % n] = float(ln[i])
+    return out
+
+
 def _correct_state(windows):
     """A dialog whose state already matches plan_export()'s defaults."""
     return _FakeUI(
@@ -74,8 +96,7 @@ def _correct_state(windows):
                 "File Type": "WAV",
                 "Recording Bit Depth": "24",
                 "Dither Options": "No Dither"},
-        sliders={"Start of Rendered Sample (Bar)": 1.0,
-                 "Length of Rendered Sample (Bar)": 2.0},
+        sliders=_range_sliders(0.0, 8.0),      # bars 1..3
         windows=windows,
     )
 
@@ -113,7 +134,7 @@ def wired(monkeypatch):
 
     monkeypatch.setattr(server, "_press_return", _finish)
     monkeypatch.setattr(server, "_resolve_render_path",
-                        lambda base, ext, since: "/tmp/%s.%s" % (base, ext))
+                        lambda base, exts, since: "/tmp/%s.%s" % (base, exts[0]))
     monkeypatch.setattr(server, "_file_stats", lambda path: (1234, 4.0))
 
     ui.conn = conn
@@ -208,7 +229,7 @@ def test_render_audio_returns_the_planned_format(wired):
                                          sample_rate=48000))
     data = out["data"]
     assert (data["file_type"], data["bit_depth"], data["sample_rate"]) == (
-        "FLAC", "16", "48000")
+        "FLAC", 16, 48000)
     assert data["rendered"] is True
     assert data["path"] == "/tmp/track.flac"
     assert data["extra_paths"] == []
@@ -238,9 +259,10 @@ def test_mp3_only_renders_the_mp3(wired):
 # --- the render range is established BEFORE the dialog opens --------------
 
 def test_range_is_seeded_via_loop_then_focus_then_select_loop(wired):
+    wired.sliders.update(_range_sliders(16.0, 32.0))
     server.render_audio(None, "track", start_bar=5, end_bar=13)
     assert wired.conn.commands() == ["get_transport", "set_arrangement_loop",
-                                     "focus_view"]
+                                     "focus_view", "set_arrangement_loop"]
     loop = dict(wired.conn.sent[1][1])
     assert loop["start"] == 16.0 and loop["length"] == 32.0
     assert wired.conn.sent[2][1] == {"view": "Arranger"}
@@ -248,12 +270,138 @@ def test_range_is_seeded_via_loop_then_focus_then_select_loop(wired):
 
 
 def test_no_range_renders_the_whole_song(wired):
-    wired.sliders["Length of Rendered Sample (Bar)"] = 58.0
+    wired.sliders.update(_range_sliders(0.0, 232.0))
     out = json.loads(server.render_audio(None, "track"))
     assert out["ok"] is True
     loop = dict(wired.conn.sent[1][1])
     assert loop["start"] == 0.0 and loop["length"] == 232.0
     assert out["data"]["range"] == {"start_bar": None, "end_bar": None}
+
+
+# --- range verification covers non-bar-aligned spans (the default path) ----
+
+def test_whole_song_non_bar_aligned_range_is_verified(monkeypatch, wired):
+    wired.conn.song_length = 230.5           # 57 bars + 2 beats + 2 sixteenths
+    wired.sliders.update(_range_sliders(0.0, 230.5))
+    out = json.loads(server.render_audio(None, "track"))
+    assert out["ok"] is True
+    check = out["data"]["range_check"]
+    assert check["verified"] is True
+    assert check["length_beats"] == 230.5
+
+
+def test_whole_song_non_bar_aligned_mismatch_cancels(wired):
+    wired.conn.song_length = 230.5
+    wired.sliders.update(_range_sliders(0.0, 226.5))   # a bar short
+    out = json.loads(server.render_audio(None, "track"))
+    assert out["ok"] is False
+    assert "Cancel" in wired.pressed
+    assert "Export" not in wired.pressed
+
+
+def test_unreadable_range_sliders_proceed_unverified(wired):
+    wired.sliders["Length of Rendered Sample (Sixteenths)"] = None
+    out = json.loads(server.render_audio(None, "track", start_bar=1, end_bar=3))
+    assert out["ok"] is True
+    assert out["data"]["range_check"]["verified"] is False
+
+
+# --- toggles are applied BEFORE popups ------------------------------------
+
+def test_toggles_are_applied_before_popups(wired):
+    # Encode PCM Off disables the format popups in Live, so it must be fixed
+    # before any popup is set.
+    wired.toggles["Encode PCM"] = "Off"
+    wired.popups["File Type"] = "AIFF"
+    out = json.loads(server.render_audio(None, "track", start_bar=1, end_bar=3))
+    assert out["ok"] is True
+    kinds = [k for k, _ in wired.ops]
+    assert kinds.index("toggle") < kinds.index("popup")
+    assert ("toggle", "Encode PCM") in wired.ops
+    assert wired.ops.index(("toggle", "Encode PCM")) < kinds.index("popup")
+
+
+# --- the save panel's Replace? sheet --------------------------------------
+
+def test_existing_file_replace_sheet_is_confirmed(monkeypatch, wired):
+    state = {"returns": 0}
+
+    def _return():
+        state["returns"] += 1
+        if state["returns"] >= 2:            # 1st Return raises the sheet
+            wired.windows["Export Audio/Video"] = False
+            wired.windows["Save"] = False
+
+    monkeypatch.setattr(server, "_press_return", _return)
+    out = json.loads(server.render_audio(None, "track", start_bar=1, end_bar=3))
+    assert out["ok"] is True
+    assert out["data"]["rendered"] is True
+    assert state["returns"] == 2
+
+
+def test_stuck_save_panel_still_times_out(monkeypatch, wired):
+    monkeypatch.setattr(server, "_press_return", lambda: None)
+    out = json.loads(server.render_audio(None, "track", start_bar=1, end_bar=3,
+                                         timeout=0.0))
+    assert out["ok"] is False
+    assert out["rendered"] is False
+
+
+# --- the user's arrangement loop is restored ------------------------------
+
+def _loop_writes(conn):
+    return [p for c, p in conn.sent if c == "set_arrangement_loop"]
+
+
+def test_loop_is_restored_on_success(wired):
+    wired.sliders.update(_range_sliders(16.0, 32.0))
+    out = json.loads(server.render_audio(None, "track", start_bar=5, end_bar=13))
+    assert out["ok"] is True
+    writes = _loop_writes(wired.conn)
+    assert writes[0]["start"] == 16.0 and writes[0]["length"] == 32.0
+    assert writes[-1] == {"enabled": True, "start": 0.0, "length": 4.0}
+
+
+def test_loop_is_restored_on_the_timeout_path(monkeypatch, wired):
+    monkeypatch.setattr(server, "_press_return", lambda: None)
+    out = json.loads(server.render_audio(None, "track", start_bar=1, end_bar=3,
+                                         timeout=0.0))
+    assert out["ok"] is False
+    assert _loop_writes(wired.conn)[-1] == {"enabled": True, "start": 0.0,
+                                            "length": 4.0}
+
+
+def test_loop_is_restored_when_the_dialog_is_cancelled(wired):
+    wired.sliders["Start of Rendered Sample (Bar)"] = 7.0
+    out = json.loads(server.render_audio(None, "track", start_bar=1, end_bar=3))
+    assert out["ok"] is False
+    assert _loop_writes(wired.conn)[-1] == {"enabled": True, "start": 0.0,
+                                            "length": 4.0}
+
+
+# --- path resolution (mdfind + extension + mtime) -------------------------
+
+def test_resolve_render_path_filters_by_extension_and_mtime(monkeypatch, tmp_path):
+    fresh = tmp_path / "mix.wav"
+    stale = tmp_path / "old" / "mix.wav"
+    other = tmp_path / "mix.aif"
+    stale.parent.mkdir()
+    for p in (fresh, stale, other):
+        p.write_bytes(b"x")
+    os.utime(str(stale), (1000.0, 1000.0))
+    os.utime(str(fresh), (5000.0, 5000.0))
+    os.utime(str(other), (5000.0, 5000.0))
+
+    found = [str(stale), str(fresh), str(other), str(tmp_path / "mix.txt")]
+    monkeypatch.setattr(server, "_mdfind_named", lambda base: found)
+
+    assert server._resolve_render_path("mix", ("wav",), 4000.0) == str(fresh)
+    # the stale same-named file is never claimed
+    assert server._resolve_render_path("mix", ("wav",), 6000.0) == ""
+    # AIFF accepts either spelling
+    assert server._resolve_render_path("mix", ("aif", "aiff"),
+                                       4000.0) == str(other)
+    assert server._resolve_render_path("mix", ("flac",), 0.0) == ""
 
 
 def test_path_unresolved_still_reports_a_completed_render(monkeypatch, wired):

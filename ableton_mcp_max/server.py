@@ -2200,8 +2200,18 @@ _EXPORT_WINDOW = "Export Audio/Video"
 _SAVE_WINDOW = "Save"
 _EXPORT_MENU_ITEM = "Export Audio/Video..."
 _RENDER_START_BAR = "Start of Rendered Sample (Bar)"
+_RENDER_START_BEAT = "Start of Rendered Sample (Beat)"
+_RENDER_START_16TH = "Start of Rendered Sample (Sixteenths)"
 _RENDER_LENGTH_BAR = "Length of Rendered Sample (Bar)"
-_RENDER_EXT = {"WAV": "wav", "AIFF": "aif", "FLAC": "flac", "MP3": "mp3"}
+_RENDER_LENGTH_BEAT = "Length of Rendered Sample (Beat)"
+_RENDER_LENGTH_16TH = "Length of Rendered Sample (Sixteenths)"
+# Live writes AIFF as .aif on 12.4 but the extension is not contractual - accept
+# both spellings rather than resolving to a null path on a good render.
+_RENDER_EXT = {"WAV": ("wav",), "AIFF": ("aif", "aiff"),
+               "FLAC": ("flac",), "MP3": ("mp3",)}
+# The dialog's range boxes are quantised to 1/16, so a span that is not a whole
+# number of sixteenths can be seeded up to one sixteenth away from the request.
+_RANGE_TOL = 0.25 + 1e-6
 
 
 def _rsleep(seconds):
@@ -2296,23 +2306,31 @@ def _open_export_dialog():
 
 
 def _verify_export_range(ui, start_beats, length_beats, sig):
-    """(ok, detail) for the range the dialog seeded itself with. Only a whole
-    number of bars is checkable - the dialog splits the range across bar/beat/
-    sixteenth sliders, so a fractional span is reported unverified rather than
-    failed."""
-    if sig <= 0 or start_beats % sig or length_beats % sig:
-        return True, {"verified": False,
-                      "reason": "range is not a whole number of bars"}
-    want_start = int(start_beats // sig) + 1
-    want_length = int(length_beats // sig)
-    got_start = ui.read_slider(_RENDER_START_BAR)
-    got_length = ui.read_slider(_RENDER_LENGTH_BAR)
-    if got_start is None or got_length is None:
+    """(ok, detail) for the range the dialog seeded itself with, checked in
+    BEATS across all six range boxes - so a span that is not a whole number of
+    bars (the whole-song default) is verified too."""
+    if sig <= 0:
+        return True, {"verified": False, "reason": "unknown time signature"}
+    got = {d: ui.read_slider(d) for d in
+           (_RENDER_START_BAR, _RENDER_START_BEAT, _RENDER_START_16TH,
+            _RENDER_LENGTH_BAR, _RENDER_LENGTH_BEAT, _RENDER_LENGTH_16TH)}
+    if any(v is None for v in got.values()):
         return True, {"verified": False, "reason": "range sliders unreadable"}
+    # Start is displayed 1-based (bar 1 beat 1 sixteenth 1 == beat 0); length is
+    # 0-based (0 bars 0 beats 1 sixteenth == one sixteenth long).
+    got_start = ((got[_RENDER_START_BAR] - 1) * sig
+                 + (got[_RENDER_START_BEAT] - 1)
+                 + (got[_RENDER_START_16TH] - 1) * 0.25)
+    got_length = (got[_RENDER_LENGTH_BAR] * sig
+                  + got[_RENDER_LENGTH_BEAT]
+                  + got[_RENDER_LENGTH_16TH] * 0.25)
     detail = {"verified": True,
-              "start_bar": int(got_start), "length_bars": int(got_length),
-              "want_start_bar": want_start, "want_length_bars": want_length}
-    ok = int(got_start) == want_start and int(got_length) == want_length
+              "start_beats": round(got_start, 4),
+              "length_beats": round(got_length, 4),
+              "want_start_beats": round(float(start_beats), 4),
+              "want_length_beats": round(float(length_beats), 4)}
+    ok = (abs(got_start - float(start_beats)) <= _RANGE_TOL
+          and abs(got_length - float(length_beats)) <= _RANGE_TOL)
     return ok, detail
 
 
@@ -2337,21 +2355,23 @@ def _mdfind_named(basename):
         return []
 
 
-def _resolve_render_path(basename, ext, since):
-    """Newest '<basename>.<ext>' modified at/after `since`, or ''. Spotlight, NOT
-    a `find ~ -not -path "*/Library/*"` walk: Live renders into its last-used
-    export directory, which is commonly iCloud Drive under
-    ~/Library/Mobile Documents - such a walk silently misses the file."""
-    want = ("%s.%s" % (basename, ext)).lower()
+def _resolve_render_path(basename, exts, since):
+    """Newest '<basename>.<ext>' (any ext in `exts`) modified at/after `since`,
+    or ''. Spotlight, NOT a `find ~ -not -path "*/Library/*"` walk: Live renders
+    into its last-used export directory, which is commonly iCloud Drive under
+    ~/Library/Mobile Documents - such a walk silently misses the file. `since` is
+    taken before the dialog opens, so a same-named file older than it is a stale
+    leftover and must not be claimed."""
+    want = set(("%s.%s" % (basename, e)).lower() for e in exts)
     best, best_mtime = "", -1.0
     for path in _mdfind_named(basename):
-        if os.path.basename(path).lower() != want:
+        if os.path.basename(path).lower() not in want:
             continue
         try:
             mtime = os.path.getmtime(path)
         except OSError:
             continue
-        if mtime + 2.0 < since or mtime <= best_mtime:
+        if mtime < since or mtime <= best_mtime:
             continue
         best, best_mtime = path, mtime
     return best
@@ -2395,7 +2415,24 @@ def _render_audio_impl(name, start_bar=None, end_bar=None, file_type="WAV",
     song_length = float(transport.get("song_length", 0.0) or 0.0)
     start_beats, length_beats = loop_range_for(start_bar, end_bar,
                                                song_length, sig)
+    # The loop brace is user-visible state we are about to overwrite; restore it
+    # on EVERY exit path.
+    prior_loop = {"enabled": bool(transport.get("loop", False)),
+                  "start": float(transport.get("loop_start", 0.0) or 0.0),
+                  "length": float(transport.get("loop_length", 4.0) or 4.0)}
+    try:
+        return _render_with_dialog(ableton, app, basename, plan, sig,
+                                   start_beats, length_beats, start_bar,
+                                   end_bar, timeout)
+    finally:
+        try:
+            ableton.send_command("set_arrangement_loop", prior_loop)
+        except Exception as e:
+            logger.error("render_audio: could not restore the loop: %s", e)
 
+
+def _render_with_dialog(ableton, app, basename, plan, sig, start_beats,
+                        length_beats, start_bar, end_bar, timeout):
     # The dialog reads the arrangement TIME SELECTION, and its own range sliders
     # cannot be written - so seed the range here, before it opens.
     ableton.send_command("set_arrangement_loop",
@@ -2421,9 +2458,11 @@ def _render_audio_impl(name, start_bar=None, end_bar=None, file_type="WAV",
                     "rendering. Check that the Arrangement view is reachable and "
                     "that Edit > Select Loop is enabled." % range_detail)
 
+    # Toggles FIRST: with Encode PCM off, the File Type / Recording Bit Depth /
+    # Dither popups are disabled and setting them silently no-ops.
+    clicked = _apply_toggles(plan["toggles"], ui)
     for popup in plan["popups"]:
         ui.set_popup(popup["description"], popup["value"])
-    clicked = _apply_toggles(plan["toggles"], ui)
 
     bad = _verify_dialog_state(ui, plan)
     if bad:
@@ -2445,7 +2484,14 @@ def _render_audio_impl(name, start_bar=None, end_bar=None, file_type="WAV",
     _rsleep(0.2)
     _keystroke(basename)
     _rsleep(0.3)
-    _press_return()
+    # Re-rendering an existing name raises a '... already exists. Replace?' sheet
+    # over the Save panel; a further Return confirms it. Bounded, so a genuinely
+    # stuck panel falls through to the completion timeout instead of looping.
+    for _ in range(4):
+        _press_return()
+        if _wait_until(lambda: not _live_window_exists(_SAVE_WINDOW),
+                       timeout=2.0, interval=0.5, sleep=_rsleep):
+            break
 
     done = _wait_until(lambda: not _live_window_exists(_EXPORT_WINDOW)
                        and not _live_window_exists(_SAVE_WINDOW),
@@ -2455,11 +2501,12 @@ def _render_audio_impl(name, start_bar=None, end_bar=None, file_type="WAV",
                     "windows are still open). No file is claimed; check Live."
                     % timeout, rendered=False)
 
-    primary_ext = _RENDER_EXT[plan["file_type"]] if plan["pcm"] else "mp3"
-    path = _resolve_render_path(basename, primary_ext, since)
+    primary_exts = (_RENDER_EXT[plan["file_type"]] if plan["pcm"]
+                    else _RENDER_EXT["MP3"])
+    path = _resolve_render_path(basename, primary_exts, since)
     extra = []
     if plan["pcm"] and plan["mp3"]:
-        mp3_path = _resolve_render_path(basename, "mp3", since)
+        mp3_path = _resolve_render_path(basename, _RENDER_EXT["MP3"], since)
         if mp3_path:
             extra.append(mp3_path)
     size, duration = _file_stats(path) if path else (None, None)
@@ -2471,8 +2518,8 @@ def _render_audio_impl(name, start_bar=None, end_bar=None, file_type="WAV",
         "bytes": size,
         "duration_s": duration,
         "file_type": plan["file_type"],
-        "bit_depth": plan["bit_depth"],
-        "sample_rate": plan["sample_rate"],
+        "bit_depth": int(plan["bit_depth"]),
+        "sample_rate": int(plan["sample_rate"]),
         "pcm": plan["pcm"],
         "mp3": plan["mp3"],
         "range": {"start_bar": start_bar, "end_bar": end_bar},
@@ -2483,8 +2530,8 @@ def _render_audio_impl(name, start_bar=None, end_bar=None, file_type="WAV",
 
 
 @mcp.tool()
-def render_audio(ctx: Context, name: str, start_bar: int = None,
-                 end_bar: int = None, file_type: str = "WAV",
+def render_audio(ctx: Context, name: str, start_bar: Optional[int] = None,
+                 end_bar: Optional[int] = None, file_type: str = "WAV",
                  bit_depth: int = 24, sample_rate: int = 44100,
                  normalize: bool = False, mp3: bool = False, mono: bool = False,
                  include_returns: bool = True, analysis_file: bool = True,
@@ -2494,11 +2541,14 @@ def render_audio(ctx: Context, name: str, start_bar: int = None,
     so Live needs Accessibility permission; it briefly focuses Live and switches
     it to the Arrangement view).
 
-    name: the file name (not a path; may not contain '/' or ':').
+    name: the file name (not a path; may not contain '/' or ':'). Re-using a
+      name overwrites the existing file (the panel's Replace prompt is confirmed).
     start_bar / end_bar: 1-based bar range, end EXCLUSIVE (5..13 = 8 bars). Pass
       neither to render the whole song. The range is applied by setting the
       arrangement loop and selecting it - the dialog's own range sliders are not
-      writable - so the arrangement loop is left set to the rendered range.
+      writable. The loop brace is restored afterwards, but Live is LEFT IN THE
+      ARRANGEMENT VIEW and the arrangement TIME SELECTION is left on the rendered
+      range (the LOM cannot restore a time selection).
     file_type: WAV | AIFF | FLAC | MP3. bit_depth: 16 | 24 | 32.
     sample_rate: 44100 | 48000 | 88200 | 96000 | 176400 | 192000.
     mp3: also emit an MP3 alongside a PCM file_type.
