@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_185 tools._
+_187 tools._
 
 ## Session & view
 
@@ -35,6 +35,7 @@ _185 tools._
 - **`set_detail_clip`** - Show a Session clip in Live's Detail (clip) view.
 - **`set_highlighted_clip_slot`** - Highlight a Session clip slot (defined by a regular track + scene).
 - **`set_track_fold`** - Fold or unfold a group track (collapse/expand its contained tracks).
+- **`focus_view`** - Show and focus one of Live's main views: "Arranger" (default) or "Session".
 
 ## Batch
 
@@ -285,3 +286,7 @@ _185 tools._
 - **`recommend_asset`** - Propose reuse-vs-create for a described asset. domain in
 - **`recommend_instrument`** - Choose which instrument engine to reach for from a free-text intent
 - **`create_from_plan`** - Execute a create_plan from recommend_asset. confirm=False (default)
+
+## Export
+
+- **`render_audio`** - Bounce the set's Main output to an audio file on disk (there is no LOM

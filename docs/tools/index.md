@@ -7,13 +7,13 @@ has_children: true
 
 # Tool Reference
 
-All **185 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **187 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
 Read the live set, move the selection, and steer what Live shows on screen.
 
-`get_session_info`, `get_view_selection`, `set_selected_track`, `set_selected_scene`, `set_detail_clip`, `set_highlighted_clip_slot`
+`get_session_info`, `get_view_selection`, `set_selected_track`, `set_selected_scene`, `set_detail_clip`, `set_highlighted_clip_slot`, `focus_view`
 
 ## [Tracks](./tracks.html)
 
@@ -146,4 +146,10 @@ Discover audio samples in Live's User Library and factory packs and load them as
 Persistent local index of Serum presets, samples, grooves, and device presets, with similarity search and reuse-vs-create recommendation that can orchestrate the existing create tools.
 
 `search_catalog`, `find_similar`, `catalog_stats`, `reindex_catalog`, `recommend_asset`, `recommend_instrument`, `create_from_plan`
+
+## [Export](./export.html)
+
+Bounce the set's Main output to an audio file on disk - format, bit depth, sample rate, and bar range under program control - by driving Live's Export Audio/Video dialog (there is no LOM render API).
+
+`render_audio`
 

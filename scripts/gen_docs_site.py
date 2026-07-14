@@ -21,7 +21,7 @@ TOOLS_DIR = os.path.join(REPO, "docs", "tools")
 CATEGORIES = [
     ("session-view", "Session & View", "Read the live set, move the selection, and steer what Live shows on screen.", [
         "get_session_info", "get_view_selection", "set_selected_track", "set_selected_scene",
-        "set_detail_clip", "set_highlighted_clip_slot",
+        "set_detail_clip", "set_highlighted_clip_slot", "focus_view",
     ]),
     ("tracks", "Tracks", "Create, name, fold, duplicate, and delete tracks - plus global undo/redo.", [
         "get_track_info", "set_track_name", "set_track_fold", "create_midi_track", "create_audio_track",
@@ -144,6 +144,9 @@ CATEGORIES = [
      "recommendation that can orchestrate the existing create tools.", [
         "search_catalog", "find_similar", "catalog_stats", "reindex_catalog",
         "recommend_asset", "recommend_instrument", "create_from_plan",
+    ]),
+    ("export", "Export", "Bounce the set's Main output to an audio file on disk - format, bit depth, sample rate, and bar range under program control - by driving Live's Export Audio/Video dialog (there is no LOM render API).", [
+        "render_audio",
     ]),
 ]
 

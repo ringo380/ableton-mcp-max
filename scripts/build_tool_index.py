@@ -20,7 +20,7 @@ GROUPS = [
     ("Session & view", [
         "get_session_info", "get_view_selection", "set_selected_track",
         "set_selected_scene", "set_detail_clip", "set_highlighted_clip_slot",
-        "set_track_fold",
+        "set_track_fold", "focus_view",
     ]),
     ("Batch", ["batch"]),
     ("Host lifecycle", ["restart_live", "save_set", "save_set_as"]),
@@ -148,6 +148,7 @@ GROUPS = [
         "search_catalog", "find_similar", "catalog_stats", "reindex_catalog",
         "recommend_asset", "recommend_instrument", "create_from_plan",
     ]),
+    ("Export", ["render_audio"]),
 ]
 
 PREAMBLE = """# Ableton MCP tool index
