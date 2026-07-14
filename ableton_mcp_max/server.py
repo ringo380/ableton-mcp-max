@@ -2266,33 +2266,54 @@ class _ExportUI:
         return _osa_get(self._tell('get value of (%s)'
                                    % self._elem("pop up button", desc)))
 
-    def _dropdown_group(self):
+    def _dropdown_prelude(self):
         # Live does NOT hang an AXMenu off the pop-up button ('menu 1 of <pop up
         # button>' raises "Invalid index" - it has zero menu children). The open
         # dropdown is a SEPARATE, UNNAMED window on the Live process, with the
         # AXMenuItems two AXGroups deep.
-        return ('UI element 1 of UI element 1 of (first window whose name is "" '
-                'and (count of UI elements) > 0)')
+        #
+        # An open dropdown leaves TWO unnamed windows behind, and only one of
+        # them holds the items - but the empty one cannot be filtered out with a
+        # compound `whose` clause: System Events' filter engine cannot evaluate
+        # `(count of UI elements) > 0` and fails the whole query with -1700
+        # ("Can't make 5 into type specifier"). So find it by iterating.
+        return (
+            '  set _dd to missing value\n'
+            '  repeat with w in (every window whose name is "")\n'
+            '    if (count of UI elements of w) > 0 then\n'
+            '      set _dd to UI element 1 of UI element 1 of w\n'
+            '      exit repeat\n'
+            '    end if\n'
+            '  end repeat\n'
+            '  if _dd is missing value then return ""\n')
 
     def open_popup(self, desc):
         _osa(self._tell('click (%s)' % self._elem("pop up button", desc)))
 
     def menu_items(self):
-        """Names of the open dropdown's items (in Live's order), '' if none."""
+        """Names of the open dropdown's items (in Live's order), [] if none."""
         out = _osa_get(
-            'tell application "System Events" to tell process "%s"\n'
+            'tell application "System Events"\n'
+            ' tell process "%s"\n'
+            '%s'
             '  set _items to {}\n'
-            '  repeat with m in (menu items of %s)\n'
+            '  repeat with m in (menu items of _dd)\n'
             '    set end of _items to (name of m as text)\n'
             '  end repeat\n'
             '  set AppleScript\'s text item delimiters to (ASCII character 10)\n'
             '  return _items as text\n'
-            'end tell' % (_LIVE_PROC, self._dropdown_group()))
+            ' end tell\n'
+            'end tell' % (_LIVE_PROC, self._dropdown_prelude()))
         return [n for n in out.split("\n") if n.strip()]
 
     def click_menu_item(self, name):
-        _osa(self._tell('click (first menu item of %s whose name is "%s")'
-                        % (self._dropdown_group(), _as_literal(name))))
+        _osa(
+            'tell application "System Events"\n'
+            ' tell process "%s"\n'
+            '%s'
+            '  click (first menu item of _dd whose name is "%s")\n'
+            ' end tell\n'
+            'end tell' % (_LIVE_PROC, self._dropdown_prelude(), _as_literal(name)))
 
     def set_popup(self, desc, value):
         """Open the pop-up's dropdown and click the wanted item. Raises if the
@@ -2418,6 +2439,30 @@ def _dismiss_export_dialog(ui):
     return not left
 
 
+_REPLACE_BUTTON = "Replace"
+
+
+def _replace_sheet_open():
+    """True if the Save panel is showing its '... already exists. Do you want to
+    replace it?' sheet."""
+    out = _osa_get('tell application "System Events" to tell process "%s" to get '
+                   '(count of sheets of (first window whose name is "%s"))'
+                   % (_LIVE_PROC, _SAVE_WINDOW))
+    try:
+        return int(out) > 0
+    except ValueError:
+        return False
+
+
+def _confirm_replace_sheet():
+    """Click the replace-confirmation sheet's Replace button. The sheet's buttons
+    ARE AX-pressable and carry real NAMES (unlike the Save panel's, which has
+    none) - so this is focus-independent, where a Return keystroke is not."""
+    _osa('tell application "System Events" to tell process "%s" to click '
+         '(first button of sheet 1 of (first window whose name is "%s") '
+         'whose name is "%s")' % (_LIVE_PROC, _SAVE_WINDOW, _REPLACE_BUTTON))
+
+
 def _mdfind_named(basename):
     try:
         out = subprocess.check_output(["/usr/bin/mdfind", "-name", basename],
@@ -2470,12 +2515,12 @@ def _file_stats(path):
 
 def _render_audio_impl(name, start_bar=None, end_bar=None, file_type="WAV",
                        bit_depth=24, sample_rate=44100, normalize=False,
-                       mp3=False, mono=False, include_returns=True,
+                       mp3=False, mono=False,
                        analysis_file=True, dither="No Dither", timeout=600.0):
     basename = clean_render_name(name)             # raises ValueError if bad
     plan = plan_export(file_type=file_type, bit_depth=bit_depth,
                        sample_rate=sample_rate, normalize=normalize, mp3=mp3,
-                       mono=mono, include_returns=include_returns,
+                       mono=mono,
                        analysis_file=analysis_file, dither=dither)
     app, _pid = _live_app_and_pid()
     if not app:
@@ -2567,14 +2612,17 @@ def _render_with_dialog(ableton, app, basename, plan, sig, start_beats,
     _rsleep(0.2)
     _keystroke(basename)
     _rsleep(0.3)
-    # Re-rendering an existing name raises a '... already exists. Replace?' sheet
-    # over the Save panel; a further Return confirms it. Bounded, so a genuinely
-    # stuck panel falls through to the completion timeout instead of looping.
-    for _ in range(4):
-        _press_return()
-        if _wait_until(lambda: not _live_window_exists(_SAVE_WINDOW),
-                       timeout=2.0, interval=0.5, sleep=_rsleep):
-            break
+    _press_return()
+    # Re-rendering an existing name raises a '"x.wav" already exists. Do you want
+    # to replace it?' sheet. It is a SHEET OF THE SAVE PANEL (not of the Export
+    # dialog), and Return does NOT confirm it - but unlike the Save panel itself
+    # it has real AX buttons, addressable by NAME. Click "Replace" outright; a
+    # blind Return loop here hangs to the render timeout with the sheet up.
+    _wait_until(lambda: not _live_window_exists(_SAVE_WINDOW)
+                or _replace_sheet_open(),
+                timeout=5.0, interval=0.5, sleep=_rsleep)
+    if _replace_sheet_open():
+        _confirm_replace_sheet()
 
     done = _wait_until(lambda: not _live_window_exists(_EXPORT_WINDOW)
                        and not _live_window_exists(_SAVE_WINDOW),
@@ -2586,9 +2634,17 @@ def _render_with_dialog(ableton, app, basename, plan, sig, start_beats,
 
     primary_exts = (_RENDER_EXT[plan["file_type"]] if plan["pcm"]
                     else _RENDER_EXT["MP3"])
+    # Spotlight does not index the file the instant Live closes it, so a single
+    # mdfind right after the render loses the race and reports path=null for a
+    # file that is sitting on disk. Poll briefly.
+    _wait_until(lambda: bool(_resolve_render_path(basename, primary_exts, since)),
+                timeout=15.0, interval=1.0, sleep=_rsleep)
     path = _resolve_render_path(basename, primary_exts, since)
     extra = []
     if plan["pcm"] and plan["mp3"]:
+        _wait_until(
+            lambda: bool(_resolve_render_path(basename, _RENDER_EXT["MP3"], since)),
+            timeout=15.0, interval=1.0, sleep=_rsleep)
         mp3_path = _resolve_render_path(basename, _RENDER_EXT["MP3"], since)
         if mp3_path:
             extra.append(mp3_path)
@@ -2617,7 +2673,7 @@ def render_audio(ctx: Context, name: str, start_bar: Optional[int] = None,
                  end_bar: Optional[int] = None, file_type: str = "WAV",
                  bit_depth: int = 24, sample_rate: int = 44100,
                  normalize: bool = False, mp3: bool = False, mono: bool = False,
-                 include_returns: bool = True, analysis_file: bool = True,
+                 analysis_file: bool = True,
                  dither: str = "No Dither", timeout: float = 600.0) -> str:
     """Bounce the set's Main output to an audio file on disk (there is no LOM
     render API - this drives Live's Export Audio/Video dialog via System Events,
@@ -2635,6 +2691,8 @@ def render_audio(ctx: Context, name: str, start_bar: Optional[int] = None,
     file_type: WAV | AIFF | FLAC | MP3. bit_depth: 16 | 24 | 32.
     sample_rate: 44100 | 48000 | 88200 | 96000 | 176400 | 192000.
     mp3: also emit an MP3 alongside a PCM file_type.
+    Return and Main effects are always included: this bounces the Main output,
+      whose signal contains them by definition (Live disables that option here).
     dither: No Dither | Triangular | Rectangular | POW-r 1 | POW-r 2 | POW-r 3.
     timeout: seconds to wait for the render to finish (a full track takes real
       time; the tool polls, it never sleeps a fixed amount).
@@ -2650,7 +2708,7 @@ def render_audio(ctx: Context, name: str, start_bar: Optional[int] = None,
         return _render_audio_impl(
             name, start_bar=start_bar, end_bar=end_bar, file_type=file_type,
             bit_depth=bit_depth, sample_rate=sample_rate, normalize=normalize,
-            mp3=mp3, mono=mono, include_returns=include_returns,
+            mp3=mp3, mono=mono,
             analysis_file=analysis_file, dither=dither, timeout=timeout)
     except (ValueError, RuntimeError) as e:
         return _err(str(e))

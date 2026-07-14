@@ -39,10 +39,18 @@ def test_every_managed_toggle_has_an_explicit_want():
     # The executor reads-then-clicks, so a missing want would mean "unknown".
     p = plan_export()
     wants = {t["description"]: t["want"] for t in p["toggles"]}
-    for d in ("Include Return and Main Effects", "Render as Loop",
-              "Convert to Mono", "Normalize", "Create Analysis File",
-              "Encode PCM", "Encode MP3"):
+    for d in ("Render as Loop", "Convert to Mono", "Normalize",
+              "Create Analysis File", "Encode PCM", "Encode MP3"):
         assert wants[d] in ("On", "Off")
+
+
+def test_include_return_and_main_effects_is_never_managed():
+    # Live DISABLES that toggle when the Rendered Track is the Main output (its
+    # signal already contains the returns and main effects), so it is stuck Off
+    # and no click can move it. Asking for it would fail every render.
+    p = plan_export()
+    assert not any(t["description"] == "Include Return and Main Effects"
+                   for t in p["toggles"])
 
 
 @pytest.mark.parametrize("kw", [

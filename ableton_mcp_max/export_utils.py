@@ -93,7 +93,7 @@ def loop_range_for(start_bar, end_bar, song_length, sig_num):
 
 
 def plan_export(file_type="WAV", bit_depth=24, sample_rate=44100,
-                normalize=False, mp3=False, mono=False, include_returns=True,
+                normalize=False, mp3=False, mono=False,
                 analysis_file=True, dither="No Dither"):
     """Validated plan for the Export dialog: which popups to set and what every
     managed toggle's value must END UP as. The executor reads each toggle and
@@ -126,9 +126,12 @@ def plan_export(file_type="WAV", bit_depth=24, sample_rate=44100,
     def flag(b):
         return "On" if b else "Off"
 
+    # "Include Return and Main Effects" is NOT managed: Live DISABLES it whenever
+    # the Rendered Track is the Main output (returns and main effects are already
+    # in that signal by definition), so it is stuck Off and no click can move it.
+    # Asking for it would fail every render. Same reason as the 32-bit Dither
+    # popup above.
     toggles = [
-        {"description": "Include Return and Main Effects",
-         "want": flag(include_returns)},
         {"description": "Render as Loop", "want": "Off"},
         {"description": "Convert to Mono", "want": flag(mono)},
         {"description": "Normalize", "want": flag(normalize)},

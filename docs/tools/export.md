@@ -32,7 +32,6 @@ render_audio(
     normalize: bool = False,
     mp3: bool = False,
     mono: bool = False,
-    include_returns: bool = True,
     analysis_file: bool = True,
     dither: str = 'No Dither',
     timeout: float = 600.0,
@@ -55,6 +54,8 @@ start_bar / end_bar: 1-based bar range, end EXCLUSIVE (5..13 = 8 bars). Pass
 file_type: WAV | AIFF | FLAC | MP3. bit_depth: 16 | 24 | 32.
 sample_rate: 44100 | 48000 | 88200 | 96000 | 176400 | 192000.
 mp3: also emit an MP3 alongside a PCM file_type.
+Return and Main effects are always included: this bounces the Main output,
+  whose signal contains them by definition (Live disables that option here).
 dither: No Dither | Triangular | Rectangular | POW-r 1 | POW-r 2 | POW-r 3.
 timeout: seconds to wait for the render to finish (a full track takes real
   time; the tool polls, it never sleeps a fixed amount).

@@ -335,19 +335,49 @@ def test_toggles_are_applied_before_popups(wired):
 # --- the save panel's Replace? sheet --------------------------------------
 
 def test_existing_file_replace_sheet_is_confirmed(monkeypatch, wired):
-    state = {"returns": 0}
+    # Re-rendering an existing name raises a '... already exists. Replace?' sheet
+    # on the SAVE panel. Return does NOT confirm it (proven live: a blind Return
+    # loop hung with the sheet up until the render timeout) - the sheet's Replace
+    # button must be clicked.
+    state = {"sheet": False, "replaced": 0}
 
     def _return():
-        state["returns"] += 1
-        if state["returns"] >= 2:            # 1st Return raises the sheet
-            wired.windows["Export Audio/Video"] = False
-            wired.windows["Save"] = False
+        state["sheet"] = True                # Save-with-existing-name -> sheet
+
+    def _sheet_open():
+        return state["sheet"]
+
+    def _confirm():
+        state["replaced"] += 1
+        state["sheet"] = False
+        wired.windows["Export Audio/Video"] = False
+        wired.windows["Save"] = False
 
     monkeypatch.setattr(server, "_press_return", _return)
+    monkeypatch.setattr(server, "_replace_sheet_open", _sheet_open)
+    monkeypatch.setattr(server, "_confirm_replace_sheet", _confirm)
     out = json.loads(server.render_audio(None, "track", start_bar=1, end_bar=3))
     assert out["ok"] is True
     assert out["data"]["rendered"] is True
-    assert state["returns"] == 2
+    assert state["replaced"] == 1            # clicked Replace, not spammed Return
+
+
+def test_no_replace_sheet_means_no_replace_click(monkeypatch, wired):
+    # The common path (a fresh name) must not touch the Replace button at all.
+    state = {"replaced": 0}
+
+    def _return():
+        wired.windows["Export Audio/Video"] = False
+        wired.windows["Save"] = False
+
+    monkeypatch.setattr(server, "_press_return", _return)
+    monkeypatch.setattr(server, "_replace_sheet_open", lambda: False)
+    monkeypatch.setattr(server, "_confirm_replace_sheet",
+                        lambda: state.__setitem__("replaced",
+                                                  state["replaced"] + 1))
+    out = json.loads(server.render_audio(None, "track", start_bar=1, end_bar=3))
+    assert out["ok"] is True
+    assert state["replaced"] == 0
 
 
 def test_stuck_save_panel_still_times_out(monkeypatch, wired):
