@@ -2,6 +2,7 @@
 tap registry singleton hosted in server.py (no real socket needed - feed frames
 straight into the registry via its testable ingest seam)."""
 import json
+import pytest
 
 from ableton_mcp_max import server
 
@@ -209,6 +210,7 @@ def test_measure_mix_no_taps_is_ok_empty(monkeypatch):
 # --- deploy_taps / remove_taps (Live calls stubbed via the named seams) ---
 
 def test_deploy_taps_targets_audio_and_instrument_tracks_plus_master(monkeypatch):
+    monkeypatch.setattr(server, "_find_taps", lambda: [])
     # Auto-target now also drops a master tap by default (include_master=True).
     calls = []
     monkeypatch.setattr(server, "_load_tap_on_track",
@@ -222,6 +224,7 @@ def test_deploy_taps_targets_audio_and_instrument_tracks_plus_master(monkeypatch
 
 
 def test_deploy_taps_include_master_false_skips_master(monkeypatch):
+    monkeypatch.setattr(server, "_find_taps", lambda: [])
     calls = []
     monkeypatch.setattr(server, "_load_tap_on_track",
                         lambda i, tt="regular": calls.append((i, tt)) or "MCP Tap")
@@ -233,6 +236,7 @@ def test_deploy_taps_include_master_false_skips_master(monkeypatch):
 
 
 def test_deploy_taps_master_only_via_explicit_minus_one(monkeypatch):
+    monkeypatch.setattr(server, "_find_taps", lambda: [])
     calls = []
     monkeypatch.setattr(server, "_load_tap_on_track",
                         lambda i, tt="regular": calls.append((i, tt)) or "MCP Tap")
@@ -242,6 +246,7 @@ def test_deploy_taps_master_only_via_explicit_minus_one(monkeypatch):
 
 
 def test_deploy_taps_explicit_indices_ignore_include_master(monkeypatch):
+    monkeypatch.setattr(server, "_find_taps", lambda: [])
     # Explicit track_indices is used verbatim; include_master does not append -1.
     calls = []
     monkeypatch.setattr(server, "_load_tap_on_track",
@@ -252,6 +257,7 @@ def test_deploy_taps_explicit_indices_ignore_include_master(monkeypatch):
 
 
 def test_deploy_taps_falls_back_to_manual_when_all_fail(monkeypatch):
+    monkeypatch.setattr(server, "_find_taps", lambda: [])
     def boom(i, tt="regular"):
         raise RuntimeError("not in browser")
     monkeypatch.setattr(server, "_load_tap_on_track", boom)
@@ -263,6 +269,7 @@ def test_deploy_taps_falls_back_to_manual_when_all_fail(monkeypatch):
 
 
 def test_deploy_taps_confirms_via_registry_on_lost_reply(monkeypatch):
+    monkeypatch.setattr(server, "_find_taps", lambda: [])
     # A slow M4L boot drops the load reply, but the device DID connect to the
     # registry -> deploy_taps should confirm it instead of failing.
     reg = server._tap_registry
@@ -282,6 +289,7 @@ def test_deploy_taps_confirms_via_registry_on_lost_reply(monkeypatch):
 
 
 def test_deploy_taps_timeout_with_no_connection_still_fails(monkeypatch):
+    monkeypatch.setattr(server, "_find_taps", lambda: [])
     # Timeout signature but nothing connects -> genuine failure (poll exhausts).
     server._tap_registry.state.reset()
     monkeypatch.setattr(server, "TAP_CONFIRM_ATTEMPTS", 1)  # don't sleep in tests
@@ -296,6 +304,7 @@ def test_deploy_taps_timeout_with_no_connection_still_fails(monkeypatch):
 
 
 def test_deploy_taps_does_not_false_confirm_on_preexisting_tap(monkeypatch):
+    monkeypatch.setattr(server, "_find_taps", lambda: [])
     # A tap already on index 0 before the load must NOT be mistaken for the
     # (failed) new load's device.
     reg = server._tap_registry
@@ -313,6 +322,7 @@ def test_deploy_taps_does_not_false_confirm_on_preexisting_tap(monkeypatch):
 
 
 def test_deploy_taps_non_timeout_error_fails_fast_without_polling(monkeypatch):
+    monkeypatch.setattr(server, "_find_taps", lambda: [])
     # A clean 'not in browser' error must not trigger the registry poll.
     polled = []
     monkeypatch.setattr(server, "_confirm_tap_via_registry",
@@ -358,3 +368,47 @@ def test_remove_taps_none_found_is_ok(monkeypatch):
     out = json.loads(server.remove_taps(None))
     assert out["ok"] is True
     assert out["data"]["removed_count"] == 0
+
+
+# --- deploy_taps is idempotent: never stack a duplicate tap -------------------
+# apply_master always taps the master, so without this every mastering pass
+# appended another MCP Tap to it (observed live: [0]Ozone, [1]Tap, [2]Tap).
+
+def test_deploy_taps_skips_track_that_already_has_a_tap(monkeypatch):
+    calls = []
+    monkeypatch.setattr(server, "_find_taps", lambda: [("master", 0, 1)])
+    monkeypatch.setattr(server, "_load_tap_on_track",
+                        lambda i, tt="regular": calls.append((i, tt)) or "MCP Tap")
+    out = json.loads(server.deploy_taps(None, track_indices=[-1]))
+    assert out["ok"] is True
+    assert calls == []                                    # no second load
+    assert out["data"]["deployed"] == []
+    assert [a["track_index"] for a in out["data"]["already_present"]] == [-1]
+    assert out["data"]["failed"] == []
+    assert "manual" not in out["data"]                    # skipping is success
+
+
+def test_deploy_taps_deploys_only_the_untapped_tracks(monkeypatch):
+    calls = []
+    monkeypatch.setattr(server, "_find_taps", lambda: [("regular", 2, 0)])
+    monkeypatch.setattr(server, "_load_tap_on_track",
+                        lambda i, tt="regular": calls.append((i, tt)) or "MCP Tap")
+    out = json.loads(server.deploy_taps(None, track_indices=[0, 2, -1]))
+    assert calls == [(0, "regular"), (-1, "master")]      # track 2 skipped
+    assert [d["track_index"] for d in out["data"]["deployed"]] == [0, -1]
+    assert [a["track_index"] for a in out["data"]["already_present"]] == [2]
+
+
+def test_apply_master_reports_present_when_master_already_tapped(monkeypatch):
+    monkeypatch.setattr(server, "get_ableton_connection", lambda: object())
+    monkeypatch.setattr(server, "set_ozone_state",
+                        lambda *a, **k: json.dumps({"ok": True, "data": {
+                            "reloaded": True, "applied": [], "skipped": []}}))
+    monkeypatch.setattr(server, "expose_ozone_modules",
+                        lambda *a, **k: json.dumps({"ok": True, "data": {}}))
+    monkeypatch.setattr(server, "_find_taps", lambda: [("master", 0, 1)])
+    monkeypatch.setattr(server, "_load_tap_on_track",
+                        lambda i, tt="regular": pytest.fail("must not re-tap"))
+    out = json.loads(server.apply_master(ctx=None, chain={"MAX": {}}))
+    assert out["ok"] is True
+    assert out["data"]["tap"]["status"] == "present"
