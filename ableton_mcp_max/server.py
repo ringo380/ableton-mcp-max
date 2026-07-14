@@ -137,6 +137,11 @@ from ableton_mcp_max.save_utils import (
     clean_set_name,
     set_name_from_path,
 )
+from ableton_mcp_max.export_utils import (
+    plan_export,
+    clean_render_name,
+    loop_range_for,
+)
 from ableton_mcp_max import als_automation_utils as als
 from ableton_mcp_max import stem_utils
 from ableton_mcp_max import key_detection_utils as kd
@@ -171,9 +176,13 @@ def _ok(data):
     return json.dumps({"ok": True, "data": data}, indent=2)
 
 
-def _err(message):
-    """Wrap a tool failure in the uniform {ok, error} envelope."""
-    return json.dumps({"ok": False, "error": str(message)}, indent=2)
+def _err(message, **extra):
+    """Wrap a tool failure in the uniform {ok, error} envelope. `extra` adds
+    top-level facts a caller must not have to infer (render_audio's
+    rendered=False: a timed-out render must never look like a delivered file)."""
+    payload = {"ok": False, "error": str(message)}
+    payload.update(extra)
+    return json.dumps(payload, indent=2)
 
 
 def _vol_value(v):
@@ -2174,6 +2183,347 @@ def save_set_as(ctx: Context, name: str) -> str:
     except Exception as e:
         logger.error("save_set_as error: %s", e)
         return _err("save_set_as error: %s" % e)
+
+
+# === Render / export ======================================================
+# The LOM has no render/bounce/export API, so render_audio drives Live's Export
+# Audio/Video dialog over Accessibility. Two hard constraints shape everything
+# below (both verified against Live 12.4.2, see the design spec):
+#   * The Render Start/Length sliders are UNWRITABLE (AXSetValue silently no-ops
+#     and click-then-type is ignored), so the range is established BEFORE the
+#     dialog opens: arrangement loop -> focus Arranger -> Edit > Select Loop,
+#     which turns the loop into the time selection the dialog actually reads.
+#   * Dialog toggles CLICK-TOGGLE, they do not set - so every toggle is read and
+#     clicked only on a mismatch; a blind click inverts an already-correct one.
+
+_EXPORT_WINDOW = "Export Audio/Video"
+_SAVE_WINDOW = "Save"
+_EXPORT_MENU_ITEM = "Export Audio/Video..."
+_RENDER_START_BAR = "Start of Rendered Sample (Bar)"
+_RENDER_LENGTH_BAR = "Length of Rendered Sample (Bar)"
+_RENDER_EXT = {"WAV": "wav", "AIFF": "aif", "FLAC": "flac", "MP3": "mp3"}
+
+
+def _rsleep(seconds):
+    """Sleep seam for the render executor (patched out in tests)."""
+    time.sleep(seconds)
+
+
+def _click_edit_menu(item, proc=_LIVE_PROC):
+    """Click a Live Edit-menu item by name (same focus-independent path as
+    _click_file_menu)."""
+    _osa('tell application "System Events" to tell process "%s" to click '
+         'menu item "%s" of menu 1 of menu bar item "Edit" of menu bar 1'
+         % (proc, _as_literal(item)))
+
+
+def _live_window_exists(title, proc=_LIVE_PROC):
+    """True if Live currently has a window named `title`."""
+    out = _osa_get('tell application "System Events" to tell process "%s" to get '
+                   '(count of (windows whose name is "%s"))'
+                   % (proc, _as_literal(title)))
+    try:
+        return int(out) > 0
+    except ValueError:
+        return False
+
+
+class _ExportUI:
+    """Thin AX seam over the Export dialog. Every control is addressed by its AX
+    `description` (the dialog's titles are all `missing value`)."""
+
+    def _elem(self, kind, desc):
+        return ('first %s of group 1 of window "%s" whose description is "%s"'
+                % (kind, _EXPORT_WINDOW, _as_literal(desc)))
+
+    def _tell(self, body):
+        return ('tell application "System Events" to tell process "%s" to %s'
+                % (_LIVE_PROC, body))
+
+    def read_toggle(self, desc):
+        return _osa_get(self._tell('get value of (%s)'
+                                   % self._elem("button", desc)))
+
+    def click_toggle(self, desc):
+        _osa(self._tell('click (%s)' % self._elem("button", desc)))
+
+    def read_popup(self, desc):
+        return _osa_get(self._tell('get value of (%s)'
+                                   % self._elem("pop up button", desc)))
+
+    def set_popup(self, desc, value):
+        _osa('tell application "System Events" to tell process "%s"\n'
+             '  set pu to %s\n'
+             '  click pu\n'
+             '  click menu item "%s" of menu 1 of pu\n'
+             'end tell'
+             % (_LIVE_PROC, self._elem("pop up button", desc),
+                _as_literal(value)))
+
+    def read_slider(self, desc):
+        out = _osa_get(self._tell('get value of (%s)'
+                                  % self._elem("slider", desc)))
+        try:
+            return float(out)
+        except ValueError:
+            return None
+
+    def press(self, desc):
+        _osa(self._tell('click (%s)' % self._elem("button", desc)))
+
+
+_export_ui = _ExportUI()
+
+
+def _apply_toggles(toggles, ui):
+    """Read each toggle and click ONLY on a mismatch (a click TOGGLES - blindly
+    clicking a correct control inverts it). Returns the clicked descriptions."""
+    clicked = []
+    for t in toggles:
+        desc, want = t["description"], t["want"]
+        if ui.read_toggle(desc) != want:
+            ui.click_toggle(desc)
+            clicked.append(desc)
+    return clicked
+
+
+def _open_export_dialog():
+    """Click File > Export Audio/Video... and wait for the dialog. False if it
+    never appears."""
+    _click_file_menu(_EXPORT_MENU_ITEM)
+    return _wait_until(lambda: _live_window_exists(_EXPORT_WINDOW),
+                       timeout=10.0, interval=0.4, sleep=_rsleep)
+
+
+def _verify_export_range(ui, start_beats, length_beats, sig):
+    """(ok, detail) for the range the dialog seeded itself with. Only a whole
+    number of bars is checkable - the dialog splits the range across bar/beat/
+    sixteenth sliders, so a fractional span is reported unverified rather than
+    failed."""
+    if sig <= 0 or start_beats % sig or length_beats % sig:
+        return True, {"verified": False,
+                      "reason": "range is not a whole number of bars"}
+    want_start = int(start_beats // sig) + 1
+    want_length = int(length_beats // sig)
+    got_start = ui.read_slider(_RENDER_START_BAR)
+    got_length = ui.read_slider(_RENDER_LENGTH_BAR)
+    if got_start is None or got_length is None:
+        return True, {"verified": False, "reason": "range sliders unreadable"}
+    detail = {"verified": True,
+              "start_bar": int(got_start), "length_bars": int(got_length),
+              "want_start_bar": want_start, "want_length_bars": want_length}
+    ok = int(got_start) == want_start and int(got_length) == want_length
+    return ok, detail
+
+
+def _verify_dialog_state(ui, plan):
+    """Descriptions whose value does not match the plan after we set it."""
+    bad = []
+    for t in plan["toggles"]:
+        if ui.read_toggle(t["description"]) != t["want"]:
+            bad.append(t["description"])
+    for p in plan["popups"]:
+        if ui.read_popup(p["description"]) != p["value"]:
+            bad.append(p["description"])
+    return bad
+
+
+def _mdfind_named(basename):
+    try:
+        out = subprocess.check_output(["/usr/bin/mdfind", "-name", basename],
+                                      stderr=subprocess.DEVNULL, timeout=30)
+        return out.decode("utf-8", "replace").splitlines()
+    except Exception:
+        return []
+
+
+def _resolve_render_path(basename, ext, since):
+    """Newest '<basename>.<ext>' modified at/after `since`, or ''. Spotlight, NOT
+    a `find ~ -not -path "*/Library/*"` walk: Live renders into its last-used
+    export directory, which is commonly iCloud Drive under
+    ~/Library/Mobile Documents - such a walk silently misses the file."""
+    want = ("%s.%s" % (basename, ext)).lower()
+    best, best_mtime = "", -1.0
+    for path in _mdfind_named(basename):
+        if os.path.basename(path).lower() != want:
+            continue
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            continue
+        if mtime + 2.0 < since or mtime <= best_mtime:
+            continue
+        best, best_mtime = path, mtime
+    return best
+
+
+def _file_stats(path):
+    """(bytes, duration_s) for a rendered file; duration only for PCM formats
+    the stdlib can read."""
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return None, None
+    duration = None
+    try:
+        import wave
+        with wave.open(path, "rb") as w:
+            rate = w.getframerate()
+            if rate:
+                duration = round(w.getnframes() / float(rate), 3)
+    except Exception:
+        duration = None
+    return size, duration
+
+
+def _render_audio_impl(name, start_bar=None, end_bar=None, file_type="WAV",
+                       bit_depth=24, sample_rate=44100, normalize=False,
+                       mp3=False, mono=False, include_returns=True,
+                       analysis_file=True, dither="No Dither", timeout=600.0):
+    basename = clean_render_name(name)             # raises ValueError if bad
+    plan = plan_export(file_type=file_type, bit_depth=bit_depth,
+                       sample_rate=sample_rate, normalize=normalize, mp3=mp3,
+                       mono=mono, include_returns=include_returns,
+                       analysis_file=analysis_file, dither=dither)
+    app, _pid = _live_app_and_pid()
+    if not app:
+        raise RuntimeError("No running Ableton Live found on port %d." % LIVE_PORT)
+
+    ableton = get_ableton_connection()
+    transport = ableton.send_command("get_transport") or {}
+    sig = int(transport.get("signature_numerator", 4) or 4)
+    song_length = float(transport.get("song_length", 0.0) or 0.0)
+    start_beats, length_beats = loop_range_for(start_bar, end_bar,
+                                               song_length, sig)
+
+    # The dialog reads the arrangement TIME SELECTION, and its own range sliders
+    # cannot be written - so seed the range here, before it opens.
+    ableton.send_command("set_arrangement_loop",
+                         {"enabled": True, "start": start_beats,
+                          "length": length_beats})
+    ableton.send_command("focus_view", {"view": "Arranger"})
+    appname = _app_name(app)
+    _osa('tell application "%s" to activate' % appname)
+    _rsleep(0.4)
+    _click_edit_menu("Select Loop")
+    _rsleep(0.3)
+
+    since = time.time()
+    if not _open_export_dialog():
+        return _err("The Export Audio/Video dialog did not appear (System Events "
+                    "may lack Accessibility permission, or the screen is locked).")
+
+    ui = _export_ui
+    ok, range_detail = _verify_export_range(ui, start_beats, length_beats, sig)
+    if not ok:
+        ui.press("Cancel")
+        return _err("The Export dialog seeded the wrong range (%s) - not "
+                    "rendering. Check that the Arrangement view is reachable and "
+                    "that Edit > Select Loop is enabled." % range_detail)
+
+    for popup in plan["popups"]:
+        ui.set_popup(popup["description"], popup["value"])
+    clicked = _apply_toggles(plan["toggles"], ui)
+
+    bad = _verify_dialog_state(ui, plan)
+    if bad:
+        ui.press("Cancel")
+        return _err("The Export dialog would not accept: %s - cancelled without "
+                    "rendering." % ", ".join(bad))
+
+    ui.press("Export")
+    if not _wait_until(lambda: _live_window_exists(_SAVE_WINDOW),
+                       timeout=15.0, interval=0.4, sleep=_rsleep):
+        return _err("Export was pressed but the Save panel never appeared.",
+                    rendered=False)
+
+    # The Save panel has no AX-pressable Save button: confirm by typing the name
+    # and pressing Return (the _save_as_impl pattern).
+    _osa('tell application "%s" to activate' % appname)
+    _rsleep(0.3)
+    _osa('tell application "System Events" to keystroke "a" using {command down}')
+    _rsleep(0.2)
+    _keystroke(basename)
+    _rsleep(0.3)
+    _press_return()
+
+    done = _wait_until(lambda: not _live_window_exists(_EXPORT_WINDOW)
+                       and not _live_window_exists(_SAVE_WINDOW),
+                       timeout=timeout, interval=1.0, sleep=_rsleep)
+    if not done:
+        return _err("The render did not finish within %ss (the Export/Save "
+                    "windows are still open). No file is claimed; check Live."
+                    % timeout, rendered=False)
+
+    primary_ext = _RENDER_EXT[plan["file_type"]] if plan["pcm"] else "mp3"
+    path = _resolve_render_path(basename, primary_ext, since)
+    extra = []
+    if plan["pcm"] and plan["mp3"]:
+        mp3_path = _resolve_render_path(basename, "mp3", since)
+        if mp3_path:
+            extra.append(mp3_path)
+    size, duration = _file_stats(path) if path else (None, None)
+
+    return _ok({
+        "name": basename,
+        "path": path or None,
+        "extra_paths": extra,
+        "bytes": size,
+        "duration_s": duration,
+        "file_type": plan["file_type"],
+        "bit_depth": plan["bit_depth"],
+        "sample_rate": plan["sample_rate"],
+        "pcm": plan["pcm"],
+        "mp3": plan["mp3"],
+        "range": {"start_bar": start_bar, "end_bar": end_bar},
+        "toggles_clicked": clicked,
+        "range_check": range_detail,
+        "rendered": True,
+    })
+
+
+@mcp.tool()
+def render_audio(ctx: Context, name: str, start_bar: int = None,
+                 end_bar: int = None, file_type: str = "WAV",
+                 bit_depth: int = 24, sample_rate: int = 44100,
+                 normalize: bool = False, mp3: bool = False, mono: bool = False,
+                 include_returns: bool = True, analysis_file: bool = True,
+                 dither: str = "No Dither", timeout: float = 600.0) -> str:
+    """Bounce the set's Main output to an audio file on disk (there is no LOM
+    render API - this drives Live's Export Audio/Video dialog via System Events,
+    so Live needs Accessibility permission; it briefly focuses Live and switches
+    it to the Arrangement view).
+
+    name: the file name (not a path; may not contain '/' or ':').
+    start_bar / end_bar: 1-based bar range, end EXCLUSIVE (5..13 = 8 bars). Pass
+      neither to render the whole song. The range is applied by setting the
+      arrangement loop and selecting it - the dialog's own range sliders are not
+      writable - so the arrangement loop is left set to the rendered range.
+    file_type: WAV | AIFF | FLAC | MP3. bit_depth: 16 | 24 | 32.
+    sample_rate: 44100 | 48000 | 88200 | 96000 | 176400 | 192000.
+    mp3: also emit an MP3 alongside a PCM file_type.
+    dither: No Dither | Triangular | Rectangular | POW-r 1 | POW-r 2 | POW-r 3.
+    timeout: seconds to wait for the render to finish (a full track takes real
+      time; the tool polls, it never sleeps a fixed amount).
+
+    The output DIRECTORY is Live's last-used export location and is not
+    controllable; 'path' is resolved afterwards via Spotlight and may be null
+    even on a successful render (the file exists, we just could not locate it).
+
+    Returns JSON {ok, data:{name, path, extra_paths, bytes, duration_s,
+    file_type, bit_depth, sample_rate, range, rendered}}.
+    """
+    try:
+        return _render_audio_impl(
+            name, start_bar=start_bar, end_bar=end_bar, file_type=file_type,
+            bit_depth=bit_depth, sample_rate=sample_rate, normalize=normalize,
+            mp3=mp3, mono=mono, include_returns=include_returns,
+            analysis_file=analysis_file, dither=dither, timeout=timeout)
+    except (ValueError, RuntimeError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("render_audio error: %s", e)
+        return _err("render_audio error: %s" % e)
 
 
 # === Arrangement-timeline automation (#30) ============================== #
