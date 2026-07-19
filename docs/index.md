@@ -17,7 +17,7 @@ permalink: /
     <div><div class="stats__num">187</div><div class="stats__label">Tools</div></div>
     <div><div class="stats__num">24</div><div class="stats__label">Categories</div></div>
     <div><div class="stats__num">Live 11 &amp; 12</div><div class="stats__label">Target</div></div>
-    <div><div class="stats__num">MIT</div><div class="stats__label">License</div></div>
+    <div><div class="stats__num">Free non-commercial</div><div class="stats__label">License</div></div>
   </div>
 </div>
 
