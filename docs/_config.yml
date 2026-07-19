@@ -24,7 +24,8 @@ aux_links:
 aux_links_new_tab: true
 
 footer_content: >-
-  ableton-mcp-max - MIT licensed. Built by Ryan Robson / Robworks Software LLC.
+  ableton-mcp-max - free for noncommercial use; commercial licensing available.
+  Built by Ryan Robson / Robworks Software LLC.
   Not affiliated with or endorsed by Ableton AG.
 
 # Keep the committed superpowers specs/plans out of the built site.

@@ -50,3 +50,20 @@ Separated stems are written under the Live User Library
 (`Samples/Stems/<model>/<name>/`) so Live's browser can index and load them, and
 they persist there - the Arrangement clips reference those files on disk. To keep
 a set fully self-contained, use Live's Collect All and Save afterward.
+
+## License
+
+Free for noncommercial use under the
+[PolyForm Noncommercial License 1.0.0](LICENSE) - personal study, hobby
+projects, private entertainment, research, and use by nonprofits and
+educational institutions.
+
+**Commercial use requires a paid license.** That includes producing music you
+sell or license, client or contract work, use inside a business, and bundling
+this software into a commercial product or service. Commercial licenses are
+offered by Robworks Software LLC - to arrange one, email licensing@robworks.info.
+
+Releases up to and including v0.33.0 were published under the MIT License and
+remain available under those terms. This project is a fork of
+[ahujasid/ableton-mcp](https://github.com/ahujasid/ableton-mcp); see
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
