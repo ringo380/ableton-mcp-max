@@ -22,7 +22,7 @@ permalink: /
 </div>
 
 [Browse all 187 tools](./tools/){: .btn .btn-primary .mr-2 }
-[Get it on the marketplace](https://github.com/ringo380/robworks-claude-code-plugins){: .btn }
+[Get it on the marketplace](https://github.com/robworks-code/robworks-claude-code-plugins){: .btn }
 
 ---
 
@@ -35,7 +35,7 @@ The fastest path is the **Robworks marketplace** as a Claude Code plugin.
 In Claude Code:
 
 ```
-/plugin marketplace add ringo380/robworks-claude-code-plugins
+/plugin marketplace add robworks-code/robworks-claude-code-plugins
 /plugin install ableton@robworks-claude-code-plugins
 ```
 
