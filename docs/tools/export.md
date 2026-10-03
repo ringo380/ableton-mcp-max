@@ -39,12 +39,14 @@ render_audio(
 ```
 
 Bounce the set's Main output to an audio file on disk (there is no LOM
-render API - this drives Live's Export Audio/Video dialog via System Events,
-so Live needs Accessibility permission; it briefly focuses Live and switches
+render API - this drives Live's Export Audio/Video dialog: via System
+Events on macOS, so Live needs Accessibility permission; via UI Automation
+and the Windows Save dialog on Windows. It briefly focuses Live and switches
 it to the Arrangement view).
 
-name: the file name (not a path; may not contain '/' or ':'). Re-using a
-  name overwrites the existing file (the panel's Replace prompt is confirmed).
+name: the file name (not a path; may not contain '/' or ':', and on Windows
+  none of \ / : * ? " < > |). Re-using a name overwrites the existing file
+  (the Replace prompt is confirmed).
 start_bar / end_bar: 1-based bar range, end EXCLUSIVE (5..13 = 8 bars). Pass
   neither to render the whole song. The range is applied by setting the
   arrangement loop and selecting it - the dialog's own range sliders are not
@@ -61,7 +63,8 @@ timeout: seconds to wait for the render to finish (a full track takes real
   time; the tool polls, it never sleeps a fixed amount).
 
 The output DIRECTORY is Live's last-used export location and is not
-controllable; 'path' is resolved afterwards via Spotlight and may be null
+controllable. On Windows 'path' is exact (the folder is read off the Save
+dialog). On macOS it is resolved afterwards via Spotlight and may be null
 even on a successful render (the file exists, we just could not locate it).
 
 Returns JSON {ok, data:{name, path, extra_paths, bytes, duration_s,

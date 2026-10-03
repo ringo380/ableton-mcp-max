@@ -100,4 +100,4 @@ def test_search_samples_flags_icloud_placeholder(tmp_path, monkeypatch):
     items = out["data"]["items"]
     kick = next(i for i in items if i["name"] == "Kick.wav")
     assert kick["is_icloud_placeholder"] is True
-    assert kick["path"].endswith("/Samples/Drums/Kick.wav")
+    assert kick["path"].endswith(os.path.join("Samples", "Drums", "Kick.wav"))

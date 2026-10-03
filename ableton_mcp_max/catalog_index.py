@@ -69,7 +69,7 @@ def _folder_words(folder):
 def _delete_subtree(conn, domain, source, root):
     conn.execute(
         "DELETE FROM items WHERE domain=? AND source=? AND path LIKE ?",
-        (domain, source, root.rstrip("/") + os.sep + "%"))
+        (domain, source, root.rstrip("/\\") + os.sep + "%"))
 
 
 def _upsert_fs(conn, domain, name, path, source, folder, kind, loadable,

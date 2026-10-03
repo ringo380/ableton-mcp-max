@@ -192,7 +192,7 @@ def signature(fn):
 
 
 def collect():
-    tree = ast.parse(open(SERVER).read())
+    tree = ast.parse(open(SERVER, encoding="utf-8").read())
     tools = {}
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and is_tool(node):
@@ -281,10 +281,13 @@ def main():
     assert not extra, f"Categorized names that don't exist: {sorted(extra)}"
     assert len(mapped) == len(set(mapped)), "Duplicate tool in category map"
     os.makedirs(TOOLS_DIR, exist_ok=True)
-    open(os.path.join(TOOLS_DIR, "index.md"), "w").write(render_index(len(tools)))
+    # newline="\n": identical bytes whether generated on macOS or Windows.
+    open(os.path.join(TOOLS_DIR, "index.md"), "w", encoding="utf-8",
+         newline="\n").write(render_index(len(tools)))
     for i, (slug, title, blurb, names) in enumerate(CATEGORIES, start=1):
         path = os.path.join(TOOLS_DIR, f"{slug}.md")
-        open(path, "w").write(render_category(slug, title, blurb, names, tools, i))
+        open(path, "w", encoding="utf-8", newline="\n").write(
+            render_category(slug, title, blurb, names, tools, i))
     print(f"Generated {len(tools)} tools across {len(CATEGORIES)} categories into docs/tools/")
 
 

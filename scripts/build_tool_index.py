@@ -185,7 +185,7 @@ def first_line(doc):
 
 
 def main():
-    tree = ast.parse(open(SERVER).read())
+    tree = ast.parse(open(SERVER, encoding="utf-8").read())
     docs = {}
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -213,7 +213,8 @@ def main():
         for n in names:
             lines.append("- **`%s`** - %s" % (n, docs[n]))
         lines.append("")
-    open(OUT, "w").write("\n".join(lines).rstrip() + "\n")
+    open(OUT, "w", encoding="utf-8", newline="\n").write(
+        "\n".join(lines).rstrip() + "\n")
     print("Wrote %s (%d tools)" % (OUT, len(docs)))
 
 

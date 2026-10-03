@@ -49,20 +49,22 @@ save_set(name: str = '')
 ```
 
 Save the current Live set to disk (there is no LOM save API — this drives
-Live's save UI via System Events, so Live must have Accessibility permission;
-it briefly brings Live to the front).
+Live's save UI: via System Events on macOS, so Live must have Accessibility
+permission; via Live's menu and the Windows Save dialog on Windows. A
+Save-As briefly brings Live to the front).
 
 name: leave empty to save a TITLED set in place (File > Save Live Set; a
   no-op if clean). For an UNTITLED set you MUST pass a name (an empty call
   returns an error). A non-empty name always Saves-As under that name.
 The set is saved to Live's last-used save location (Ableton wraps it in a
-'<name> Project' folder); the tool controls the NAME, not the directory —
-arbitrary-directory save-as isn't reliably scriptable through Live's panel.
-A name may not contain '/' or ':'.
+'<name> Project' folder unless that location is already inside a project);
+the tool controls the NAME, not the directory. A name may not contain '/'
+or ':' (on Windows, none of \ / : * ? " < > | either).
 
 Returns JSON {ok, data:{saved, title|name, path?, untitled?, error?}}.
-'path' is a best-effort location of the saved file (it searches common save
-folders). Confirmation is by the window title; verify on disk if it matters.
+'path' is the saved file: exact on Windows (read off the Save dialog),
+best-effort on macOS (it searches common save folders). Confirmation is by
+the window title; verify on disk if it matters.
 
 ## save_set_as
 
@@ -72,13 +74,15 @@ save_set_as(name: str)
 
 Save the current Live set under a new NAME (File > Save Live Set As). Use
 for an Untitled set, or to save a copy under a new name. Drives Live's save
-UI via System Events (needs Accessibility permission; briefly focuses Live).
+UI (System Events on macOS - needs Accessibility permission; the Windows
+Save dialog on Windows) and briefly focuses Live. An existing file of the
+same name is replaced.
 
 name: the set name (not a path). Saved to Live's last-used save location,
-  wrapped in a '<name> Project' folder — the tool controls the name, not the
-  directory (arbitrary-directory navigation through Live's panel isn't
-  reliably scriptable). A name may not contain '/' or ':'.
+  wrapped in a '<name> Project' folder unless that location is already
+  inside a project - the tool controls the name, not the directory. A name
+  may not contain '/' or ':' (on Windows, none of \ / : * ? " < > |).
 
-Returns JSON {ok, data:{saved, name, path?, error?}}. 'path' is a best-effort
-location of the saved file; confirmation is by the window title.
+Returns JSON {ok, data:{saved, name, path?, error?}}. 'path' is exact on
+Windows, best-effort on macOS; confirmation is by the window title.
 

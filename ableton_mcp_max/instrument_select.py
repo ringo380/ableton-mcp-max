@@ -8,6 +8,9 @@ resolved in server.py and passed in as an environment dict.
 import json
 import os
 import re
+import sys
+
+from ableton_mcp_max import platform_utils as plat
 
 _PROFILES_PATH = os.path.join(os.path.dirname(__file__), "param_maps",
                               "instrument_profiles.json")
@@ -43,17 +46,8 @@ def parse_intent(text, profiles):
             "character": _all_matches(t, profiles["character_vocab"])}
 
 
-_SERUM_INSTALL_CANDIDATES = [
-    "/Library/Audio/Plug-Ins/VST3/Serum2.vst3",
-    os.path.expanduser("~/Library/Audio/Plug-Ins/VST3/Serum2.vst3"),
-    "/Library/Audio/Plug-Ins/VST3/Serum.vst3",
-    os.path.expanduser("~/Library/Audio/Plug-Ins/VST3/Serum.vst3"),
-    "/Library/Audio/Plug-Ins/Components/Serum2.component",
-    os.path.expanduser("~/Library/Audio/Plug-Ins/Components/Serum2.component"),
-    "/Library/Audio/Plug-Ins/Components/Serum.component",
-    os.path.expanduser("~/Library/Audio/Plug-Ins/Components/Serum.component"),
-    "/Library/Audio/Presets/Xfer Records/Serum 2 Presets",
-]
+_SERUM_INSTALL_CANDIDATES = plat.serum_install_candidates(
+    sys.platform, os.path.expanduser("~"), os.environ.get("CommonProgramFiles"))
 
 _PLUGIN_CLASSES = ("PluginDevice", "AuPluginDevice")
 

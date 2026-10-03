@@ -72,6 +72,6 @@ Remote Script load errors / command logs live in `~/Library/Preferences/Ableton/
 ## (Maintainers only) restart protocol
 
 If you EDIT the plugin's code, changes don't hot-reload:
-- Edited the Remote Script (`remote_script/...`)? Reinstall (`scripts/install_remote_script.sh`) then quit + reopen Live so it re-scans Control Surfaces.
+- Edited the Remote Script (`remote_script/...`)? Reinstall (`scripts/install_remote_script.sh` on macOS, `scripts/install_remote_script.ps1` on Windows) then quit + reopen Live so it re-scans Control Surfaces.
 - Edited `server.py` or any `*_utils.py` it imports? Restart Claude Code (the MCP server loads at session start).
 - Batch both, then do ONE reinstall + ONE dual-restart.

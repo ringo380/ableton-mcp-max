@@ -22,11 +22,18 @@ MENU_CHECK = u"\u2714"
 _MENU_ALIASES = {"Main": ("Master",), "Master": ("Main",)}
 
 
+# On Windows, UIA reports the selected item as "<name>, checked" instead.
+MENU_CHECK_SUFFIX = ", checked"
+
+
 def strip_menu_check(name):
-    """A dropdown item's name without Live's leading selected-item check mark."""
+    """A dropdown item's name without Live's selected-item marker (the macOS
+    leading check mark or the Windows ', checked' suffix)."""
     n = (name or "").strip()
     if n.startswith(MENU_CHECK):
         n = n[1:].strip()
+    if n.endswith(MENU_CHECK_SUFFIX):
+        n = n[:-len(MENU_CHECK_SUFFIX)].strip()
     return n
 
 
@@ -56,13 +63,15 @@ def _one_of(value, allowed, label):
     return v
 
 
-def clean_render_name(name):
+def clean_render_name(name, illegal="/:"):
     """Basename for the render. Rejects the characters that hijack the macOS
-    save panel: '/' opens Go-to-Folder, ':' is the legacy path separator."""
+    save panel ('/' opens Go-to-Folder, ':' is the legacy path separator) and,
+    when the caller passes Windows' set, every character Windows forbids in a
+    file name."""
     n = (name or "").strip()
     if not n:
         raise ValueError("name is required (the render needs a file name).")
-    for ch in ("/", ":"):
+    for ch in illegal:
         if ch in n:
             raise ValueError("name may not contain %r." % ch)
     return n

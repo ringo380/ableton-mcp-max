@@ -28,7 +28,7 @@ def is_untitled_title(title):
     return bool(_UNTITLED_RE.match(t))
 
 
-def clean_set_name(value):
+def clean_set_name(value, illegal="/:"):
     """Reduce a user-supplied value to a bare Live set NAME (no directory, no
     ``.als``). Ableton's Save-As panel saves to its last-used location and wraps
     the set in a ``<name> Project`` folder, so the tools take a name, not a path
@@ -50,6 +50,10 @@ def clean_set_name(value):
     if "/" in base or ":" in base:
         raise ValueError("name must not contain '/' or ':' (pass a name, not a "
                          "path): %r" % base)
+    bad = [ch for ch in illegal if ch in base]
+    if bad:
+        raise ValueError("name must not contain %s (pass a name, not a path): %r"
+                         % (" ".join(repr(c) for c in illegal), base))
     return base
 
 

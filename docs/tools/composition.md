@@ -267,7 +267,7 @@ and reloading Live in place. This is the ONLY way to author arrangement
 automation — the LOM cannot (clip envelopes are session-only).
 
 The set MUST be saved to a real file first (an Untitled set errors — use
-save_set_as). Live is briefly focused (System Events) for the in-place
+save_set_as). Live is briefly focused (System Events on macOS) for the in-place
 reload, and the open set is reloaded from disk (~5s); one MCP call right
 after may transiently fail and self-heal.
 

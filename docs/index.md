@@ -66,8 +66,10 @@ the server reconnects - just retry once.
 
 > **Manual install (without the plugin):** clone
 > [the repo](https://github.com/ringo380/ableton-mcp-max), run
-> `bash scripts/install_remote_script.sh`, enable the Control Surface, run
-> `bash scripts/register_mcp.sh`, then restart Claude Code.
+> `bash scripts/install_remote_script.sh` (Windows:
+> `powershell -ExecutionPolicy Bypass -File scripts\install_remote_script.ps1`),
+> enable the Control Surface, run `bash scripts/register_mcp.sh` (Windows:
+> `scripts\register_mcp.ps1`), then restart Claude Code.
 
 ---
 

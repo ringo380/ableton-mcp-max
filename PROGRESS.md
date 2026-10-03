@@ -1,5 +1,52 @@
 # ableton-mcp-max — Progress
 
+## Windows support - branch feat/windows-support (2026-10-03, unreleased)
+The plugin now runs against Live 12 on Windows 11. Tool count unchanged (187).
+
+**Why it failed on Windows:** (1) `.mcp.json` launched `hooks/scripts/launch-mcp.sh` - Windows can't
+exec a `.sh` ("'sh' is not recognized"); it now runs `uv run --directory ${CLAUDE_PLUGIN_ROOT}
+ableton-mcp-max` directly (both OSes), and the SessionStart hook likewise calls `uv run ... orient_hook.py`
+(the hook reads the session cwd from its stdin JSON; Live detection uses `tasklist` on Windows). Both `.sh`
+wrappers are deleted. (2) The Remote Script had never been installed - new `scripts/install_remote_script.ps1`
+installs into `C:\ProgramData\Ableton\Live*\Resources\MIDI Remote Scripts\AbletonMCP`. The Remote Script
+itself needed no change.
+
+**48 of 187 tools touched macOS-only code** (paths, lsof/ps/open/mdfind/brctl, osascript). Ported:
+- `platform_utils.py` (pure, platform injected, darwin cases pin the old values): Core Library
+  (`C:\ProgramData\Ableton\Live N*\Resources\Core Library`), prefs (`%APPDATA%\Ableton\Live x.y.z\Preferences`,
+  exact running version via `get_application_version`, else numeric version sort), User Library fallback,
+  factory-set filter, Serum 2 presets (`<Documents>\Xfer\Serum 2 Presets\Presets\{Factory,User}`, Documents =
+  known folder, OneDrive-redirected), Serum install, title parsing ('Name* - Ableton Live 12 Suite'),
+  Windows-illegal name chars.
+- `win_ui.py` (ctypes, no deps): Live's pid from the port (GetExtendedTcpTable), `pid_alive` via
+  OpenProcess (NEVER `os.kill(pid, 0)` on Windows - it terminates), native Win32 menu commands posted as
+  WM_COMMAND by label (ids change between launches), WM_CLOSE quit, stock Save dialog helpers.
+- `win_uia.py` (comtypes, Windows-only dep): the Export dialog over UI Automation - control names match the
+  macOS AX descriptions exactly; toggles read On/Off and Invoke; dropdowns are an unnamed window of MenuItems,
+  selected item named '<x>, checked' (`strip_menu_check` handles it).
+- `server.py` dispatches on `IS_WINDOWS`; macOS code paths unchanged. `tests/conftest.py` pins every test to
+  the macOS branch by default (an unpatched Windows primitive could otherwise hit a REAL running Live).
+
+**Hard-won Windows facts (Live 12.4.6):**
+- The stock Save dialog IGNORES a file name set by WM_SETTEXT or UIA ValuePattern.SetValue - the text reads
+  back but Save uses the previous name ("Untitled") in the last-used folder. Probing this wrote stray
+  Untitled.als/.wav into a real project folder (moved out). The name must be TYPED (SendInput) with the dialog
+  as the exact foreground window; `file_dialog_save` verifies the read-back and cancels on mismatch.
+- The Save dialog's address bar gives the target folder, so save/render paths are exact on Windows.
+- Dirty state is visible: the main title gets '*'. The save-changes prompt is a Live-drawn window with UIA
+  Yes/No/Cancel; the overwrite prompt is the stock 'Confirm Save As' box.
+- Opening an .als with `os.startfile` hands it to the running Live (no second instance).
+- One WM_CLOSE quit (Live running ~7h) left the process hung at "Not Responding" after its window closed;
+  it could not be killed (taskkill: "no running instance") - likely stuck in the audio driver. A later clean
+  WM_CLOSE exited in 2.0s. `restart_live` reports this case (`quit:false`, pid) and does not relaunch over it.
+
+**LIVE-VERIFIED on Windows (Live 12.4.6 Suite) through the real `_impl` functions:** rejected names;
+`save_set_as` new name (exact path) and identical re-run (overwrite confirmed, file rewritten); `save_set`
+in place on a dirty titled set ('*' cleared); `save_set` on Untitled (clean error, no dialog); `render_audio`
+bars 1-3 twice (8 beats verified, 4.0s WAV, overwrite, loop restored); `set_arrangement_automation` (EQ Eight
+gain envelope in the .als, reloaded in place); `restart_live(save='discard')` on a dirty set (prompt answered,
+relaunched, surface up in 4.2s). Offline: 1204 passed.
+
 ## render_audio + focus_view - SHIPPED v0.33.0 (2026-07-14)
 Bounce the set's Main output to disk. **2 new `@mcp.tool()`s** (built via SDD; spec
 `docs/superpowers/specs/2026-07-13-render-audio-design.md`, plan
