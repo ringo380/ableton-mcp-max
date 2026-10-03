@@ -258,6 +258,33 @@ def test_no_live_raises(fake):
         server._save_as_impl("x", sleep=NOSLEEP)
 
 
+# --- other Live windows open (Settings, plugin editors) ---------------------------
+
+def test_render_finished_ignores_windows_open_before_render(fake, monkeypatch):
+    monkeypatch.setattr(server, "_live_window_exists", lambda t: False)
+    handles = {"now": {100, 300}}                 # 300 = a plugin editor
+    monkeypatch.setattr(server, "_live_window_handles", lambda: handles["now"])
+    baseline = {100, 300}
+    assert server._render_finished(baseline) is True
+    handles["now"] = {100, 300, 900}              # a render progress box
+    assert server._render_finished(baseline) is False
+
+
+@pytest.mark.skipif(not server.plat.is_windows(__import__("sys").platform),
+                    reason="win_ui loads user32 (Windows only)")
+def test_main_window_is_the_one_with_the_menu_bar(monkeypatch):
+    from types import SimpleNamespace
+    from ableton_mcp_max import win_ui
+    cls = win_ui.LIVE_WINDOW_CLASS
+    monkeypatch.setattr(win_ui, "windows", lambda pid: [
+        (7, "Settings", cls), (8, "", cls), (9, "Song - Ableton Live 12 Suite", cls)])
+    monkeypatch.setattr(win_ui, "user32", SimpleNamespace(GetMenu=lambda h: h == 9))
+    assert win_ui.main_window(1) == 9
+    # no menu readable: fall back to the title suffix, never 'first window'
+    monkeypatch.setattr(win_ui, "user32", SimpleNamespace(GetMenu=lambda h: 0))
+    assert win_ui.main_window(1) == 9
+
+
 # --- pure name / menu helpers -----------------------------------------------------
 
 def test_clean_names_default_is_macos_rule():

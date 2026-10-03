@@ -11,22 +11,29 @@ Buttons whose Value reads 'On'/'Off' and which Invoke to flip; its pop-ups are
 ComboBoxes (Value + ExpandCollapse); the range boxes are Sliders whose Value is
 the displayed number.
 """
+import threading
 import time
 
 import comtypes
 import comtypes.client
 
 _UIA = comtypes.client.GetModule("UIAutomationCore.dll")
-_auto = None
+# One COM init + IUIAutomation per THREAD: FastMCP 1.27 runs sync tools on the
+# event-loop thread, but a COM object must not be used from a thread that
+# didn't initialize COM, so don't assume that stays true.
+_local = threading.local()
+_create_lock = threading.Lock()     # concurrent first-time creation raced (E_FAIL)
 
 
 def _uia():
-    global _auto
-    if _auto is None:
-        comtypes.CoInitialize()
-        _auto = comtypes.client.CreateObject(
-            _UIA.CUIAutomation, interface=_UIA.IUIAutomation)
-    return _auto
+    auto = getattr(_local, "auto", None)
+    if auto is None:
+        with _create_lock:
+            comtypes.CoInitialize()
+            auto = comtypes.client.CreateObject(
+                _UIA.CUIAutomation, interface=_UIA.IUIAutomation)
+        _local.auto = auto
+    return auto
 
 
 def element(hwnd):

@@ -153,9 +153,19 @@ def windows(pid):
 
 
 def main_window(pid):
-    """hwnd of Live's main set window, or None."""
-    for hwnd, _title, cls in windows(pid):
-        if cls == LIVE_WINDOW_CLASS:
+    """hwnd of Live's main SET window, or None.
+
+    Settings, the Export dialog, prompts, dropdowns and plugin editors all
+    share Live's window class and can sit above the set window in z-order, so
+    'first Live-class window' is wrong whenever one is open (the macOS layer
+    hit the same trap with an Ozone editor). Only the set window owns the
+    native menu bar; the ' - Ableton Live' title suffix is the fallback."""
+    wins = [w for w in windows(pid) if w[2] == LIVE_WINDOW_CLASS]
+    for hwnd, _title, _cls in wins:
+        if user32.GetMenu(hwnd):
+            return hwnd
+    for hwnd, title, _cls in wins:
+        if " - Ableton Live" in title:
             return hwnd
     return None
 

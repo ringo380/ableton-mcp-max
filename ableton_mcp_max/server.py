@@ -11,6 +11,7 @@ import math
 import time
 import subprocess
 import platform
+import shutil
 import sys
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
@@ -1809,6 +1810,13 @@ if IS_WINDOWS:
     from ableton_mcp_max import win_ui as _win
 
 
+def _os_name():
+    """The OS the UI layer is driving: plat.WIN whenever the Windows layer is
+    selected (so its title/name rules apply even when tests select it on a
+    Mac), else the real platform."""
+    return plat.WIN if IS_WINDOWS else sys.platform
+
+
 def _prefs_base():
     """Parent dir of Live's per-version preference dirs."""
     return plat.prefs_base(sys.platform, os.path.expanduser("~"),
@@ -1923,7 +1931,7 @@ def _live_window_title(proc=_LIVE_PROC):
     the app suffix and the unsaved '*' are stripped so callers see the same
     bare set name as on macOS."""
     if IS_WINDOWS:
-        return plat.set_title_from_window_title(sys.platform, _win_raw_title())
+        return plat.set_title_from_window_title(_os_name(), _win_raw_title())
     title = _osa_get(
         'tell application "System Events" to tell process "%s" to get name of '
         '(first window whose subrole is "AXStandardWindow")' % proc)
@@ -2153,7 +2161,7 @@ def _win_saved_path(folder, basename):
 
 
 def _win_save_as_impl(name, sleep=time.sleep):
-    basename = clean_set_name(name, illegal=plat.illegal_name_chars(sys.platform))
+    basename = clean_set_name(name, illegal=plat.illegal_name_chars(_os_name()))
     pid, hwnd, exe = _win_live()
     result = {"app": exe, "name": basename}
     _win.post_menu(hwnd, "File", "Save Live Set As...")
@@ -2194,7 +2202,7 @@ def _win_save_set_impl(name="", sleep=time.sleep):
         return _win_save_as_impl(name, sleep=sleep)
     pid, hwnd, exe = _win_live()
     raw = _win.window_title(hwnd)
-    title = plat.set_title_from_window_title(sys.platform, raw)
+    title = plat.set_title_from_window_title(_os_name(), raw)
     if is_untitled_title(title):
         return {"app": exe, "saved": False, "untitled": True, "title": title,
                 "error": ("Set is untitled (no file on disk). Pass a name "
@@ -2206,7 +2214,7 @@ def _win_save_set_impl(name="", sleep=time.sleep):
     def _done():
         if _win.find_window(pid, _WIN_SAVE_SET_DIALOG):
             return True
-        return not plat.window_title_dirty(sys.platform, _win.window_title(hwnd))
+        return not plat.window_title_dirty(_os_name(), _win.window_title(hwnd))
     _wait_until(_done, timeout=10.0, interval=0.3, sleep=sleep)
     dlg = _win.find_window(pid, _WIN_SAVE_SET_DIALOG)
     if dlg:
@@ -2214,7 +2222,7 @@ def _win_save_set_impl(name="", sleep=time.sleep):
         return {"app": exe, "saved": False, "title": title,
                 "error": ("A save dialog appeared on Save - the set looks "
                           "untitled. Use save_set(name=...) to give it a name.")}
-    if plat.window_title_dirty(sys.platform, _win.window_title(hwnd)):
+    if plat.window_title_dirty(_os_name(), _win.window_title(hwnd)):
         return {"app": exe, "saved": False, "title": title,
                 "error": "Live still shows unsaved changes after Save."}
     return {"app": exe, "saved": True, "title": title}
@@ -2226,10 +2234,10 @@ def _win_restart_live_impl(save="discard", relaunch=True, wait_timeout=90.0,
         raise ValueError("save must be 'discard' or 'save' (got %r)." % save)
     pid, hwnd, exe = _win_live()
     raw = _win.window_title(hwnd)
-    dirty = bool(plat.window_title_dirty(sys.platform, raw))
+    dirty = bool(plat.window_title_dirty(_os_name(), raw))
     result = {"app": exe, "pid": pid, "save": save, "was_dirty": dirty}
     if dirty and save == "save" and is_untitled_title(
-            plat.set_title_from_window_title(sys.platform, raw)):
+            plat.set_title_from_window_title(_os_name(), raw)):
         # Saving would open a Save-As dialog this can't name - refuse up front
         # instead of leaving Live half-quit.
         result["quit"] = False
@@ -2876,7 +2884,16 @@ def _dismiss_export_dialog(ui):
                 ui.press("Cancel")
         except Exception as e:
             logger.error("render_audio: could not dismiss the dialog: %s", e)
-            _live_press_escape()
+            if IS_WINDOWS:
+                # The dialog may already be closing; WM_CLOSE whatever is left
+                # (equivalent to its Cancel).
+                pid = _win.listening_pid(LIVE_PORT)
+                for title in (_SAVE_WINDOW, _EXPORT_WINDOW):
+                    h = _win.find_window(pid, title) if pid else None
+                    if h:
+                        _win.close(h)
+            else:
+                _live_press_escape()
         _rsleep(0.5)
     left = _dialog_is_open()
     if left:
@@ -2917,14 +2934,22 @@ def _mdfind_named(basename):
         return []
 
 
-def _render_finished():
+def _live_window_handles():
+    """Windows: hwnds of Live's visible top-level windows (a snapshot taken
+    before a render, so windows that were already open - plugin editors,
+    Settings - never count as render windows)."""
+    pid = _win.listening_pid(LIVE_PORT)
+    return set(h for h, _t, _c in _win.windows(pid)) if pid else set()
+
+
+def _render_finished(baseline=None):
     """True once the render's dialogs are all gone. On Windows also wait for
-    any other Live window (the render progress box) to close, so the file is
-    complete before it is claimed."""
+    any window that appeared since `baseline` (the render progress box) to
+    close, so the file is complete before it is claimed."""
     if _live_window_exists(_EXPORT_WINDOW) or _live_window_exists(_SAVE_WINDOW):
         return False
-    if IS_WINDOWS:
-        return _live_window_count() <= 1
+    if IS_WINDOWS and baseline is not None:
+        return not (_live_window_handles() - baseline)
     return True
 
 
@@ -2938,7 +2963,7 @@ def _render_candidates(basename, folder=None):
         return [os.path.join(folder, n) for n in os.listdir(folder)] \
             if os.path.isdir(folder) else []
     out = []
-    for root in plat.render_search_roots(sys.platform, os.path.expanduser("~"),
+    for root in plat.render_search_roots(_os_name(), os.path.expanduser("~"),
                                          _documents_dir()):
         base_depth = root.rstrip("\\/").count(os.sep)
         for dirpath, dirnames, filenames in os.walk(root):
@@ -2996,7 +3021,7 @@ def _render_audio_impl(name, start_bar=None, end_bar=None, file_type="WAV",
                        mp3=False, mono=False,
                        analysis_file=True, dither="No Dither", timeout=600.0):
     basename = clean_render_name(                  # raises ValueError if bad
-        name, illegal=plat.illegal_name_chars(sys.platform))
+        name, illegal=plat.illegal_name_chars(_os_name()))
     plan = plan_export(file_type=file_type, bit_depth=bit_depth,
                        sample_rate=sample_rate, normalize=normalize, mp3=mp3,
                        mono=mono,
@@ -3043,13 +3068,19 @@ def _render_with_dialog(ableton, app, basename, plan, sig, start_beats,
                           "length": length_beats})
     ableton.send_command("focus_view", {"view": "Arranger"})
     appname = _app_name(app)
-    if not IS_WINDOWS:      # Windows posts menu commands; no activation needed
+    if IS_WINDOWS:
+        # Select Loop acts on Live's focused view: with another Live window in
+        # front (Settings, a plugin editor) it silently does nothing and the
+        # dialog seeds a 1/16 range. Bring the SET window to the front first.
+        _win.activate(_win_live()[1])
+    else:
         _osa('tell application "%s" to activate' % appname)
-        _rsleep(0.4)
+    _rsleep(0.4)
     _click_edit_menu("Select Loop")
     _rsleep(0.3)
 
     since = time.time()
+    baseline = _live_window_handles() if IS_WINDOWS else None
     if not _open_export_dialog():
         if IS_WINDOWS:
             return _err("The Export Audio/Video dialog did not appear (another "
@@ -3121,8 +3152,8 @@ def _render_with_dialog(ableton, app, basename, plan, sig, start_beats,
         if _replace_sheet_open():
             _confirm_replace_sheet()
 
-    done = _wait_until(_render_finished, timeout=timeout, interval=1.0,
-                       sleep=_rsleep)
+    done = _wait_until(lambda: _render_finished(baseline), timeout=timeout,
+                       interval=1.0, sleep=_rsleep)
     if not done:
         return _err("The render did not finish within %ss (the Export/Save "
                     "windows are still open). No file is claimed; check Live."
@@ -8091,6 +8122,22 @@ def search_samples(
 # ---------------------------------------------------------------------------
 
 _BREW_PY = "/opt/homebrew/bin/python3"
+
+
+def _analysis_python():
+    """Command prefix for the interpreter that runs the librosa scripts, or
+    None. ABLETON_MCP_ANALYSIS_PYTHON overrides; otherwise brew python on
+    macOS and the `py -3` launcher on Windows. An interpreter without librosa
+    just makes the script fail, which the callers already degrade on."""
+    override = os.environ.get("ABLETON_MCP_ANALYSIS_PYTHON")
+    if override:
+        return [override] if os.path.exists(override) else None
+    if IS_WINDOWS:
+        launcher = shutil.which("py")
+        return [launcher, "-3"] if launcher else None
+    return [_BREW_PY] if os.path.exists(_BREW_PY) else None
+
+
 _ANALYZE_SCRIPT = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "scripts", "analyze_audio.py")
@@ -8119,11 +8166,12 @@ def _run_analysis(audio_path, timeout=120):
     Degrades gracefully: any failure (no brew python, librosa missing, decode
     error) yields (None, None, None) so the caller keeps the default tempo.
     """
-    if not os.path.exists(_BREW_PY):
+    py = _analysis_python()
+    if not py:
         return (None, None, None)
     try:
         proc = subprocess.run(
-            [_BREW_PY, _ANALYZE_SCRIPT, audio_path],
+            py + [_ANALYZE_SCRIPT, audio_path],
             capture_output=True, text=True, timeout=timeout)
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return (None, None, None)
@@ -8140,11 +8188,12 @@ def _run_chroma(items, timeout=180):
     """Run scripts/chroma_profile.py under brew python on a list of
     {path, transpose} dicts. Returns {profile, analyzed, skipped} or None on any
     failure (so the caller degrades to MIDI-only)."""
-    if not items or not os.path.exists(_BREW_PY):
+    py = _analysis_python()
+    if not items or not py:
         return None
     try:
         proc = subprocess.run(
-            [_BREW_PY, _CHROMA_SCRIPT], input=json.dumps(items),
+            py + [_CHROMA_SCRIPT], input=json.dumps(items),
             capture_output=True, text=True, timeout=timeout)
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return None
