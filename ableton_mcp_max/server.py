@@ -7882,25 +7882,36 @@ def _ensure_local(sample_path, timeout=30):
         % (timeout, sample_path))
 
 
+_SAMPLE_FALLBACK_CATEGORIES = ("user_folders", "current_project")
+
+
 def _resolve_sample_uri(sample_path, category="samples"):
     """Resolve a sample file path to its Live browser URI via the Remote Script.
 
     The LOM browser exposes a sample's name + uri but not its filesystem path,
     so the loaders (which hold the path from a filesystem walk) resolve the uri
     here by base name. Matches the first browser item with that name (a
-    duplicate name across packs resolves to the first match). Raises
+    duplicate name across packs resolves to the first match). If `category`
+    has no match, falls back to Places (user_folders) and the current
+    project, descending only folders named along the file's path. Raises
     RuntimeError if the sample is not indexed in the browser.
     """
     name = os.path.basename(sample_path)
+    parents = [p for p in re.split(r"[\\/]",os.path.dirname(sample_path)) if p]
     ableton = get_ableton_connection()
-    res = ableton.send_command("find_sample_uri", {"name": name, "category": category})
-    uri = (res or {}).get("uri")
-    if not uri:
-        raise RuntimeError(
-            "Could not resolve '%s' to a browser item. Live may not have indexed "
-            "it yet (refresh the browser or relaunch Live), or it is in a category "
-            "other than '%s'." % (name, category))
-    return uri
+    tried = [category] + [c for c in _SAMPLE_FALLBACK_CATEGORIES if c != category]
+    for cat in tried:
+        params = {"name": name, "category": cat}
+        if cat != category:
+            params["parents"] = parents
+        res = ableton.send_command("find_sample_uri", params)
+        uri = (res or {}).get("uri")
+        if uri:
+            return uri
+    raise RuntimeError(
+        "Could not resolve '%s' to a browser item in %s. Live may not have "
+        "indexed it yet (refresh the browser or relaunch Live), or its folder "
+        "is not a Place." % (name, ", ".join(tried)))
 
 
 def _read_audio_meta(path):

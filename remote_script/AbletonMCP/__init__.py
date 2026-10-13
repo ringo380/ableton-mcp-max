@@ -752,7 +752,8 @@ class AbletonMCP(ControlSurface):
             elif command_type == "find_sample_uri":
                 name = params.get("name", "")
                 category = params.get("category", "samples")
-                response["result"] = self.find_sample_uri(name, category)
+                parents = params.get("parents")
+                response["result"] = self.find_sample_uri(name, category, parents)
             elif command_type == "get_device_parameters":
                 track_index = params.get("track_index", 0)
                 device_index = params.get("device_index", 0)
@@ -3348,8 +3349,11 @@ class AbletonMCP(ControlSurface):
                     "name": new_clip.name,
                     "start_time": new_clip.start_time,
                     "end_time": new_clip.end_time,
-                    "warping": new_clip.warping,
                 }
+                # .warping raises "Warping is only available for Audio Clips"
+                # on a MIDI clip, after the clip was already placed.
+                if new_clip.is_audio_clip:
+                    info["warping"] = new_clip.warping
             return {
                 "track_index": track_index,
                 "source_slot_index": source_slot_index,
@@ -3941,7 +3945,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error getting browser presets: {0}".format(str(e)))
             self.log_message(traceback.format_exc())
 
-    def find_sample_uri(self, name, category="samples"):
+    def find_sample_uri(self, name, category="samples", parents=None):
         """Resolve a sample base name to its browser URI by walking a category.
 
         The LOM browser exposes a loadable item's name + uri but not its file
@@ -3949,6 +3953,11 @@ class AbletonMCP(ControlSurface):
         the uri here by matching the base name. Returns
         {"uri": <first match or None>, "matches": <count>}; matches exactly
         first, then case-insensitively.
+
+        Some categories (user_folders) are a list of roots rather than one
+        item. When `parents` (the folder names along the file's path) is
+        given, only folders with one of those names are descended, so a
+        large Place is not walked in full.
         """
         try:
             app = self.application()
@@ -3957,6 +3966,10 @@ class AbletonMCP(ControlSurface):
             root = getattr(app.browser, category, None)
             if root is None:
                 return {"uri": None, "matches": 0}
+            roots = [root] if hasattr(root, 'children') else list(root)
+            allowed = None
+            if parents:
+                allowed = set(p.lower() for p in parents)
             lower = name.lower()
             exact = []
             ci = []
@@ -3973,9 +3986,13 @@ class AbletonMCP(ControlSurface):
                         elif cname.lower() == lower:
                             ci.append(child.uri)
                     if hasattr(child, 'children') and child.children:
-                        walk(child, depth + 1)
+                        if allowed is None or cname.lower() in allowed:
+                            walk(child, depth + 1)
 
-            walk(root, 0)
+            for r in roots:
+                rname = r.name if hasattr(r, 'name') else ""
+                if allowed is None or r is root or rname.lower() in allowed:
+                    walk(r, 0)
             if exact:
                 return {"uri": exact[0], "matches": len(exact)}
             if ci:
