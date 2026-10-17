@@ -66,6 +66,7 @@ set_clip_property(
     clip_index: int,
     property: str,
     value: Union[int, float, str, bool],
+    clip_location: str = 'session',
 )
 ```
 
@@ -73,6 +74,10 @@ Set a single clip property. Audio-only properties are rejected on MIDI clips.
 
 Parameters:
 - track_index / clip_index: locate the clip
+- clip_location: "session" (default; clip_index is the clip slot) or
+  "arrangement" (clip_index indexes get_arrangement_clips). Moving an
+  arrangement clip's start_marker shifts which part of the audio plays at
+  the clip's position without adding warp markers.
 - property: one of looping, loop_start, loop_end, start_marker, end_marker,
   signature_numerator, signature_denominator, warping, warp_mode, gain,
   pitch_coarse, pitch_fine, and the launch settings launch_mode,

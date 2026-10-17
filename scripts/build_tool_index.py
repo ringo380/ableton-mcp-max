@@ -77,7 +77,8 @@ GROUPS = [
     ]),
     ("Arrangement", [
         "get_arrangement_clips", "duplicate_clip_to_arrangement",
-        "delete_arrangement_clip", "get_cue_points", "create_cue_point",
+        "delete_arrangement_clip", "move_arrangement_clip",
+        "get_cue_points", "create_cue_point",
         "delete_cue_point", "set_arrangement_loop", "jump_to_cue",
         "back_to_arrangement", "re_enable_automation",
     ]),

@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_187 tools._
+_188 tools._
 
 ## Session & view
 
@@ -182,6 +182,7 @@ _187 tools._
 - **`get_arrangement_clips`** - List the clips on a track's Arrangement timeline.
 - **`duplicate_clip_to_arrangement`** - Place a Session-slot clip onto the same track's Arrangement timeline.
 - **`delete_arrangement_clip`** - Delete a clip from a track's Arrangement timeline.
+- **`move_arrangement_clip`** - Move a clip along its track's Arrangement timeline.
 - **`get_cue_points`** - List arrangement cue points / locators (index, name, time).
 - **`create_cue_point`** - Create a cue point (locator) on the Arrangement at the given time.
 - **`delete_cue_point`** - Delete a cue point (locator) by its index (as listed by get_cue_points).

@@ -322,7 +322,8 @@ class AbletonMCP(ControlSurface):
             prop = params.get("property", "")
             value = params.get("value", None)
             result = self._set_clip_property(
-                track_index, clip_index, prop, value)
+                track_index, clip_index, prop, value,
+                params.get("clip_location", "session"))
         elif command_type == "set_clip_loop":
             track_index = params.get("track_index", 0)
             clip_index = params.get("clip_index", 0)
@@ -505,6 +506,11 @@ class AbletonMCP(ControlSurface):
             clip_index = params.get("clip_index", 0)
             result = self._delete_arrangement_clip(
                 track_index, clip_index)
+        elif command_type == "move_arrangement_clip":
+            result = self._move_arrangement_clip(
+                params.get("track_index", 0),
+                params.get("clip_index", 0),
+                params.get("destination_time", 0.0))
         elif command_type == "create_audio_track":
             index = params.get("index", -1)
             result = self._create_audio_track(index)
@@ -683,6 +689,7 @@ class AbletonMCP(ControlSurface):
                                  "delete_cue_at_playhead",
                                  "duplicate_clip_to_arrangement",
                                  "delete_arrangement_clip",
+                                 "move_arrangement_clip",
                                  "create_audio_track", "create_return_track",
                                  "delete_track", "delete_return_track",
                                  "duplicate_track", "undo", "redo",
@@ -2463,11 +2470,14 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error modifying clip notes: " + str(e))
             raise
 
-    def _set_clip_property(self, track_index, clip_index, prop, value):
+    def _set_clip_property(self, track_index, clip_index, prop, value,
+                           clip_location="session"):
         """Set one clip property. `prop` is canonical (server normalizes/coerces
-        first). Audio-only props on a MIDI clip raise a clear error."""
+        first). Audio-only props on a MIDI clip raise a clear error.
+        clip_location "arrangement" indexes track.arrangement_clips."""
         try:
-            clip = self._resolve_clip(track_index, clip_index)
+            clip = self._resolve_clip_loc(track_index, clip_index,
+                                          clip_location)
             audio_only = ("warping", "warp_mode", "gain",
                           "pitch_coarse", "pitch_fine")
             if prop in audio_only and not clip.is_audio_clip:
@@ -2477,6 +2487,7 @@ class AbletonMCP(ControlSurface):
             return {
                 "track_index": track_index,
                 "clip_index": clip_index,
+                "clip_location": clip_location,
                 "property": prop,
                 "value": getattr(clip, prop),
             }
@@ -3287,14 +3298,27 @@ class AbletonMCP(ControlSurface):
             out = []
             for i in range(len(clips)):
                 c = clips[i]
-                out.append({
+                info = {
                     "index": i,
                     "name": c.name,
                     "start_time": c.start_time,
                     "end_time": c.end_time,
                     "length": c.length,
                     "is_midi_clip": c.is_midi_clip,
-                })
+                    "start_marker": c.start_marker,
+                    "end_marker": c.end_marker,
+                    "looping": c.looping,
+                    "loop_start": c.loop_start,
+                    "loop_end": c.loop_end,
+                }
+                if c.is_audio_clip:
+                    info["warping"] = c.warping
+                    info["warp_mode"] = c.warp_mode
+                    try:
+                        info["warp_marker_count"] = len(c.warp_markers)
+                    except Exception:
+                        pass
+                out.append(info)
             return {"track_index": track_index, "count": len(out), "clips": out}
         except Exception as e:
             self.log_message("Error getting arrangement clips: " + str(e))
@@ -3387,6 +3411,61 @@ class AbletonMCP(ControlSurface):
                     "deleted": True, "name": name}
         except Exception as e:
             self.log_message("Error deleting arrangement clip: " + str(e))
+            raise
+
+    def _move_arrangement_clip(self, track_index, clip_index,
+                               destination_time):
+        """Move an Arrangement clip to a new start time on the same track.
+
+        Live exposes arrangement start_time read-only, so this copies the
+        clip to the destination and deletes the original. Notes, warp
+        markers, envelopes and clip settings travel with the copy."""
+        try:
+            tracks = self._song.tracks
+            if track_index < 0 or track_index >= len(tracks):
+                raise IndexError(
+                    "Track index out of range (0..%d)" % (len(tracks) - 1))
+            track = tracks[track_index]
+            clips = track.arrangement_clips
+            if clip_index < 0 or clip_index >= len(clips):
+                raise IndexError("Arrangement clip index out of range")
+            src = clips[clip_index]
+            old_start = src.start_time
+            dest = float(destination_time)
+            if dest < 0:
+                raise ValueError("destination_time must be >= 0")
+            name = src.name
+            old_end = src.end_time
+
+            def key(c):
+                return (round(c.start_time, 6), round(c.end_time, 6), c.name)
+
+            others = set(key(c) for c in clips if c is not src)
+            track.duplicate_clip_to_arrangement(src, dest)
+            # The original (or, when the copy overlaps it, the sliver Live
+            # trims it to) is whatever is left in the old range that was not
+            # there before. Other clips are left alone.
+            removed = 0
+            for c in list(track.arrangement_clips):
+                if abs(c.start_time - dest) < 1e-6 and c.name == name:
+                    continue
+                if key(c) in others:
+                    continue
+                if (c.name == name and c.start_time >= old_start - 1e-6
+                        and c.end_time <= old_end + 1e-6):
+                    track.delete_clip(c)
+                    removed += 1
+            moved = None
+            for i, c in enumerate(track.arrangement_clips):
+                if abs(c.start_time - dest) < 1e-6 and c.name == name:
+                    moved = {"index": i, "start_time": c.start_time,
+                             "end_time": c.end_time}
+            return {"track_index": track_index, "name": name,
+                    "old_start": old_start, "destination_time": dest,
+                    "removed": removed,
+                    "clip": moved}
+        except Exception as e:
+            self.log_message("Error moving arrangement clip: " + str(e))
             raise
 
     def _re_enable_automation(self):

@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **187 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **188 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -73,7 +73,7 @@ Tempo, groove, metronome, recording, punch, and the playhead.
 
 Cue points, the arrangement loop, and arrangement-timeline clips.
 
-`get_cue_points`, `create_cue_point`, `delete_cue_point`, `jump_to_cue`, `set_arrangement_loop`, `back_to_arrangement`, `get_arrangement_clips`, `duplicate_clip_to_arrangement`, `delete_arrangement_clip`
+`get_cue_points`, `create_cue_point`, `delete_cue_point`, `jump_to_cue`, `set_arrangement_loop`, `back_to_arrangement`, `get_arrangement_clips`, `duplicate_clip_to_arrangement`, `delete_arrangement_clip`, `move_arrangement_clip`
 
 ## [Arrangement Structure](./arrangement-structure.html)
 

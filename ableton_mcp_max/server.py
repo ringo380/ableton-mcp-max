@@ -309,7 +309,8 @@ MUTATING_COMMANDS = frozenset({
     "clear_automation", "create_automation_envelope", "clear_all_automation",
     "register_listener", "unregister_listener", "create_cue_at_playhead",
     "delete_cue_at_playhead", "duplicate_clip_to_arrangement",
-    "delete_arrangement_clip", "create_audio_track", "create_return_track",
+    "delete_arrangement_clip", "move_arrangement_clip",
+    "create_audio_track", "create_return_track",
     "delete_track", "delete_return_track", "duplicate_track", "undo", "redo",
     "set_groove_amount", "set_swing_amount", "set_clip_trigger_quantization",
     "set_midi_recording_quantization", "set_nudge", "set_selected_track",
@@ -6158,12 +6159,17 @@ def set_clip_property(
     clip_index: int,
     property: str,
     value: Union[int, float, str, bool],
+    clip_location: str = "session",
 ) -> str:
     """
     Set a single clip property. Audio-only properties are rejected on MIDI clips.
 
     Parameters:
     - track_index / clip_index: locate the clip
+    - clip_location: "session" (default; clip_index is the clip slot) or
+      "arrangement" (clip_index indexes get_arrangement_clips). Moving an
+      arrangement clip's start_marker shifts which part of the audio plays at
+      the clip's position without adding warp markers.
     - property: one of looping, loop_start, loop_end, start_marker, end_marker,
       signature_numerator, signature_denominator, warping, warp_mode, gain,
       pitch_coarse, pitch_fine, and the launch settings launch_mode,
@@ -6178,6 +6184,8 @@ def set_clip_property(
     try:
         canonical = normalize_clip_property(property)
         coerced = coerce_clip_value(canonical, value)
+        if clip_location not in ("session", "arrangement"):
+            raise ValueError("clip_location must be 'session' or 'arrangement'")
         ableton = get_ableton_connection()
         result = ableton.send_command(
             "set_clip_property",
@@ -6186,6 +6194,7 @@ def set_clip_property(
                 "clip_index": clip_index,
                 "property": canonical,
                 "value": coerced,
+                "clip_location": clip_location,
             },
         )
         return _ok(result)
@@ -8874,8 +8883,10 @@ def get_arrangement_clips(ctx: Context, track_index: int, limit: int = 200) -> s
       to stay within size limits; raise `limit` for more.
 
     Returns JSON {track_index, count, returned, truncated, clips:[{index, name,
-    start_time, end_time, length, is_midi_clip}, ...]}. `count` is the full
-    total; `clips` holds at most `limit` of them.
+    start_time, end_time, length, is_midi_clip, start_marker, end_marker,
+    looping, loop_start, loop_end, and for audio warping, warp_mode,
+    warp_marker_count}, ...]}. `count` is the full total; `clips` holds at most
+    `limit` of them.
     """
     try:
         idx = coerce_index(track_index)
@@ -8949,6 +8960,38 @@ def delete_arrangement_clip(ctx: Context, track_index: int,
     except Exception as e:
         logger.error(f"Error deleting arrangement clip: {str(e)}")
         return _err(f"Error deleting arrangement clip: {str(e)}")
+
+
+@mcp.tool()
+def move_arrangement_clip(ctx: Context, track_index: int, clip_index: int,
+                          destination_time: float) -> str:
+    """
+    Move a clip along its track's Arrangement timeline.
+
+    Live has no direct move, so the clip is copied to destination_time and the
+    original (or the sliver left when the copy overlaps it) is deleted. Notes,
+    warp markers and clip envelopes travel with the copy.
+
+    Parameters:
+    - track_index: Index of the track.
+    - clip_index: Index into get_arrangement_clips' list. Indices change
+      after a move - re-read before the next one.
+    - destination_time: New start position in beats (>= 0).
+    """
+    try:
+        t_idx = coerce_index(track_index)
+        c_idx = coerce_index(clip_index)
+        dest = coerce_time(destination_time)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("move_arrangement_clip", {
+            "track_index": t_idx,
+            "clip_index": c_idx,
+            "destination_time": dest,
+        })
+        return _ok(result)
+    except Exception as e:
+        logger.error(f"Error moving arrangement clip: {str(e)}")
+        return _err(f"Error moving arrangement clip: {str(e)}")
 
 
 @mcp.tool()
