@@ -5,10 +5,16 @@ state-blob params, emitted as a {module_alias: {param_name: value}} dict in the
 exact shape set_ozone_state accepts. PARAM_KEYS holds the real blob key strings
 captured from a get_ozone_state spike (plan Task 0).
 
-Reliability note: the state blob does not encode chain membership, so only the
-Maximizer (always in the default Ozone chain) reliably affects sound. The EQ
-shelves are best-effort - they shape tone only if the Equalizer is in the user's
-active chain, and are harmless otherwise.
+Reliability note: the Maximizer (always in the default Ozone chain) reliably
+affects sound. The EQ shelves are best-effort - they shape tone only if the
+Equalizer is in the user's active chain (ozone_state_utils.element_chain reads
+it), and are harmless otherwise.
+
+Loudness note: 'Target Loudness [dB]' is only the goal Master Assistant /
+threshold learning aims for - writing it does NOT change output level (set -14,
+rendered -8.9 LUFS). Output level follows the input trim (down) and the Maximizer
+Gain (up). A mix that is already hotter than the target needs a negative
+input_gain_db; find it by render: input_gain_db ~= target - measured LUFS.
 """
 
 BUCKETS = ("transparent", "warm", "loud_club", "punchy", "bright")
@@ -19,6 +25,12 @@ PARAM_KEYS = {
     "max_target":     ("MAX", "Target Loudness [dB]"),
     "max_ceiling":    ("MAX", "Margin"),                        # dB; 0 default, negative = headroom
     "max_isc":        ("MAX", "Prevent Intersample Clipping"),  # True = true-peak safe
+    "max_gain":       ("MAX", "Gain"),                          # drive into the limiter, dB >= 0
+    # Ozone input trim. With Input Lock on (default) only 'Locked' is used, so
+    # input_trim_changes writes all three to work either way.
+    "in_gain_locked": ("Gain Input", "Gain Input Locked"),
+    "in_gain_left":   ("Gain Input", "Gain Input Left"),
+    "in_gain_right":  ("Gain Input", "Gain Input Right"),
     "eq_bypass":      ("EQ", "Bypass"),                         # False = module on
     "eq_low_enable":  ("EQ", "Band 1 Enable"),                 # ~100 Hz low shelf
     "eq_low_gain":    ("EQ", "Band 1 Gain"),
@@ -46,13 +58,22 @@ def _put(chain, slot, value):
     chain.setdefault(alias, {})[pname] = value
 
 
+def input_trim_changes(db, chain=None):
+    """set_ozone_state changes for an Ozone input trim of `db` dB (negative =
+    quieter), written to the locked and per-side fields alike."""
+    chain = {} if chain is None else chain
+    for slot in ("in_gain_locked", "in_gain_left", "in_gain_right"):
+        _put(chain, slot, float(db))
+    return chain
+
+
 def build_chain(bucket, target_lufs, true_peak):
     """Build a set_ozone_state-shaped changes dict for a character bucket.
 
     Maximizer settings (enable, target, ceiling, true-peak safety) are always
     emitted - they are the reliable part of the chain. target_lufs passes through
-    to the Maximizer target (louder = higher, e.g. -8 > -14); true_peak sets the
-    Margin (ceiling). EQ shelves are emitted only for a nonzero bucket gain, each
+    to the Maximizer target (the auto-learn goal only - it does not set output
+    loudness; see the module docstring); true_peak sets the Margin (ceiling). EQ shelves are emitted only for a nonzero bucket gain, each
     paired with enabling its band. Raises KeyError for an unknown bucket.
     """
     shape = BUCKET_SHAPES[bucket]  # KeyError on unknown bucket (tested)

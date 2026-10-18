@@ -30,6 +30,15 @@ you run `analyze_set(measure=True)` - that plays the set briefly to capture audi
 Without taps (or with `measure=False`, the default), never invent dB/LUFS numbers;
 leave them deferred. The default call is read-only and never plays the set.
 
+Plugin internals: VST/AU state is opaque to the LOM, so an Ozone 12 Maximizer (or
+any iZotope Ozone/Neutron/Nectar setting) is invisible by default and the limiter
+rules defer with reason "rerun with plugin_state=True". `analyze_set(plugin_state=True)`
+SAVES the set once and decodes every iZotope instance from the .als: devices gain
+`izotope` (active chain, bypass, limiter target/ceiling/true-peak) and
+`master.limiting` is filled in. Offer it whenever the master or a track carries an
+iZotope plugin; say it saves the set. `get_izotope_states` gives the same read
+standalone.
+
 ## Steps
 
 Consult the `ableton-analysis` skill for the measure-first workflow and ruleset reporting.
@@ -39,7 +48,18 @@ Consult the `ableton-analysis` skill for the measure-first workflow and ruleset 
    9877 is listening (see `/ableton:best-practices`).
 2. **Call the tool, once.** Call `analyze_set(focus=<arg or "all">)`. Do NOT hand-loop
    the read tools - the tool gathers the whole set in one round-trip. Check `ok`
-   first; on `ok:false`, surface the `error` and stop.
+   first; on `ok:false`, surface the `error` and stop. On a set of 30+ tracks pass
+   `compact=True`: the full snapshot exceeds the tool-output limit (a 53-track set
+   is ~88k chars full, ~17k compact), while compact keeps every field the manual
+   rules are judged from. `include_snapshot=False` returns findings only.
+   - **Snapshot fields worth judging with:** per device `key_params` (Live's display
+     strings for Delay/Echo sync + time, Reverb decay/predelay, Auto Filter LFO/env
+     amount, Limiter ceiling), `automated_params`/`automated` (params with
+     automation), `chain_devices` (what is inside a rack); per track
+     `mixer.sends_detail` (return name + dB), `automated_mixer`, `group_track`, and
+     `arrangement` (clip/warp counts - `clips` counts Session slots only).
+   - **Compare against the brief:** when `master.limiting.target_lufs` or the
+     ceiling is known, check them against the brief's target loudness / dBTP.
    - **Optional measure pass:** if metering matters, first check `list_taps` /
      `get_audio_tap_status`. If taps are connected, OFFER to call
      `analyze_set(measure=True)` (warn that it plays the set for ~15 s). With taps,
@@ -77,7 +97,7 @@ Consult the `ableton-analysis` skill for the measure-first workflow and ruleset 
 - [<domain>] <title>: <your assessment from the snapshot> - <rationale>
 ## Mix signal (only with measure=True + taps)
 - [mixing] <finding from data.mix_signal, e.g. "Kick vs Bass overlap 0.99"> - <remediation>
-## Needs metering - not yet measurable (<n>)
-- [<domain>] <title> - requires MCP Tap devices + analyze_set(measure=True).
+## Needs metering / more data (<n>)
+- [<domain>] <title> - <the deferred rule's `reason`: taps + measure=True, or plugin_state=True>.
 ## Passed (<n>)   (expand on request)
 ```

@@ -6,10 +6,33 @@
     "severity": "fail",
     "mode": "auto",
     "scope": "master",
-    "check": { "field": "device_names", "op": "includes", "value": "Limiter" },
-    "evidence_template": "Master chain: {device_names}",
+    "check": { "any": [
+      { "field": "device_names", "op": "includes", "value": "Limiter" },
+      { "field": "limiting.present", "op": "equals", "value": true }
+    ] },
+    "defer_if_null": "master.limiting.present",
+    "requires_reason": "an iZotope plugin is on the master - rerun with plugin_state=True to read its Maximizer/Limiter",
+    "evidence_template": "Master chain: {device_names}; limiting stage: {limiting.source}",
     "rationale": "A limiter catches peaks before export and sets the ceiling.",
-    "remediation": "Add a Limiter as the last master device; ceiling ~-1 dB.",
+    "remediation": "Add a limiting stage as the last master device (a Limiter, or Ozone's Maximizer in its chain); ceiling ~-1 dB.",
+    "source": "sources.md#mastering-headroom"
+  },
+  {
+    "id": "mastering.limiter_ceiling",
+    "domain": "mastering",
+    "title": "Master limiter ceiling at or below -1 dB, true-peak safe",
+    "severity": "warn",
+    "mode": "auto",
+    "scope": "master",
+    "requires": "master.limiting.present",
+    "requires_reason": "no readable master limiter (none present, or iZotope state not read - use plugin_state=True)",
+    "check": { "all": [
+      { "field": "limiting.ceiling_db", "op": "lte", "value": -1.0 },
+      { "not": { "field": "limiting.true_peak_safe", "op": "equals", "value": false } }
+    ] },
+    "evidence_template": "{limiting.source}: ceiling {limiting.ceiling_db} dB, true-peak safe {limiting.true_peak_safe}, target {limiting.target_lufs} LUFS",
+    "rationale": "Lossy codecs and DACs reconstruct inter-sample peaks above a sample-peak ceiling; -1 dBTP with true-peak (intersample) limiting keeps streaming encodes clean. Compare the target loudness with the project brief.",
+    "remediation": "Set the ceiling to -1 dB and enable true-peak limiting (Ozone Maximizer: Margin -1, Prevent Intersample Clipping on).",
     "source": "sources.md#mastering-headroom"
   },
   {

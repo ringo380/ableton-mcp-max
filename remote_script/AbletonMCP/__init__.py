@@ -1011,7 +1011,100 @@ class AbletonMCP(ControlSurface):
             info["on"] = bool(device.parameters[0].value) if device.parameters else True
         except Exception:
             pass
+        info["key_params"] = self._key_params(device)
+        auto = self._automated_param_names(device.parameters)
+        info["automated_params"] = len(auto)
+        if auto:
+            info["automated"] = auto[:8]
+        try:
+            if device.can_have_chains:
+                inner = []
+                for ch in device.chains:
+                    for d in ch.devices:
+                        inner.append(d.name)
+                info["chain_devices"] = inner[:16]
+        except Exception:
+            pass
         return info
+
+    # Native-device params worth reporting in the analysis snapshot, keyed by
+    # class_name. Values are Live's display strings ("1/8", "2.50 s", "-1.0 dB").
+    # Names a device lacks are skipped, so extra candidates are harmless.
+    _KEY_PARAM_NAMES = {
+        "Delay": ("L Sync", "R Sync", "L 16th", "R 16th", "L Time", "R Time",
+                  "Feedback", "Dry/Wet"),
+        "Echo": ("L Sync", "R Sync", "L Division", "R Division", "L Time",
+                 "R Time", "Feedback", "Dry Wet"),
+        "Reverb": ("Decay Time", "Predelay", "Room Size", "Dry/Wet"),
+        "Hybrid": ("Decay", "Predelay", "Dry/Wet"),
+        "AutoFilter": ("Frequency", "Filter Type", "LFO Amount", "Env Amount"),
+        "AutoFilter2": ("Frequency", "Filter Type", "LFO Amount", "Env Amount"),
+        "AutoPan": ("Amount", "Rate"),
+        "Limiter": ("Ceiling", "Gain", "Mode", "True Peak"),
+        "Compressor2": ("Threshold", "Ratio", "Attack", "Release"),
+        "GlueCompressor": ("Threshold", "Ratio", "Makeup"),
+        "Utility": ("Gain", "Width"),
+    }
+
+    def _param_display(self, p):
+        try:
+            return p.str_for_value(p.value)
+        except Exception:
+            try:
+                return str(p)
+            except Exception:
+                return None
+
+    def _key_params(self, device):
+        names = self._KEY_PARAM_NAMES.get(device.class_name)
+        if not names:
+            return {}
+        out = {}
+        try:
+            for p in device.parameters:
+                if p.name in names:
+                    out[p.name] = self._param_display(p)
+        except Exception:
+            pass
+        return out
+
+    def _automated_param_names(self, params):
+        # automation_state: 0 = none, 1 = playing, 2 = overridden.
+        out = []
+        try:
+            for p in params:
+                try:
+                    if p.automation_state:
+                        out.append(p.name)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return out
+
+    def _arrangement_summary(self, track):
+        """Arrangement-timeline clip counts (group tracks have none and raise)."""
+        try:
+            clips = list(track.arrangement_clips)
+        except Exception:
+            return None
+        audio = midi = warped = markers = 0
+        for c in clips:
+            try:
+                if c.is_audio_clip:
+                    audio += 1
+                    if c.warping:
+                        warped += 1
+                    try:
+                        markers += len(c.warp_markers)
+                    except Exception:
+                        pass
+                else:
+                    midi += 1
+            except Exception:
+                pass
+        return {"count": len(clips), "audio": audio, "midi": midi,
+                "warped": warped, "warp_markers": markers}
 
     def _clip_summary(self, track):
         count = named = warped = empty = 0
@@ -1056,6 +1149,30 @@ class AbletonMCP(ControlSurface):
             info["sends"] = [s.value for s in track.mixer_device.sends]
         except Exception:
             info["sends"] = []
+        md = track.mixer_device
+        info["volume_display"] = self._param_display(md.volume)
+        try:
+            returns = list(self._song.return_tracks)
+            info["sends_detail"] = [
+                {"return": returns[i].name if i < len(returns) else "",
+                 "value": s.value, "display": self._param_display(s)}
+                for i, s in enumerate(md.sends)]
+        except Exception:
+            pass
+        mixer_params = [md.volume, md.panning]
+        try:
+            mixer_params += list(md.sends)
+        except Exception:
+            pass
+        info["automated_mixer"] = self._automated_param_names(mixer_params)
+        try:
+            if track.is_grouped and track.group_track is not None:
+                info["group_track"] = track.group_track.name
+        except Exception:
+            pass
+        arr = self._arrangement_summary(track)
+        if arr is not None:
+            info["arrangement"] = arr
         # arm is regular-track-only; group/return/master raise.
         try:
             info["arm"] = track.arm
@@ -1118,6 +1235,7 @@ class AbletonMCP(ControlSurface):
                 "master": {
                     "name": "Master",
                     "volume": master.mixer_device.volume.value,
+                    "volume_display": self._param_display(master.mixer_device.volume),
                     "panning": master.mixer_device.panning.value,
                     "devices": master_devices,
                 },
@@ -3186,6 +3304,11 @@ class AbletonMCP(ControlSurface):
         """Set the arrangement loop brace (only the provided fields)."""
         try:
             song = self._song
+            if start is not None and length is not None:
+                # Live rejects a loop_start whose start + CURRENT length runs
+                # past the song end ("Cannot set the Loopstart behind the
+                # Songlength"), so shrink the brace before moving it.
+                song.loop_length = min(song.loop_length, float(length))
             if start is not None:
                 song.loop_start = float(start)
             if length is not None:

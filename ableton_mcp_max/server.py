@@ -103,7 +103,9 @@ from ableton_mcp_max.arrangement_structure_utils import (
     tiling_plan,
 )
 from ableton_mcp_max.batch_utils import validate_batch, coerce_stop_on_error
-from ableton_mcp_max.analysis_utils import normalize_snapshot, evaluate_rules, live_volume_to_db
+from ableton_mcp_max.analysis_utils import (normalize_snapshot, evaluate_rules,
+                                            live_volume_to_db, attach_plugin_states,
+                                            compact_snapshot)
 from ableton_mcp_max.remediation_utils import (
     db_to_live_volume,
     generate_actions,
@@ -168,6 +170,7 @@ from ableton_mcp_max import ozone_utils as _oz
 from ableton_mcp_max import ozone_param_catalog as _ozcat
 from ableton_mcp_max import ozone_state_utils as _osu
 from ableton_mcp_max import master_select as _msel
+from ableton_mcp_max import master_profiles as _mp
 from ableton_mcp_max import catalog_query
 from ableton_mcp_max import master_ozone_utils
 
@@ -768,9 +771,77 @@ def get_session_info(ctx: Context) -> str:
         return _err(f"Error getting session info: {str(e)}")
 
 
+def _plugin_states_read_impl(*, save_impl, read_als=als.read_als,
+                             resolve_path=None, title_fn=None):
+    """Save the set once, read the .als once, and summarize every iZotope
+    instance (Ozone/Neutron/Nectar) on every track, return and the master.
+    Returns {ok, set_path, states:{(track_type, index): [summary, ...]}}."""
+    save_res = save_impl()
+    if not save_res.get("saved"):
+        return {"ok": False, "error": "save_set failed: %s" % save_res.get("error", save_res)}
+    path = _serum_fx_resolve_path(title_fn, resolve_path)
+    xml = read_als(path)
+    states = _osu.scan_family_states(xml, als.iter_track_spans(xml))
+    return {"ok": True, "set_path": path, "states": states}
+
+
+def _states_as_list(states, name_of=None):
+    """Flatten scan_family_states' {(type, idx): [...]} into a JSON-able list."""
+    name_of = name_of or {}
+    out = []
+    for (ttype, idx), items in sorted(states.items(), key=lambda kv: (
+            {"regular": 0, "return": 1, "master": 2}[kv[0][0]], kv[0][1])):
+        out.append({"track_type": ttype, "track_index": idx,
+                    "track_name": name_of.get((ttype, idx)), "instances": items})
+    return out
+
+
+@mcp.tool()
+def get_izotope_states(ctx: Context) -> str:
+    """Read every iZotope plugin instance in the set (Ozone 12, Neutron 5,
+    Nectar 4) from its saved plugin state, in one pass.
+
+    Saves the set once (titled sets only), then decodes each instance's state
+    blob from the .als. Needs no Configure/exposure. Per instance: product,
+    global_bypass, the ACTIVE signal chain in order (modules outside the chain
+    do not process audio, whatever their own bypass says), per-module bypass,
+    plugin_ordinal (the device_index get_ozone_state takes), and `limiter` when
+    a limiting stage is in the chain - Ozone Maximizer {target_lufs,
+    ceiling_db (Margin), true_peak_safe (Prevent Intersample Clipping), mode,
+    character}, or a Neutron/Nectar Limiter {ceiling_db}.
+
+    Returns JSON {ok, data:{set_path, tracks:[{track_type, track_index,
+    track_name, instances:[...]}]}}. An instance with an empty chain passes
+    audio through untouched.
+    """
+    try:
+        get_ableton_connection()
+        res = _plugin_states_read_impl(save_impl=lambda: _save_set_impl(name=""))
+        if not res.get("ok"):
+            return _err(res.get("error", "get_izotope_states failed"))
+        name_of = {}
+        try:
+            raw = get_ableton_connection().send_command("get_analysis_snapshot")
+            for t in raw.get("tracks", []):
+                name_of[("regular", t.get("index"))] = t.get("name")
+            for t in raw.get("returns", []):
+                name_of[("return", t.get("index"))] = t.get("name")
+            name_of[("master", 0)] = "Master"
+        except Exception as e:
+            logger.info("track names unavailable for izotope states: %s", e)
+        return _ok({"set_path": res["set_path"],
+                    "tracks": _states_as_list(res["states"], name_of)})
+    except (ValueError, RuntimeError, FileNotFoundError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("get_izotope_states error: %s", e)
+        return _err("get_izotope_states error: %s" % e)
+
+
 @mcp.tool()
 def analyze_set(ctx: Context, focus: str = "all", measure: bool = False,
-                measure_window_s: float = 15.0) -> str:
+                measure_window_s: float = 15.0, plugin_state: bool = False,
+                include_snapshot: bool = True, compact: bool = False) -> str:
     """Analyze the open Live set against curated best-practice rulesets.
 
     focus: one of "all" (default), "mixing", "mastering", "sound_design",
@@ -800,8 +871,26 @@ def analyze_set(ctx: Context, focus: str = "all", measure: bool = False,
       remediation}]} - cross-track spectral masking / loudness balance / per-track
       headroom / stereo correlation computed from the simultaneous per-track taps.
 
-    With measure=False this is read-only; it never mutates the set. The
-    /ableton:analyze skill layers the report and per-track judgment on top.
+    plugin_state: when True, SAVE the set once and decode every iZotope plugin
+    (Ozone 12 / Neutron 5 / Nectar 4) from the .als: each such device gains an
+    `izotope` summary (active chain, bypass, limiter target/ceiling/true-peak),
+    and master.limiting reflects an Ozone Maximizer. Unlocks the mastering
+    ceiling rule and the empty-chain rule (deferred otherwise). Default False
+    keeps the call read-only. Saving writes the open set to disk in place.
+
+    include_snapshot: False drops the (large) snapshot from the response and
+    returns findings/rules/summary only.
+
+    compact: True returns a pruned snapshot (default/empty fields dropped, the
+    judgment fields kept: fader dB, active sends, device key_params/automation/
+    rack contents, iZotope chains, arrangement counts) as unindented JSON -
+    about a quarter of the full size; use it for sets of 30+ tracks, whose
+    full snapshot exceeds the tool-output limit. Rules always run on the full
+    snapshot.
+
+    With measure=False and plugin_state=False this is read-only; it never
+    mutates the set. The /ableton:analyze skill layers the report and
+    per-track judgment on top.
     """
     try:
         rules = load_rulesets(focus)
@@ -811,6 +900,11 @@ def analyze_set(ctx: Context, focus: str = "all", measure: bool = False,
         ableton = get_ableton_connection()
         raw = ableton.send_command("get_analysis_snapshot")
         snapshot = normalize_snapshot(raw)
+        if plugin_state:
+            ps = _plugin_states_read_impl(save_impl=lambda: _save_set_impl(name=""))
+            if not ps.get("ok"):
+                return _err("plugin_state read failed: %s" % ps.get("error"))
+            attach_plugin_states(snapshot, ps["states"])
         try:
             tap = get_audio_tap_connection()
             if tap.is_connected():
@@ -873,6 +967,12 @@ def analyze_set(ctx: Context, focus: str = "all", measure: bool = False,
                 result["summary"][k] = sum(1 for f in result["findings"]
                                            if f.get("status") == k)
         result["findings"] = generate_actions(result["findings"], snapshot)
+        if not include_snapshot:
+            result.pop("snapshot", None)
+        elif compact:
+            result["snapshot"] = compact_snapshot(snapshot)
+        if compact:
+            return json.dumps({"ok": True, "data": result}, separators=(",", ":"))
         return _ok(result)
     except Exception as e:
         logger.error(f"Error analyzing set: {str(e)}")
@@ -10058,16 +10158,25 @@ def recommend_master(ctx: Context, intent: str, target: float = None,
 @mcp.tool()
 def apply_master(ctx: Context, chain: dict, track_index: int = 0,
                  device_index: int = 0, track_type: str = "master",
-                 deploy_tap: bool = True) -> str:
+                 deploy_tap: bool = True, input_gain_db: float = None) -> str:
     """Apply a mastering chain (from recommend_master) to an Ozone 12 instance in
     one shot, then set up the live trim loop. Writes the chain via set_ozone_state
     (one reload, un-clamped native values), exposes the Maximizer so the skill can
     nudge ceiling/gain without further reloads, and deploys a master tap so
     measure_loudness has post-fader audio. Errors clearly if the target device is
     not Ozone 12. Returns {ok, data:{applied, skipped, reloaded, exposed, tap,
-    next}}. deploy_tap=False skips the tap (loop then runs un-metered)."""
+    next}}. deploy_tap=False skips the tap (loop then runs un-metered).
+
+    The chain's Maximizer 'Target Loudness' does NOT set output loudness (it is
+    the auto-learn goal). input_gain_db sets Ozone's input trim in dB (negative =
+    quieter), which is what brings a mix that is already hotter than the target
+    down to it: render, measure integrated LUFS, pass target - measured, then
+    render again to confirm. The Maximizer Gain only drives louder."""
     try:
         get_ableton_connection()  # fail fast if Live is unreachable
+        if input_gain_db is not None:
+            chain = _mp.input_trim_changes(
+                input_gain_db, {k: dict(v) for k, v in (chain or {}).items()})
         # 1. Write the chain (this also detects non-Ozone via set_ozone_state).
         sos = json.loads(set_ozone_state(ctx, track_index, chain, device_index,
                                          track_type, reload=True))
@@ -10093,9 +10202,11 @@ def apply_master(ctx: Context, chain: dict, track_index: int = 0,
         return _ok({"applied": wrote.get("applied"), "skipped": wrote.get("skipped"),
                     "reloaded": wrote.get("reloaded"), "exposed": exposed,
                     "tap": tap,
-                    "next": ("run the trim loop: play the densest section, "
-                             "measure_loudness, nudge set_ozone_maximizer toward "
-                             "target")})
+                    "next": ("verify loudness by render (render_audio + an "
+                             "EBU R128 meter), not by read-back: Target Loudness "
+                             "does not drive output. Too loud -> rerun with "
+                             "input_gain_db = target - measured; too quiet -> "
+                             "raise the Maximizer gain (set_ozone_maximizer).")})
     except Exception as e:
         logger.error("apply_master error: %s", e)
         return _err("apply_master error: %s" % e)

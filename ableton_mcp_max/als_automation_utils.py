@@ -203,13 +203,15 @@ _TRACK_OPEN = re.compile(r'<(MidiTrack|AudioTrack|GroupTrack|ReturnTrack) Id="\d
 
 
 def find_track_span(xml, track_index):
-    """Char span (start, end) of the track_index-th REGULAR track (Midi/Audio,
-    document order, excluding Group/Return). Tracks are flat siblings under
+    """Char span (start, end) of the track_index-th track in song.tracks order
+    (Midi/Audio/Group, document order, excluding Return). Group tracks count
+    because the LOM's song.tracks includes them, so a LOM track index maps to
+    the same element in a set with groups. Tracks are flat siblings under
     <Tracks>, so the matching close is the next close-tag of the same type."""
     regular = 0
     for m in _TRACK_OPEN.finditer(xml):
         kind = m.group(1)
-        if kind in ("MidiTrack", "AudioTrack"):
+        if kind in ("MidiTrack", "AudioTrack", "GroupTrack"):
             if regular == track_index:
                 close = "</%s>" % kind
                 end = xml.find(close, m.end())
@@ -218,6 +220,27 @@ def find_track_span(xml, track_index):
                 return (m.start(), end + len(close))
             regular += 1
     raise ValueError("regular track index %d not found" % track_index)
+
+
+def iter_track_spans(xml):
+    """Yield (track_type, index, start, end) for every track in one pass:
+    'regular' (song.tracks order, groups included), 'return', then 'master'.
+    Indices match find_track_span / find_return_track_span."""
+    counts = {"regular": 0, "return": 0}
+    for m in _TRACK_OPEN.finditer(xml):
+        kind = m.group(1)
+        close = "</%s>" % kind
+        end = xml.find(close, m.end())
+        if end == -1:
+            raise ValueError("unterminated %s" % kind)
+        ttype = "return" if kind == "ReturnTrack" else "regular"
+        yield ttype, counts[ttype], m.start(), end + len(close)
+        counts[ttype] += 1
+    try:
+        s, e = find_master_track_span(xml)
+    except ValueError:
+        return
+    yield "master", 0, s, e
 
 
 def find_master_track_span(xml):

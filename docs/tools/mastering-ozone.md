@@ -211,6 +211,28 @@ Parameters:
 
 Returns JSON {ok, data:{set_path, reloaded, applied:[...], skipped:[...]}}.
 
+## get_izotope_states
+
+```python
+get_izotope_states()
+```
+
+Read every iZotope plugin instance in the set (Ozone 12, Neutron 5,
+Nectar 4) from its saved plugin state, in one pass.
+
+Saves the set once (titled sets only), then decodes each instance's state
+blob from the .als. Needs no Configure/exposure. Per instance: product,
+global_bypass, the ACTIVE signal chain in order (modules outside the chain
+do not process audio, whatever their own bypass says), per-module bypass,
+plugin_ordinal (the device_index get_ozone_state takes), and `limiter` when
+a limiting stage is in the chain - Ozone Maximizer {target_lufs,
+ceiling_db (Margin), true_peak_safe (Prevent Intersample Clipping), mode,
+character}, or a Neutron/Nectar Limiter {ceiling_db}.
+
+Returns JSON {ok, data:{set_path, tracks:[{track_type, track_index,
+track_name, instances:[...]}]}}. An instance with an empty chain passes
+audio through untouched.
+
 ## recommend_master
 
 ```python
@@ -240,6 +262,7 @@ apply_master(
     device_index: int = 0,
     track_type: str = 'master',
     deploy_tap: bool = True,
+    input_gain_db: float = None,
 )
 ```
 
@@ -250,6 +273,12 @@ nudge ceiling/gain without further reloads, and deploys a master tap so
 measure_loudness has post-fader audio. Errors clearly if the target device is
 not Ozone 12. Returns {ok, data:{applied, skipped, reloaded, exposed, tap,
 next}}. deploy_tap=False skips the tap (loop then runs un-metered).
+
+The chain's Maximizer 'Target Loudness' does NOT set output loudness (it is
+the auto-learn goal). input_gain_db sets Ozone's input trim in dB (negative =
+quieter), which is what brings a mix that is already hotter than the target
+down to it: render, measure integrated LUFS, pass target - measured, then
+render again to confirm. The Maximizer Gain only drives louder.
 
 ## ensure_ozone_master
 

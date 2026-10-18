@@ -9,7 +9,8 @@
     "check": { "any": [
       { "field": "type", "op": "equals", "value": "audio" },
       { "field": "type", "op": "equals", "value": "group" },
-      { "field": "has_instrument", "op": "equals", "value": true }
+      { "field": "has_instrument", "op": "equals", "value": true },
+      { "field": "routing.audio_to", "op": "equals", "value": "No Output" }
     ] },
     "evidence_template": "{name} ({type}) has_instrument={has_instrument}",
     "rationale": "A MIDI track with no instrument produces no sound.",

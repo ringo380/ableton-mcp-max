@@ -26,6 +26,21 @@
     "source": "sources.md#health-cpu-devices"
   },
   {
+    "id": "health.izotope_empty_chain",
+    "domain": "health",
+    "title": "No iZotope plugin with an empty module chain",
+    "severity": "warn",
+    "mode": "auto",
+    "scope": "track",
+    "requires": "plugin_state_read",
+    "requires_reason": "needs plugin_state=True",
+    "check": { "field": "izotope_empty_chains", "op": "lt", "value": 1 },
+    "evidence_template": "{name}: {izotope_empty_chains} iZotope instance(s) with no modules in the chain",
+    "rationale": "An Ozone/Neutron/Nectar with no modules in its chain passes audio untouched but still costs CPU and latency.",
+    "remediation": "Delete the instance, or load modules into it if processing was intended.",
+    "source": "sources.md#health-cpu-devices"
+  },
+  {
     "id": "health.no_leftover_solo",
     "domain": "health",
     "title": "No track left soloed",
