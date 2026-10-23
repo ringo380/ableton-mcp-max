@@ -87,3 +87,20 @@ def test_apply_master_without_input_gain_leaves_trim_alone(monkeypatch):
     monkeypatch.setattr(server, "set_ozone_state", capture)
     server.apply_master(ctx=None, chain={"MAX": {"Margin": -1.0}})
     assert "Gain Input" not in seen["changes"]
+
+
+def test_apply_master_errors_when_an_enabled_module_is_not_in_the_chain(monkeypatch):
+    _install_stubs(monkeypatch)        # fake write reports no chain at all
+    out = json.loads(server.apply_master(ctx=None, chain={"MAX": {"Bypass": False}}))
+    assert out["ok"] is False and "Maximizer" in out["error"] and "chain" in out["error"]
+
+
+def test_apply_master_passes_when_the_chain_holds_the_module(monkeypatch):
+    _install_stubs(monkeypatch)
+    real = server.set_ozone_state
+    def with_chain(*a, **k):
+        d = json.loads(real(*a, **k)); d["data"]["chain"] = ["Maximizer"]
+        return json.dumps(d)
+    monkeypatch.setattr(server, "set_ozone_state", with_chain)
+    out = json.loads(server.apply_master(ctx=None, chain={"MAX": {"Bypass": False}}))
+    assert out["ok"] is True

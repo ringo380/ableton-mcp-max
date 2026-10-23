@@ -4550,9 +4550,17 @@ def _ozone_state_mutate_impl(track_index, device_index, track_type, changes, *,
         normalized.setdefault(_oz.normalize_module(m), {}).update(p)
     st = _osu.decode(_osu.from_hex(xml[s:e]))
     applied, skipped = _osu.apply_changes(st.tree, normalized)
+    # Bypass False means "turn this module on": a module outside the chain
+    # processes nothing, so put it in the chain too.
+    enable = [a["module"] for a in applied
+              if a["param"] == "Bypass" and a["value"] is False
+              and a["module"] in _osu.CHAIN_MODULES]
+    chain_added = _osu.ensure_in_chain(st.tree, enable) if enable else []
+    chain = _osu.element_chain(st.tree)
     if not applied:
         return {"ok": True, "reloaded": False, "set_path": path,
-                "applied": applied, "skipped": skipped}
+                "applied": applied, "skipped": skipped, "chain": chain,
+                "chain_added": []}
     new_hex = _osu.to_hex(_osu.encode(st, st.tree))
     xml = xml[:s] + new_hex + xml[e:]
     write_als(path, xml)
@@ -4561,7 +4569,8 @@ def _ozone_state_mutate_impl(track_index, device_index, track_type, changes, *,
         rr = reload_impl(path, set_name_from_path(path))
         reloaded = bool(rr.get("reloaded", False)) if isinstance(rr, dict) else bool(rr)
     return {"ok": True, "reloaded": reloaded, "set_path": path,
-            "applied": applied, "skipped": skipped}
+            "applied": applied, "skipped": skipped, "chain": chain,
+            "chain_added": chain_added}
 
 
 @mcp.tool()
@@ -10443,6 +10452,13 @@ def apply_master(ctx: Context, chain: dict, track_index: int = 0,
         if not sos.get("ok"):
             return _err(sos.get("error", "apply_master: chain write failed"))
         wrote = sos["data"]
+        # A module that is configured but not in Ozone's chain processes nothing.
+        wanted = [_oz.normalize_module(m) for m, p in (chain or {}).items()
+                  if isinstance(p, dict) and p.get("Bypass") is False]
+        missing = [m for m in wanted if m not in (wrote.get("chain") or [])]
+        if missing:
+            return _err("apply_master: %s not in Ozone's signal chain after the "
+                        "write (chain: %s)" % (", ".join(missing), wrote.get("chain")))
         # 2. Expose the Maximizer for the reload-free live trim loop.
         exp = json.loads(expose_ozone_modules(ctx, track_index, ["MAX"],
                                               device_index, track_type))

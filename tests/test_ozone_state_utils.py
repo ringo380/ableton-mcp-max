@@ -92,3 +92,31 @@ def test_apply_changes_reports_applied_and_skipped():
     reasons = {(s["module"], s["param"]): s["reason"] for s in skipped}
     assert reasons[("Maximizer", "NoParam")] == "unknown param"
     assert reasons[("Ghost", "x")] == "unknown module"
+
+
+# Bytes of a chain Ozone 12 itself saved (Rad Nu-disco master, 2026-10-23).
+SAVED_CHAIN_B64 = ("ABAAAABNYXN0ZXIgUmViYWxhbmNlAAkAAABFcXVhbGl6ZXIABgAAAEltcGFjdAANAAAAU3Rl"
+                   "cmVvIEltYWdlcgAHAAAAQ2xhcml0eQAKAAAAU3RhYmlsaXplcgAKAAAARHluYW1pYyBFUQAJ"
+                   "AAAATWF4aW1pemVy")
+
+
+def test_chain_bytes_roundtrip_ozone_saved_layout():
+    import base64
+    raw = base64.b64decode(SAVED_CHAIN_B64)
+    names = osu.parse_chain_bytes(raw)
+    assert names[0] == "Master Rebalance" and names[-1] == "Maximizer"
+    assert osu.encode_chain_bytes(names) == raw
+
+
+def test_ensure_in_chain_fills_an_empty_chain_maximizer_last():
+    tree = _tree()
+    assert osu.element_chain(tree) == []          # a freshly loaded Ozone
+    added = osu.ensure_in_chain(tree, ["Maximizer", "Equalizer", "Stereo Imager"])
+    assert added == ["Maximizer", "Equalizer", "Stereo Imager"]
+    assert osu.element_chain(tree) == ["Equalizer", "Stereo Imager", "Maximizer"]
+    assert osu.ensure_in_chain(tree, ["Equalizer"]) == []    # already there
+
+
+def test_ensure_in_chain_refuses_non_chain_modules():
+    with pytest.raises(ValueError):
+        osu.ensure_in_chain(_tree(), ["Gain Input"])

@@ -131,6 +131,53 @@ def element_chain(tree):
         return []
 
 
+# Ozone 12 modules that live in the signal chain (Gain Input/Output, Global,
+# Dither, meters and the like are fixed stages, not chain slots).
+CHAIN_MODULES = frozenset((
+    "Master Rebalance", "Equalizer", "Impact", "Stereo Imager", "Clarity",
+    "Stabilizer", "Dynamic EQ", "Maximizer", "Dynamics", "Exciter",
+    "Low End Focus", "Match Equalizer", "Post Equalizer", "Spectral Shaper",
+    "Stem EQ", "Bass Control", "Unlimiter", "Vintage Compressor", "Vintage EQ",
+    "Vintage Limiter", "Vintage Tape"))
+
+
+def encode_chain_bytes(names):
+    """Inverse of parse_chain_bytes for Ozone: [0x00][u32-LE len][name] per
+    slot (the layout of a chain Ozone itself saved, 2026-10-23)."""
+    out = b""
+    for name in names:
+        raw = name.encode("ascii")
+        out += b"\x00" + struct.pack("<I", len(raw)) + raw
+    return out
+
+
+def ensure_in_chain(tree, modules):
+    """Add each module in `modules` that the chain lacks. The Maximizer stays
+    last; others go in before it. A module missing from the chain processes no
+    audio, so enabling one without this does nothing. Returns the names added."""
+    elems = _elements(tree)
+    node = elems.get("ElementChain")
+    if not isinstance(node, dict) or not isinstance(node.get("Value"), dict):
+        raise ValueError("no ElementChain in this Ozone state")
+    chain = element_chain(tree)
+    added = []
+    for m in modules:
+        if m in chain:
+            continue
+        if m not in CHAIN_MODULES or m not in elems:
+            raise ValueError("%r is not an Ozone chain module" % m)
+        if m != "Maximizer" and "Maximizer" in chain:
+            chain.insert(chain.index("Maximizer"), m)
+        else:
+            chain.append(m)
+        added.append(m)
+    if added:
+        node["Value"]["Extra Bytes"] = {
+            "Type": "Base64",
+            "Value": base64.b64encode(encode_chain_bytes(chain)).decode("ascii")}
+    return added
+
+
 def _leaf_value(md, *names):
     for n in names:
         node = md.get(n)

@@ -90,3 +90,28 @@ def test_read_impl_summary_lists_modules():
     names = {m["name"]: m for m in res["modules"]}
     assert "Maximizer" in names
     assert names["Maximizer"]["param_count"] > 0
+
+
+def _mutate(changes):
+    written = {}
+    res = server._ozone_state_mutate_impl(
+        0, 0, "master", changes, reload=False,
+        save_impl=lambda: {"saved": True},
+        reload_impl=lambda p, n: {"reloaded": True},
+        read_als=lambda p: XML,
+        write_als=lambda p, x: written.update(xml=x),
+        resolve_path=lambda: "/x.als", title_fn=lambda: "x")
+    import re
+    m = re.search(r"<ProcessorState>([0-9A-F]+)</ProcessorState>", written["xml"])
+    return res, osu.decode(osu.from_hex(m.group(1))).tree
+
+
+def test_mutate_impl_bypass_false_puts_module_in_the_chain():
+    res, tree = _mutate({"EQ": {"Bypass": False}, "MAX": {"Bypass": False, "Margin": -1.0}})
+    assert res["chain_added"] == ["Equalizer", "Maximizer"]
+    assert osu.element_chain(tree) == ["Equalizer", "Maximizer"]
+
+
+def test_mutate_impl_params_alone_do_not_touch_the_chain():
+    res, tree = _mutate({"MAX": {"Margin": -1.0}})
+    assert res["chain_added"] == [] and osu.element_chain(tree) == []
