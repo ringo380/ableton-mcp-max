@@ -96,6 +96,7 @@ CATEGORIES = [
         "restart_live",
         "save_set",
         "save_set_as",
+        "set_auto_warp_long_samples",
     ]),
     ("analysis", "Analysis", "Inspect the open set against best-practice rulesets and surface findings by domain.", [
         "analyze_set",
@@ -138,6 +139,7 @@ CATEGORIES = [
         "load_sample_to_drum_pad",
         "populate_drum_rack",
         "separate_stems_to_arrangement",
+        "place_stems_to_arrangement",
     ]),
     ("catalog", "Catalog", "Persistent local index of Serum presets, samples, "
      "grooves, and device presets, with similarity search and reuse-vs-create "

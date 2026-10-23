@@ -247,6 +247,44 @@ def test_restart_stuck_exit_is_reported_and_not_relaunched(fake):
     assert not any(c[0] == "launch" for c in fake.calls)
 
 
+def test_restart_runs_hook_after_exit_before_launch(fake):
+    fake.title = "Song - Ableton Live 12 Suite"
+    order = []
+
+    def gone():
+        fake.alive = False
+        fake.title = None
+    fake.on_close = gone
+
+    def hook():
+        order.append(("hook", fake.alive))
+        return {"wrote": True}
+    out = server._restart_live_impl(save="save", sleep=NOSLEEP,
+                                    before_relaunch=hook)
+    assert order == [("hook", False)]              # ran while Live was closed
+    assert out["before_relaunch"] == {"wrote": True}
+    assert fake.calls.index(("launch", EXE)) > fake.calls.index(("close", 100))
+
+
+def test_restart_hook_failure_still_relaunches(fake):
+    fake.title = "Song - Ableton Live 12 Suite"
+    fake.on_close = lambda: (setattr(fake, "alive", False), setattr(fake, "title", None))
+
+    def boom():
+        raise ValueError("layout not recognized")
+    out = server._restart_live_impl(save="save", sleep=NOSLEEP, before_relaunch=boom)
+    assert out["before_relaunch_error"] == "layout not recognized"
+    assert out["relaunched"] is True and ("launch", EXE) in fake.calls
+
+
+def test_restart_hook_skipped_when_live_does_not_quit(fake):
+    fake.title = "Song - Ableton Live 12 Suite"
+    fake.on_close = lambda: setattr(fake, "title", None)     # hangs in exit
+    out = server._restart_live_impl(save="save", sleep=NOSLEEP,
+                                    before_relaunch=lambda: pytest.fail("ran"))
+    assert out["quit"] is False and "before_relaunch" not in out
+
+
 def test_restart_bad_policy(fake):
     with pytest.raises(ValueError):
         server._restart_live_impl(save="maybe", sleep=NOSLEEP)

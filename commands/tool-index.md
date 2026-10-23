@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_189 tools._
+_191 tools._
 
 ## Session & view
 
@@ -46,6 +46,7 @@ _189 tools._
 - **`restart_live`** - Gracefully quit and relaunch the running Ableton Live (no crash-recovery
 - **`save_set`** - Save the current Live set to disk (there is no LOM save API — this drives
 - **`save_set_as`** - Save the current Live set under a new NAME (File > Save Live Set As). Use
+- **`set_auto_warp_long_samples`** - Turn Live's "Auto-Warp Long Samples" preference (Preferences >
 
 ## Tracks (lifecycle)
 
@@ -278,6 +279,7 @@ _189 tools._
 - **`load_sample_to_drum_pad`** - Load a one-shot sample onto a single Drum Rack pad.
 - **`populate_drum_rack`** - Load many one-shot samples onto many Drum Rack pads in one call.
 - **`separate_stems_to_arrangement`** - Split an audio file into stems and lay each onto its own Arrangement track.
+- **`place_stems_to_arrangement`** - Put every stem in a folder (a stem pack: '0 Lead Vocals.wav',
 
 ## Catalog
 

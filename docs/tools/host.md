@@ -86,3 +86,25 @@ name: the set name (not a path). Saved to Live's last-used save location,
 Returns JSON {ok, data:{saved, name, path?, error?}}. 'path' is exact on
 Windows, best-effort on macOS; confirmation is by the window title.
 
+## set_auto_warp_long_samples
+
+```python
+set_auto_warp_long_samples(enabled: bool = False, save: str = 'save')
+```
+
+Turn Live's "Auto-Warp Long Samples" preference (Preferences >
+Record/Warp/Launch) on or off. Off keeps long samples - full-song stems -
+from loading with dozens of guessed warp markers and a start marker moved
+to the first transient, which knocks stems out of sync.
+
+Live has no API for its preferences, so this writes Preferences.cfg while
+Live is closed: it quits Live (save: 'save' (default) keeps unsaved edits,
+'discard' drops them), backs the file up next to itself
+(Preferences.cfg.bak-<time>), sets the value, relaunches Live and reopens
+the set that was open. If the file already holds the value, nothing
+restarts. The write is refused if this Live version's file layout is not
+recognized. Verified on Live 12.4.7 / Windows.
+
+Returns JSON {ok, data:{path, key, was, now, changed, backup?, restart?,
+reopened?, note?, error?}}.
+

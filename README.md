@@ -4,7 +4,7 @@ A self-owned, extensible MCP server for Ableton Live, forked from
 [ahujasid/ableton-mcp](https://github.com/ahujasid/ableton-mcp) and extended
 toward broad Live Object Model coverage.
 
-**Documentation:** [ringo380.github.io/ableton-mcp-max](https://ringo380.github.io/ableton-mcp-max/) - landing page, install guide, and reference for all 189 tools.
+**Documentation:** [ringo380.github.io/ableton-mcp-max](https://ringo380.github.io/ableton-mcp-max/) - landing page, install guide, and reference for all 191 tools.
 
 ## Install
 Runs on macOS and Windows (Live 11 or 12). Needs [uv](https://docs.astral.sh/uv/).

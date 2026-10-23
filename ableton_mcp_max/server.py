@@ -171,6 +171,7 @@ from ableton_mcp_max import ozone_param_catalog as _ozcat
 from ableton_mcp_max import ozone_state_utils as _osu
 from ableton_mcp_max import master_select as _msel
 from ableton_mcp_max import master_profiles as _mp
+from ableton_mcp_max import live_prefs_utils as _lp
 from ableton_mcp_max import catalog_query
 from ableton_mcp_max import master_ozone_utils
 
@@ -2329,8 +2330,20 @@ def _win_save_set_impl(name="", sleep=time.sleep):
     return {"app": exe, "saved": True, "title": title}
 
 
+def _run_before_relaunch(hook, result):
+    """Run a restart's while-Live-is-closed step; a failure is reported, never
+    raised, so Live still relaunches."""
+    if hook is None:
+        return
+    try:
+        result["before_relaunch"] = hook()
+    except Exception as e:
+        logger.error("before_relaunch step failed: %s", e)
+        result["before_relaunch_error"] = str(e)
+
+
 def _win_restart_live_impl(save="discard", relaunch=True, wait_timeout=90.0,
-                           dirty_after=5.0, sleep=time.sleep):
+                           dirty_after=5.0, sleep=time.sleep, before_relaunch=None):
     if save not in ("discard", "save"):
         raise ValueError("save must be 'discard' or 'save' (got %r)." % save)
     pid, hwnd, exe = _win_live()
@@ -2378,6 +2391,7 @@ def _win_restart_live_impl(save="discard", relaunch=True, wait_timeout=90.0,
                                "start Live." % pid)
         return result
     result["quit"] = True
+    _run_before_relaunch(before_relaunch, result)
 
     if relaunch:
         _win.launch(exe)
@@ -2526,14 +2540,16 @@ def _save_set_impl(name="", sleep=time.sleep):
 
 
 def _restart_live_impl(save="discard", relaunch=True, wait_timeout=90.0,
-                       dirty_after=5.0, sleep=time.sleep):
+                       dirty_after=5.0, sleep=time.sleep, before_relaunch=None):
     """Gracefully quit (and optionally relaunch) the running Live. Returns a
     status dict; raises ValueError on a bad save policy / RuntimeError if no
-    Live is found."""
+    Live is found. before_relaunch, if given, runs once Live has exited (its
+    return value lands in result['before_relaunch'])."""
     if IS_WINDOWS:
         return _win_restart_live_impl(save=save, relaunch=relaunch,
                                       wait_timeout=wait_timeout,
-                                      dirty_after=dirty_after, sleep=sleep)
+                                      dirty_after=dirty_after, sleep=sleep,
+                                      before_relaunch=before_relaunch)
     if save not in ("discard", "save"):
         raise ValueError("save must be 'discard' or 'save' (got %r)." % save)
     app, pid = _live_app_and_pid()
@@ -2578,6 +2594,7 @@ def _restart_live_impl(save="discard", relaunch=True, wait_timeout=90.0,
             "lacks Accessibility permission to answer the dialog.")
         return result
     result["quit"] = True
+    _run_before_relaunch(before_relaunch, result)
 
     # 4. Relaunch and wait for the control surface to bind the port again.
     if relaunch:
@@ -2618,6 +2635,120 @@ def restart_live(ctx: Context, save: str = "discard", relaunch: bool = True,
     except Exception as e:
         logger.error("restart_live error: %s", e)
         return _err("restart_live error: %s" % e)
+
+
+def _live_prefs_cfg():
+    """Path to the running Live's Preferences.cfg (Windows: the running
+    version's 'Live x.y.z\\Preferences'; macOS: the highest 'Live x.y.z'), or
+    ''. Resolve it while Live runs - the version comes from the socket."""
+    if IS_WINDOWS:
+        dirs = _win_pref_dirs()
+    else:
+        dirs = sorted(glob.glob(os.path.join(_prefs_base(), "Live *")),
+                      key=plat.version_key)
+    for d in reversed(dirs):
+        cand = os.path.join(d, "Preferences.cfg")
+        if os.path.isfile(cand):
+            return cand
+    return ""
+
+
+def _write_pref_bool(path, cls, key, value, stamp=None):
+    """Back up Preferences.cfg next to itself, then set one bool in place
+    (temp file + replace). Only call with Live closed. Returns
+    {path, backup, was, now}; raises ValueError if the layout is not
+    recognized (nothing is written then)."""
+    with open(path, "rb") as f:
+        data = f.read()
+    was = _lp.get_bool(data, cls, key)
+    new = _lp.set_bool(data, cls, key, value)
+    stamp = stamp or time.strftime("%Y%m%d-%H%M%S")
+    backup = "%s.bak-%s" % (path, stamp)
+    shutil.copy2(path, backup)
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(new)
+    os.replace(tmp, path)
+    with open(path, "rb") as f:
+        now = _lp.get_bool(f.read(), cls, key)
+    return {"path": path, "backup": backup, "was": was, "now": now}
+
+
+def _set_live_pref_bool_impl(cls, key, value, save="save", restart=None,
+                             reload=None):
+    """Set a Live preference bool: quit Live, write the file, relaunch, and
+    reopen the set that was open. No restart when the file already holds
+    `value`. Returns a status dict; raises ValueError/RuntimeError."""
+    restart = restart or _restart_live_impl
+    reload = reload or (lambda p, n: _reload_set(
+        p, n, probe=lambda: get_ableton_connection().send_command(
+            "get_session_info")))
+    path = _live_prefs_cfg()
+    if not path:
+        raise RuntimeError("Live's Preferences.cfg was not found.")
+    with open(path, "rb") as f:
+        current = _lp.get_bool(f.read(), cls, key)     # refuses unknown layouts
+    result = {"path": path, "key": key, "was": current, "now": current,
+              "changed": False}
+    if current == bool(value):
+        result["note"] = ("Already set in Preferences.cfg (as of Live's last "
+                          "quit); Live was not restarted.")
+        return result
+
+    title = _live_window_title()
+    set_path = ""
+    if not is_untitled_title(title):
+        set_path = _current_set_path(title) or _find_saved_set(title)
+    status = restart(save=save, before_relaunch=lambda: _write_pref_bool(
+        path, cls, key, value))
+    result["restart"] = status
+    written = status.get("before_relaunch") or {}
+    if written:
+        result.update(now=written["now"], changed=written["now"] != current,
+                      backup=written["backup"])
+    if not status.get("quit"):
+        result["error"] = status.get("error", "Live did not quit; nothing written.")
+    elif status.get("before_relaunch_error"):
+        result["error"] = status["before_relaunch_error"]
+    if set_path and status.get("surface_up"):
+        result["reopened"] = reload(set_path, set_name_from_path(set_path))
+    elif not set_path:
+        result["reopened"] = None
+        result["note"] = "No saved set was open, so none was reopened."
+    return result
+
+
+@mcp.tool()
+def set_auto_warp_long_samples(ctx: Context, enabled: bool = False,
+                               save: str = "save") -> str:
+    """Turn Live's "Auto-Warp Long Samples" preference (Preferences >
+    Record/Warp/Launch) on or off. Off keeps long samples - full-song stems -
+    from loading with dozens of guessed warp markers and a start marker moved
+    to the first transient, which knocks stems out of sync.
+
+    Live has no API for its preferences, so this writes Preferences.cfg while
+    Live is closed: it quits Live (save: 'save' (default) keeps unsaved edits,
+    'discard' drops them), backs the file up next to itself
+    (Preferences.cfg.bak-<time>), sets the value, relaunches Live and reopens
+    the set that was open. If the file already holds the value, nothing
+    restarts. The write is refused if this Live version's file layout is not
+    recognized. Verified on Live 12.4.7 / Windows.
+
+    Returns JSON {ok, data:{path, key, was, now, changed, backup?, restart?,
+    reopened?, note?, error?}}.
+    """
+    try:
+        save = (save or "save").lower()
+        data = _set_live_pref_bool_impl(*_lp.AUTO_WARP_LONG_SAMPLES,
+                                        value=bool(enabled), save=save)
+        if data.get("error"):
+            return _err(data["error"], data=data)
+        return _ok(data)
+    except (ValueError, RuntimeError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("set_auto_warp_long_samples error: %s", e)
+        return _err("set_auto_warp_long_samples error: %s" % e)
 
 
 @mcp.tool()
@@ -7994,6 +8125,31 @@ def _ensure_local(sample_path, timeout=30):
 _SAMPLE_FALLBACK_CATEGORIES = ("user_folders", "current_project")
 
 
+def _in_live_project(path):
+    """True if `path` sits inside a Live project folder (an ancestor holds an
+    'Ableton Project Info' folder)."""
+    d = os.path.dirname(os.path.abspath(path))
+    while True:
+        if os.path.isdir(os.path.join(d, "Ableton Project Info")):
+            return True
+        up = os.path.dirname(d)
+        if up == d:
+            return False
+        d = up
+
+
+def _wait_for_clip(ableton, track_index, slot_index, timeout=30.0, interval=0.5,
+                   sleep=time.sleep):
+    """Poll until the session slot holds a clip. load_browser_item's 'loaded'
+    only says the browser accepted the item - with Arrangement view in front
+    nothing may land (issue #63) - and a long sample takes >10 s to load."""
+    def landed():
+        info = ableton.send_command("get_track_info", {"track_index": track_index})
+        slots = (info or {}).get("clip_slots") or []
+        return slot_index < len(slots) and bool(slots[slot_index].get("has_clip"))
+    return _wait_until(landed, timeout=timeout, interval=interval, sleep=sleep)
+
+
 def _resolve_sample_uri(sample_path, category="samples"):
     """Resolve a sample file path to its Live browser URI via the Remote Script.
 
@@ -8009,9 +8165,13 @@ def _resolve_sample_uri(sample_path, category="samples"):
     parents = [p for p in re.split(r"[\\/]",os.path.dirname(sample_path)) if p]
     ableton = get_ableton_connection()
     tried = [category] + [c for c in _SAMPLE_FALLBACK_CATEGORIES if c != category]
+    if _in_live_project(sample_path) and "current_project" in tried:
+        # A name-only match elsewhere (stem packs all ship '1 Drums.wav') could
+        # load another song's file; the project's own copy comes first.
+        tried = ["current_project"] + [c for c in tried if c != "current_project"]
     for cat in tried:
         params = {"name": name, "category": cat}
-        if cat != category:
+        if cat != category or cat == "current_project":
             params["parents"] = parents
         res = ableton.send_command("find_sample_uri", params)
         uri = (res or {}).get("uri")
@@ -8349,20 +8509,26 @@ def _stem_uri(browser_folder, stem_filename, retries=12, delay=1.0):
     return None
 
 
-def _lay_stem_on_track(ableton, track_index, stem_name, uri, sample_path):
+def _lay_stem_on_track(ableton, track_index, stem_name, uri, sample_path,
+                       start_offset=0.0, wait_clip=None):
     """Load a resolved stem uri into session slot 0, warp off + name it,
     duplicate to arrangement at bar 1, then delete the session staging clip.
+    start_offset (seconds) is where in the file every stem starts, the same
+    for all stems of a song so they stay in sync.
 
-    Returns dict {name, track_index, path, loaded}.
+    Returns dict {name, track_index, path, loaded, error?, clip?}.
     """
+    wait_clip = wait_clip or _wait_for_clip
+    ableton.send_command("focus_view", {"view": "Session"})
     ableton.send_command("set_highlighted_clip_slot",
                          {"track_index": track_index, "scene_index": 0})
     res = ableton.send_command("load_browser_item", {
         "track_index": track_index, "item_uri": uri, "track_type": "regular"})
     loaded = bool((res or {}).get("loaded", False))
-    if not loaded:
+    if not loaded or not wait_clip(ableton, track_index, 0):
         return {"name": stem_name, "track_index": track_index,
-                "path": sample_path, "loaded": False}
+                "path": sample_path, "loaded": False,
+                "error": "no clip landed in slot 0"}
     # Name on the SESSION clip; the arrangement copy inherits it. Do NOT unwarp
     # the session clip here - leaving it warped lets the arrangement-clip
     # normalize below (warp off, fresh) extend end_marker to the full sample.
@@ -8377,14 +8543,101 @@ def _lay_stem_on_track(ableton, track_index, stem_name, uri, sample_path):
     # end_marker to the full sample length (seconds) so the whole stem plays.
     _size, frames, rate = _read_audio_meta(sample_path)
     clip_seconds = float(frames) / rate if rate else 0.0
-    ableton.send_command("duplicate_clip_to_arrangement", {
+    placed = ableton.send_command("duplicate_clip_to_arrangement", {
         "track_index": track_index, "source_slot_index": 0,
         "destination_time": 0.0,
-        "warp_off": True, "clip_seconds": clip_seconds})
+        "warp_off": True, "clip_seconds": clip_seconds,
+        "start_offset": float(start_offset)})
     ableton.send_command("delete_clip", {
         "track_index": track_index, "clip_index": 0})
-    return {"name": stem_name, "track_index": track_index,
-            "path": sample_path, "loaded": True}
+    out = {"name": stem_name, "track_index": track_index,
+           "path": sample_path, "loaded": True}
+    clip = (placed or {}).get("new_clip") or {}
+    if clip:
+        out["clip"] = clip
+    problems = list(clip.get("normalize_errors") or [])
+    if clip.get("warping"):
+        problems.append("warp is still on")
+    if "start_marker" in clip and abs(clip["start_marker"] - start_offset) > 1e-3:
+        problems.append("start marker %.3f s, wanted %.3f s"
+                        % (clip["start_marker"], start_offset))
+    if problems:
+        out["error"] = "; ".join(problems)
+    return out
+
+
+def _place_stems_impl(ableton, folder, start_offset=0.0, tempo=None,
+                      wait_clip=None):
+    names = stem_utils.order_stem_files(os.listdir(folder))
+    if not names:
+        raise ValueError("No audio files (%s) in %s"
+                         % (", ".join(stem_utils.STEM_EXTS), folder))
+    if tempo:
+        ableton.send_command("set_tempo", {"tempo": float(tempo)})
+    info = ableton.send_command("get_session_info") or {}
+    index = int(info.get("track_count", 0))
+    stems = []
+    for name in names:
+        path = os.path.join(folder, name)
+        track = stem_utils.stem_track_name(name)
+        ableton.send_command("create_audio_track", {"index": -1})
+        ableton.send_command("set_track_name", {"track_index": index, "name": track})
+        try:
+            uri = _resolve_sample_uri(path)
+        except RuntimeError as e:
+            stems.append({"name": track, "track_index": index, "path": path,
+                          "loaded": False, "error": str(e)})
+        else:
+            stems.append(_lay_stem_on_track(ableton, index, track, uri, path,
+                                            start_offset=start_offset,
+                                            wait_clip=wait_clip))
+        index += 1
+    ableton.send_command("focus_view", {"view": "Arranger"})
+    failed = [s["name"] for s in stems if not s.get("loaded") or s.get("error")]
+    return {"folder": folder, "start_offset": float(start_offset),
+            "tempo": tempo, "stems": stems, "failed": failed}
+
+
+@mcp.tool()
+def place_stems_to_arrangement(ctx: Context, folder: str,
+                               start_offset: float = 0.0,
+                               tempo: float = None) -> str:
+    """Put every stem in a folder (a stem pack: '0 Lead Vocals.wav',
+    '1 Drums.wav', ...) on its own new audio track at bar 1 of the
+    Arrangement, Warp OFF, all starting at the same point in their files so
+    they stay in sync. Tracks are named from the files, in the pack's order.
+
+    Copy the pack into the open set's project folder first (e.g.
+    <Project>/Samples/Stems): files there resolve to the project's own copy,
+    not a same-named file elsewhere in the browser.
+
+    Parameters:
+    - folder: the folder holding the stems (not searched recursively). WAV and
+      AIFF only - other formats are skipped, since their length can't be read
+      to place them whole.
+    - start_offset: seconds into every file where beat 1 is (a stem pack's
+      lead-in, e.g. 0.154). Default 0.
+    - tempo: optional BPM to set first (unwarped stems play at their own
+      speed, so the set tempo only aligns the grid).
+
+    Returns JSON {ok, data:{folder, start_offset, tempo, stems:[{name,
+    track_index, path, loaded, clip?, error?}], failed:[names]}}. ok is
+    false when any stem failed to land or normalize.
+    """
+    try:
+        if not os.path.isdir(folder):
+            return _err("Folder not found: %s" % folder)
+        data = _place_stems_impl(get_ableton_connection(), folder,
+                                 start_offset=start_offset, tempo=tempo)
+        if data["failed"]:
+            return _err("Stems that did not land cleanly: %s"
+                        % ", ".join(data["failed"]), data=data)
+        return _ok(data)
+    except (ValueError, RuntimeError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("place_stems_to_arrangement error: %s", e)
+        return _err("place_stems_to_arrangement error: %s" % e)
 
 
 @mcp.tool()
@@ -8548,6 +8801,10 @@ def load_audio_clip(
             tempo = float(ableton.send_command("get_transport").get("tempo", 120.0))
         except Exception:
             pass
+        # A browser load lands in the highlighted slot only with Session view in
+        # front; with Arrangement in front it can report success and place
+        # nothing (issue #63).
+        ableton.send_command("focus_view", {"view": "Session"})
         ableton.send_command("set_highlighted_clip_slot",
                              {"track_index": track_index, "scene_index": clip_index})
         result = ableton.send_command("load_browser_item", {
@@ -8559,6 +8816,9 @@ def load_audio_clip(
         if not loaded:
             return _err("Failed to load audio clip from %s (load_browser_item did "
                         "not confirm)." % os.path.basename(local))
+        if not _wait_for_clip(ableton, track_index, clip_index):
+            return _err("Live accepted %s but no clip appeared in track %d slot %d."
+                        % (os.path.basename(local), track_index, clip_index))
         kind = refine_kind_by_length(
             classify_sample(os.path.basename(local), local), frames, rate, tempo)
         return _ok({

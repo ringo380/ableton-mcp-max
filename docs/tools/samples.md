@@ -153,3 +153,31 @@ Returns JSON {ok, data:{audio, model, device, tempo, key, scale,
 tempo_detected, key_detected, fresh, stems:[{name, track_index, path,
 loaded}]}}.
 
+## place_stems_to_arrangement
+
+```python
+place_stems_to_arrangement(folder: str, start_offset: float = 0.0, tempo: float = None)
+```
+
+Put every stem in a folder (a stem pack: '0 Lead Vocals.wav',
+'1 Drums.wav', ...) on its own new audio track at bar 1 of the
+Arrangement, Warp OFF, all starting at the same point in their files so
+they stay in sync. Tracks are named from the files, in the pack's order.
+
+Copy the pack into the open set's project folder first (e.g.
+<Project>/Samples/Stems): files there resolve to the project's own copy,
+not a same-named file elsewhere in the browser.
+
+Parameters:
+- folder: the folder holding the stems (not searched recursively). WAV and
+  AIFF only - other formats are skipped, since their length can't be read
+  to place them whole.
+- start_offset: seconds into every file where beat 1 is (a stem pack's
+  lead-in, e.g. 0.154). Default 0.
+- tempo: optional BPM to set first (unwarped stems play at their own
+  speed, so the set tempo only aligns the grid).
+
+Returns JSON {ok, data:{folder, start_offset, tempo, stems:[{name,
+track_index, path, loaded, clip?, error?}], failed:[names]}}. ok is
+false when any stem failed to land or normalize.
+

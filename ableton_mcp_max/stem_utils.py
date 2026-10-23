@@ -5,6 +5,8 @@ Imported by server.py only (the Remote Script runs in Live's own Python).
 """
 
 import json
+import os
+import re
 
 # Layout order is also the demucs output-filename set for each model.
 MODELS = {
@@ -105,3 +107,32 @@ def resolve_device(device, machine):
     if device != "auto":
         return device
     return "mps" if str(machine).lower() in ("arm64", "aarch64") else "cpu"
+
+
+# Only formats _read_audio_meta can measure: an unknown length would skip the
+# start/end normalize and could leave a stem truncated or offset.
+STEM_EXTS = (".wav", ".aif", ".aiff")
+_NUMBERED = re.compile(r"^(\d+)[\s._-]+(.+)$")
+_BRACKETED = re.compile(r"^.+\(([^()]+)\)$")
+
+
+def order_stem_files(names):
+    """Audio file names from a stem pack, in pack order: a leading number
+    ('0 Lead Vocals.wav', '10 Woodwinds.wav') sorts numerically, the rest
+    after it by name."""
+    def key(n):
+        m = _NUMBERED.match(os.path.splitext(n)[0])
+        return (0, int(m.group(1)), n.lower()) if m else (1, 0, n.lower())
+    return sorted((n for n in names if n.lower().endswith(STEM_EXTS)), key=key)
+
+
+def stem_track_name(file_name):
+    """Track name for a stem file: the name without extension or a leading
+    pack number ('2 Bass.wav' -> 'Bass'), or the part in brackets when the
+    pack names files 'Song (Part)' ('Waiting for Nothing (Bass).wav' -> 'Bass')."""
+    base = os.path.splitext(os.path.basename(file_name))[0]
+    m = _NUMBERED.match(base)
+    if m:
+        return m.group(2).strip()
+    m = _BRACKETED.match(base)
+    return m.group(1).strip() if m else base
