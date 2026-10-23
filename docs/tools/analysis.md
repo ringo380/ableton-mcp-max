@@ -22,7 +22,14 @@ Inspect the open set against best-practice rulesets and surface findings by doma
 ## analyze_set
 
 ```python
-analyze_set(focus: str = 'all', measure: bool = False, measure_window_s: float = 15.0)
+analyze_set(
+    focus: str = 'all',
+    measure: bool = False,
+    measure_window_s: float = 15.0,
+    plugin_state: bool = False,
+    include_snapshot: bool = True,
+    compact: bool = False,
+)
 ```
 
 Analyze the open Live set against curated best-practice rulesets.
@@ -54,8 +61,26 @@ deferred_rules, summary, [mix_signal]}:
   remediation}]} - cross-track spectral masking / loudness balance / per-track
   headroom / stereo correlation computed from the simultaneous per-track taps.
 
-With measure=False this is read-only; it never mutates the set. The
-/ableton:analyze skill layers the report and per-track judgment on top.
+plugin_state: when True, SAVE the set once and decode every iZotope plugin
+(Ozone 12 / Neutron 5 / Nectar 4) from the .als: each such device gains an
+`izotope` summary (active chain, bypass, limiter target/ceiling/true-peak),
+and master.limiting reflects an Ozone Maximizer. Unlocks the mastering
+ceiling rule and the empty-chain rule (deferred otherwise). Default False
+keeps the call read-only. Saving writes the open set to disk in place.
+
+include_snapshot: False drops the (large) snapshot from the response and
+returns findings/rules/summary only.
+
+compact: True returns a pruned snapshot (default/empty fields dropped, the
+judgment fields kept: fader dB, active sends, device key_params/automation/
+rack contents, iZotope chains, arrangement counts) as unindented JSON -
+about a quarter of the full size; use it for sets of 30+ tracks, whose
+full snapshot exceeds the tool-output limit. Rules always run on the full
+snapshot.
+
+With measure=False and plugin_state=False this is read-only; it never
+mutates the set. The /ableton:analyze skill layers the report and
+per-track judgment on top.
 
 ## check_clipping
 

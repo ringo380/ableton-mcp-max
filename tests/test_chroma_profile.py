@@ -7,15 +7,17 @@ import wave
 
 import pytest
 
-_BREW_PY = "/opt/homebrew/bin/python3"
+# The interpreter the server runs librosa under (brew python on macOS, `py -3`
+# on Windows, or ABLETON_MCP_ANALYSIS_PYTHON).
+_PY = __import__("ableton_mcp_max.server", fromlist=["x"])._analysis_python() or []
 _SCRIPT = os.path.join(os.path.dirname(os.path.dirname(__file__)),
                        "scripts", "chroma_profile.py")
 
 
 def _has_librosa():
-    if not os.path.exists(_BREW_PY):
+    if not _PY:
         return False
-    r = subprocess.run([_BREW_PY, "-c", "import librosa"],
+    r = subprocess.run(_PY + ["-c", "import librosa"],
                        capture_output=True)
     return r.returncode == 0
 
@@ -32,12 +34,12 @@ def _write_tone(path, freq, seconds=2.0, sr=22050):
         w.writeframes(bytes(frames))
 
 
-@pytest.mark.skipif(not _has_librosa(), reason="brew librosa unavailable")
+@pytest.mark.skipif(not _has_librosa(), reason="librosa not in the analysis python")
 def test_chroma_profile_detects_a440(tmp_path):
     wav = str(tmp_path / "a440.wav")
     _write_tone(wav, 440.0)  # A4 -> pitch class A = index 9
     payload = json.dumps([{"path": wav, "transpose": 0}])
-    r = subprocess.run([_BREW_PY, _SCRIPT], input=payload,
+    r = subprocess.run(_PY + [_SCRIPT], input=payload,
                        capture_output=True, text=True, timeout=120)
     assert r.returncode == 0, r.stderr
     out = json.loads(r.stdout.strip().splitlines()[-1])
@@ -46,13 +48,13 @@ def test_chroma_profile_detects_a440(tmp_path):
     assert out["profile"].index(max(out["profile"])) == 9  # A
 
 
-@pytest.mark.skipif(not _has_librosa(), reason="brew librosa unavailable")
+@pytest.mark.skipif(not _has_librosa(), reason="librosa not in the analysis python")
 def test_chroma_profile_skips_bad_file(tmp_path):
     bad = str(tmp_path / "not_audio.wav")
     with open(bad, "w") as f:
         f.write("nonsense")
     payload = json.dumps([{"path": bad, "transpose": 0}])
-    r = subprocess.run([_BREW_PY, _SCRIPT], input=payload,
+    r = subprocess.run(_PY + [_SCRIPT], input=payload,
                        capture_output=True, text=True, timeout=120)
     out = json.loads(r.stdout.strip().splitlines()[-1])
     assert out["analyzed"] == 0 and out["skipped"] == 1

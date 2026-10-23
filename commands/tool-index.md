@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_187 tools._
+_191 tools._
 
 ## Session & view
 
@@ -46,6 +46,7 @@ _187 tools._
 - **`restart_live`** - Gracefully quit and relaunch the running Ableton Live (no crash-recovery
 - **`save_set`** - Save the current Live set to disk (there is no LOM save API — this drives
 - **`save_set_as`** - Save the current Live set under a new NAME (File > Save Live Set As). Use
+- **`set_auto_warp_long_samples`** - Turn Live's "Auto-Warp Long Samples" preference (Preferences >
 
 ## Tracks (lifecycle)
 
@@ -114,6 +115,7 @@ _187 tools._
 - **`set_ozone_dynamics_band`** - Set an Ozone 12 Dynamics band's compressor controls in one call. Dynamics
 - **`get_ozone_state`** - Read Ozone 12 params directly from the plugin state blob (native values).
 - **`set_ozone_state`** - Author Ozone 12 params in native units by patching the state blob.
+- **`get_izotope_states`** - Read every iZotope plugin instance in the set (Ozone 12, Neutron 5,
 - **`recommend_master`** - Propose an Ozone 12 mastering chain from a free-text intent + loudness
 - **`apply_master`** - Apply a mastering chain (from recommend_master) to an Ozone 12 instance in
 - **`ensure_ozone_master`** - Prepare the master for mastering: guarantee exactly one enabled Ozone 12,
@@ -182,6 +184,7 @@ _187 tools._
 - **`get_arrangement_clips`** - List the clips on a track's Arrangement timeline.
 - **`duplicate_clip_to_arrangement`** - Place a Session-slot clip onto the same track's Arrangement timeline.
 - **`delete_arrangement_clip`** - Delete a clip from a track's Arrangement timeline.
+- **`move_arrangement_clip`** - Move a clip along its track's Arrangement timeline.
 - **`get_cue_points`** - List arrangement cue points / locators (index, name, time).
 - **`create_cue_point`** - Create a cue point (locator) on the Arrangement at the given time.
 - **`delete_cue_point`** - Delete a cue point (locator) by its index (as listed by get_cue_points).
@@ -276,6 +279,7 @@ _187 tools._
 - **`load_sample_to_drum_pad`** - Load a one-shot sample onto a single Drum Rack pad.
 - **`populate_drum_rack`** - Load many one-shot samples onto many Drum Rack pads in one call.
 - **`separate_stems_to_arrangement`** - Split an audio file into stems and lay each onto its own Arrangement track.
+- **`place_stems_to_arrangement`** - Put every stem in a folder (a stem pack: '0 Lead Vocals.wav',
 
 ## Catalog
 

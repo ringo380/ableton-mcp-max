@@ -7,7 +7,7 @@ has_children: true
 
 # Tool Reference
 
-All **187 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
+All **191 tools** exposed by the `ableton` MCP, grouped by area. Pick a category:
 
 ## [Session & View](./session-view.html)
 
@@ -49,7 +49,7 @@ Expose and control third-party VST3/AU plugin parameters via the Configure-slot 
 
 Module-aware control of an iZotope Ozone 12 instance on the master track. Ozone exposes 873 host params but Ableton Configures at most 128 at once, so expose a chosen module's params into the Configure slots (patching the .als and reloading in place), then read/set them per module: EQ bands, Maximizer, Dynamics bands, and any module's params or bypass.
 
-`get_ozone_modules`, `expose_ozone_modules`, `get_ozone_module`, `set_ozone_module_param`, `set_ozone_module_enabled`, `set_ozone_eq_band`, `set_ozone_maximizer`, `set_ozone_dynamics_band`, `get_ozone_state`, `set_ozone_state`, `recommend_master`, `apply_master`, `ensure_ozone_master`
+`get_ozone_modules`, `expose_ozone_modules`, `get_ozone_module`, `set_ozone_module_param`, `set_ozone_module_enabled`, `set_ozone_eq_band`, `set_ozone_maximizer`, `set_ozone_dynamics_band`, `get_ozone_state`, `set_ozone_state`, `get_izotope_states`, `recommend_master`, `apply_master`, `ensure_ozone_master`
 
 ## [Mixer & Routing](./mixer-routing.html)
 
@@ -73,7 +73,7 @@ Tempo, groove, metronome, recording, punch, and the playhead.
 
 Cue points, the arrangement loop, and arrangement-timeline clips.
 
-`get_cue_points`, `create_cue_point`, `delete_cue_point`, `jump_to_cue`, `set_arrangement_loop`, `back_to_arrangement`, `get_arrangement_clips`, `duplicate_clip_to_arrangement`, `delete_arrangement_clip`
+`get_cue_points`, `create_cue_point`, `delete_cue_point`, `jump_to_cue`, `set_arrangement_loop`, `back_to_arrangement`, `get_arrangement_clips`, `duplicate_clip_to_arrangement`, `delete_arrangement_clip`, `move_arrangement_clip`
 
 ## [Arrangement Structure](./arrangement-structure.html)
 
@@ -109,7 +109,7 @@ Collapse several mutations into a single atomic Live task / socket round-trip.
 
 Save the set and gracefully quit/relaunch Ableton Live (no crash-recovery prompt) for an automated bounce after a Remote Script change.
 
-`restart_live`, `save_set`, `save_set_as`
+`restart_live`, `save_set`, `save_set_as`, `set_auto_warp_long_samples`
 
 ## [Analysis](./analysis.html)
 
@@ -139,7 +139,7 @@ Translate analysis findings into applied mix corrections: shift faders by dB, au
 
 Discover audio samples in Live's User Library and factory packs and load them as audio clips, single drum-rack pads, or full drum kits: search by name with automatic loop/one-shot/kit/instrument classification, and load with transparent iCloud materialization. Also includes stem separation - split a full mix into instrument stems and lay them onto the Arrangement timeline.
 
-`search_samples`, `load_audio_clip`, `load_sample_to_drum_pad`, `populate_drum_rack`, `separate_stems_to_arrangement`
+`search_samples`, `load_audio_clip`, `load_sample_to_drum_pad`, `populate_drum_rack`, `separate_stems_to_arrangement`, `place_stems_to_arrangement`
 
 ## [Catalog](./catalog.html)
 

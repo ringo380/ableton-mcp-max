@@ -65,3 +65,13 @@ def test_buckets_have_distinct_eq_fingerprints():
 def test_unknown_bucket_raises():
     with pytest.raises(KeyError):
         mp.build_chain("nonsense", -12.0, -1.0)
+
+
+def test_input_trim_changes_writes_locked_and_both_sides():
+    out = mp.input_trim_changes(-6)
+    assert out == {"Gain Input": {"Gain Input Locked": -6.0,
+                                  "Gain Input Left": -6.0,
+                                  "Gain Input Right": -6.0}}
+    merged = mp.input_trim_changes(-2.5, {"MAX": {"Margin": -1.0}})
+    assert merged["MAX"] == {"Margin": -1.0}
+    assert merged["Gain Input"]["Gain Input Locked"] == -2.5

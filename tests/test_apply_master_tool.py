@@ -38,7 +38,7 @@ def test_apply_master_happy_path(monkeypatch):
     assert d["applied"][0]["value"] == -9.0
     assert d["exposed"]["exposed_count"] == 128
     assert d["tap"]["status"] == "deployed"
-    assert "trim loop" in d["next"]
+    assert "render" in d["next"] and "input_gain_db" in d["next"]
 
 
 def test_apply_master_not_ozone(monkeypatch):
@@ -54,3 +54,53 @@ def test_apply_master_tap_failure_is_nonfatal(monkeypatch):
                      chain={"MAX": {"Target Loudness [dB]": -9.0}}))
     assert out["ok"] is True  # write still counts
     assert out["data"]["tap"]["status"] == "failed"
+
+
+def test_apply_master_input_gain_writes_locked_and_sides(monkeypatch):
+    _install_stubs(monkeypatch)
+    seen = {}
+    real = server.set_ozone_state
+    def capture(ctx, track_index, changes, device_index=0,
+                track_type="master", reload=True):
+        seen["changes"] = changes
+        return real(ctx, track_index, changes, device_index, track_type, reload)
+    monkeypatch.setattr(server, "set_ozone_state", capture)
+    chain = {"MAX": {"Margin": -1.0}}
+    out = json.loads(server.apply_master(ctx=None, chain=chain,
+                                         input_gain_db=-6))
+    assert out["ok"] is True
+    gi = seen["changes"]["Gain Input"]
+    assert gi == {"Gain Input Locked": -6.0, "Gain Input Left": -6.0,
+                  "Gain Input Right": -6.0}
+    assert seen["changes"]["MAX"] == {"Margin": -1.0}
+    assert "Gain Input" not in chain  # caller's dict is not mutated
+
+
+def test_apply_master_without_input_gain_leaves_trim_alone(monkeypatch):
+    _install_stubs(monkeypatch)
+    seen = {}
+    real = server.set_ozone_state
+    def capture(ctx, track_index, changes, device_index=0,
+                track_type="master", reload=True):
+        seen["changes"] = changes
+        return real(ctx, track_index, changes, device_index, track_type, reload)
+    monkeypatch.setattr(server, "set_ozone_state", capture)
+    server.apply_master(ctx=None, chain={"MAX": {"Margin": -1.0}})
+    assert "Gain Input" not in seen["changes"]
+
+
+def test_apply_master_errors_when_an_enabled_module_is_not_in_the_chain(monkeypatch):
+    _install_stubs(monkeypatch)        # fake write reports no chain at all
+    out = json.loads(server.apply_master(ctx=None, chain={"MAX": {"Bypass": False}}))
+    assert out["ok"] is False and "Maximizer" in out["error"] and "chain" in out["error"]
+
+
+def test_apply_master_passes_when_the_chain_holds_the_module(monkeypatch):
+    _install_stubs(monkeypatch)
+    real = server.set_ozone_state
+    def with_chain(*a, **k):
+        d = json.loads(real(*a, **k)); d["data"]["chain"] = ["Maximizer"]
+        return json.dumps(d)
+    monkeypatch.setattr(server, "set_ozone_state", with_chain)
+    out = json.loads(server.apply_master(ctx=None, chain={"MAX": {"Bypass": False}}))
+    assert out["ok"] is True

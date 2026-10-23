@@ -51,4 +51,5 @@ This restarts **Ableton only**. The MCP server cannot restart its own process, s
 ## Notes
 
 - `restart_live` targets whichever Live is listening on 9877 (the one the MCP talks to), so it bounces the correct version on a multi-version machine.
-- Answering the save dialog uses macOS System Events; if it ever silently fails to quit, the host may need Accessibility permission for the controlling process - the tool reports `quit: false` in that case.
+- macOS: answering the save dialog uses System Events; if it ever silently fails to quit, the host may need Accessibility permission for the controlling process - the tool reports `quit: false` in that case.
+- Windows: the quit is a WM_CLOSE to Live's window and the save prompt is answered through UI Automation (no focus needed). A dirty **Untitled** set with `save='save'` is refused before quitting (save it with `save_set_as` first). If Live's window closes but its process hangs on the way out (seen once, likely in the audio driver), the tool reports `quit: false` with that pid and does NOT relaunch on top of it - end the process in Task Manager or reboot.

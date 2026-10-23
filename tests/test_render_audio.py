@@ -131,6 +131,10 @@ def wired(monkeypatch):
         windows["Save"] = False
 
     monkeypatch.setattr(server, "_live_press_escape", _escape)
+    # Unpatched, this runs a REAL osascript against System Events whenever the
+    # Save window stays up - which blocks indefinitely in a session without GUI
+    # access (e.g. pytest over ssh).
+    monkeypatch.setattr(server, "_replace_sheet_open", lambda: False)
 
     def _open():
         ui.menus.append(("File", "Export Audio/Video..."))

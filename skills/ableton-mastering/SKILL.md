@@ -21,9 +21,16 @@ master.
 4. Trim loop (<= 4 iterations), all live (no reloads):
    - Jump to the densest section, `start_playback`, then `measure_loudness`.
    - If integrated LUFS is within 1 LU of target AND true-peak <= ceiling, stop.
-   - Otherwise nudge `set_ozone_maximizer` live: raise `threshold` (input gain)
-     to get louder; lower `ceiling` or back off gain to tame true-peak.
+   - Too quiet: nudge `set_ozone_maximizer` live: raise `threshold` (input
+     gain) to get louder; lower `ceiling` or back off gain to tame true-peak.
+   - Too loud (the mix is already hotter than the target - common with
+     summed stems): the Maximizer cannot turn it down. Rerun `apply_master`
+     with `input_gain_db = target - measured` (one reload); it trims Ozone's
+     input, then re-measure.
    - Re-measure. After 4 iterations, report the best reading and the gap.
+   - Without a tap, measure a `render_audio` of the densest 8 bars with
+     `ffmpeg -i x.wav -af ebur128=peak=true -f null -`, then confirm with a
+     full render: integrated LUFS is a whole-song figure.
 5. `check_clipping` and confirm true-peak <= ceiling.
 6. Log the target, the applied chain, and the final readings to `decisions.md`.
 
@@ -46,6 +53,12 @@ master.
 - The live `set_ozone_maximizer` path does NOT reload; use it in the loop.
   `set_ozone_state` DOES reload (stops playback) - use it only at apply time.
 - Ozone-12-only: there is no native-limiter fallback in this flow.
+- The Maximizer's `Target Loudness` is only the auto-learn goal: writing it
+  does not change output level (set -14, rendered -8.9 LUFS). Verify loudness
+  by measurement, never by reading the setting back.
+- Ozone input trim: with Input Lock on (default) only `Gain Input Locked` is
+  used - `Gain Input Left/Right` are ignored. `apply_master(input_gain_db=)`
+  writes all three.
 - After `apply_master`, check `data.exposed` for an `error`: if the Maximizer
   failed to expose, the live `set_ozone_maximizer` trim loop cannot run - fall
   back to authoring the Maximizer via `set_ozone_state` (reloads) or report it.

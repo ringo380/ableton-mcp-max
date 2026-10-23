@@ -11,10 +11,13 @@ import math
 import time
 import subprocess
 import platform
+import shutil
+import sys
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, List, Optional, Union
 
+from ableton_mcp_max import platform_utils as plat
 from ableton_mcp_max.param_utils import resolve_parameter_index
 from ableton_mcp_max.track_utils import coerce_create_index, coerce_track_index
 from ableton_mcp_max.mixer_utils import normalize_property, validate_property
@@ -100,7 +103,9 @@ from ableton_mcp_max.arrangement_structure_utils import (
     tiling_plan,
 )
 from ableton_mcp_max.batch_utils import validate_batch, coerce_stop_on_error
-from ableton_mcp_max.analysis_utils import normalize_snapshot, evaluate_rules, live_volume_to_db
+from ableton_mcp_max.analysis_utils import (normalize_snapshot, evaluate_rules,
+                                            live_volume_to_db, attach_plugin_states,
+                                            compact_snapshot)
 from ableton_mcp_max.remediation_utils import (
     db_to_live_volume,
     generate_actions,
@@ -165,6 +170,8 @@ from ableton_mcp_max import ozone_utils as _oz
 from ableton_mcp_max import ozone_param_catalog as _ozcat
 from ableton_mcp_max import ozone_state_utils as _osu
 from ableton_mcp_max import master_select as _msel
+from ableton_mcp_max import master_profiles as _mp
+from ableton_mcp_max import live_prefs_utils as _lp
 from ableton_mcp_max import catalog_query
 from ableton_mcp_max import master_ozone_utils
 
@@ -172,6 +179,8 @@ from ableton_mcp_max import master_ozone_utils
 logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("AbletonMCPServer")
+# comtypes (Windows UIA) logs its typelib cache at INFO on every load.
+logging.getLogger("comtypes").setLevel(logging.WARNING)
 
 
 def _ok(data):
@@ -304,7 +313,8 @@ MUTATING_COMMANDS = frozenset({
     "clear_automation", "create_automation_envelope", "clear_all_automation",
     "register_listener", "unregister_listener", "create_cue_at_playhead",
     "delete_cue_at_playhead", "duplicate_clip_to_arrangement",
-    "delete_arrangement_clip", "create_audio_track", "create_return_track",
+    "delete_arrangement_clip", "move_arrangement_clip",
+    "create_audio_track", "create_return_track",
     "delete_track", "delete_return_track", "duplicate_track", "undo", "redo",
     "set_groove_amount", "set_swing_amount", "set_clip_trigger_quantization",
     "set_midi_recording_quantization", "set_nudge", "set_selected_track",
@@ -762,9 +772,77 @@ def get_session_info(ctx: Context) -> str:
         return _err(f"Error getting session info: {str(e)}")
 
 
+def _plugin_states_read_impl(*, save_impl, read_als=als.read_als,
+                             resolve_path=None, title_fn=None):
+    """Save the set once, read the .als once, and summarize every iZotope
+    instance (Ozone/Neutron/Nectar) on every track, return and the master.
+    Returns {ok, set_path, states:{(track_type, index): [summary, ...]}}."""
+    save_res = save_impl()
+    if not save_res.get("saved"):
+        return {"ok": False, "error": "save_set failed: %s" % save_res.get("error", save_res)}
+    path = _serum_fx_resolve_path(title_fn, resolve_path)
+    xml = read_als(path)
+    states = _osu.scan_family_states(xml, als.iter_track_spans(xml))
+    return {"ok": True, "set_path": path, "states": states}
+
+
+def _states_as_list(states, name_of=None):
+    """Flatten scan_family_states' {(type, idx): [...]} into a JSON-able list."""
+    name_of = name_of or {}
+    out = []
+    for (ttype, idx), items in sorted(states.items(), key=lambda kv: (
+            {"regular": 0, "return": 1, "master": 2}[kv[0][0]], kv[0][1])):
+        out.append({"track_type": ttype, "track_index": idx,
+                    "track_name": name_of.get((ttype, idx)), "instances": items})
+    return out
+
+
+@mcp.tool()
+def get_izotope_states(ctx: Context) -> str:
+    """Read every iZotope plugin instance in the set (Ozone 12, Neutron 5,
+    Nectar 4) from its saved plugin state, in one pass.
+
+    Saves the set once (titled sets only), then decodes each instance's state
+    blob from the .als. Needs no Configure/exposure. Per instance: product,
+    global_bypass, the ACTIVE signal chain in order (modules outside the chain
+    do not process audio, whatever their own bypass says), per-module bypass,
+    plugin_ordinal (the device_index get_ozone_state takes), and `limiter` when
+    a limiting stage is in the chain - Ozone Maximizer {target_lufs,
+    ceiling_db (Margin), true_peak_safe (Prevent Intersample Clipping), mode,
+    character}, or a Neutron/Nectar Limiter {ceiling_db}.
+
+    Returns JSON {ok, data:{set_path, tracks:[{track_type, track_index,
+    track_name, instances:[...]}]}}. An instance with an empty chain passes
+    audio through untouched.
+    """
+    try:
+        get_ableton_connection()
+        res = _plugin_states_read_impl(save_impl=lambda: _save_set_impl(name=""))
+        if not res.get("ok"):
+            return _err(res.get("error", "get_izotope_states failed"))
+        name_of = {}
+        try:
+            raw = get_ableton_connection().send_command("get_analysis_snapshot")
+            for t in raw.get("tracks", []):
+                name_of[("regular", t.get("index"))] = t.get("name")
+            for t in raw.get("returns", []):
+                name_of[("return", t.get("index"))] = t.get("name")
+            name_of[("master", 0)] = "Master"
+        except Exception as e:
+            logger.info("track names unavailable for izotope states: %s", e)
+        return _ok({"set_path": res["set_path"],
+                    "tracks": _states_as_list(res["states"], name_of)})
+    except (ValueError, RuntimeError, FileNotFoundError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("get_izotope_states error: %s", e)
+        return _err("get_izotope_states error: %s" % e)
+
+
 @mcp.tool()
 def analyze_set(ctx: Context, focus: str = "all", measure: bool = False,
-                measure_window_s: float = 15.0) -> str:
+                measure_window_s: float = 15.0, plugin_state: bool = False,
+                include_snapshot: bool = True, compact: bool = False) -> str:
     """Analyze the open Live set against curated best-practice rulesets.
 
     focus: one of "all" (default), "mixing", "mastering", "sound_design",
@@ -794,8 +872,26 @@ def analyze_set(ctx: Context, focus: str = "all", measure: bool = False,
       remediation}]} - cross-track spectral masking / loudness balance / per-track
       headroom / stereo correlation computed from the simultaneous per-track taps.
 
-    With measure=False this is read-only; it never mutates the set. The
-    /ableton:analyze skill layers the report and per-track judgment on top.
+    plugin_state: when True, SAVE the set once and decode every iZotope plugin
+    (Ozone 12 / Neutron 5 / Nectar 4) from the .als: each such device gains an
+    `izotope` summary (active chain, bypass, limiter target/ceiling/true-peak),
+    and master.limiting reflects an Ozone Maximizer. Unlocks the mastering
+    ceiling rule and the empty-chain rule (deferred otherwise). Default False
+    keeps the call read-only. Saving writes the open set to disk in place.
+
+    include_snapshot: False drops the (large) snapshot from the response and
+    returns findings/rules/summary only.
+
+    compact: True returns a pruned snapshot (default/empty fields dropped, the
+    judgment fields kept: fader dB, active sends, device key_params/automation/
+    rack contents, iZotope chains, arrangement counts) as unindented JSON -
+    about a quarter of the full size; use it for sets of 30+ tracks, whose
+    full snapshot exceeds the tool-output limit. Rules always run on the full
+    snapshot.
+
+    With measure=False and plugin_state=False this is read-only; it never
+    mutates the set. The /ableton:analyze skill layers the report and
+    per-track judgment on top.
     """
     try:
         rules = load_rulesets(focus)
@@ -805,6 +901,11 @@ def analyze_set(ctx: Context, focus: str = "all", measure: bool = False,
         ableton = get_ableton_connection()
         raw = ableton.send_command("get_analysis_snapshot")
         snapshot = normalize_snapshot(raw)
+        if plugin_state:
+            ps = _plugin_states_read_impl(save_impl=lambda: _save_set_impl(name=""))
+            if not ps.get("ok"):
+                return _err("plugin_state read failed: %s" % ps.get("error"))
+            attach_plugin_states(snapshot, ps["states"])
         try:
             tap = get_audio_tap_connection()
             if tap.is_connected():
@@ -867,6 +968,12 @@ def analyze_set(ctx: Context, focus: str = "all", measure: bool = False,
                 result["summary"][k] = sum(1 for f in result["findings"]
                                            if f.get("status") == k)
         result["findings"] = generate_actions(result["findings"], snapshot)
+        if not include_snapshot:
+            result.pop("snapshot", None)
+        elif compact:
+            result["snapshot"] = compact_snapshot(snapshot)
+        if compact:
+            return json.dumps({"ok": True, "data": result}, separators=(",", ":"))
         return _ok(result)
     except Exception as e:
         logger.error(f"Error analyzing set: {str(e)}")
@@ -1800,11 +1907,83 @@ def apply_findings(
 # Save-As dialog we can't fill (reported back, not guessed). The OS calls below
 # are seams so the orchestration is unit-testable without touching real apps.
 LIVE_PORT = 9877
+IS_WINDOWS = plat.is_windows(sys.platform)
+if IS_WINDOWS:
+    from ableton_mcp_max import win_ui as _win
+
+
+def _os_name():
+    """The OS the UI layer is driving: plat.WIN whenever the Windows layer is
+    selected (so its title/name rules apply even when tests select it on a
+    Mac), else the real platform."""
+    return plat.WIN if IS_WINDOWS else sys.platform
+
+
+def _prefs_base():
+    """Parent dir of Live's per-version preference dirs."""
+    return plat.prefs_base(sys.platform, os.path.expanduser("~"),
+                           os.environ.get("APPDATA"))
+
+
+def _running_live_version():
+    """'x.y.z' of the Live the host is talking to, or None."""
+    try:
+        info = get_ableton_connection().send_command("get_application_version")
+        return "%d.%d.%d" % (int(info["major"]), int(info["minor"]),
+                             int(info["bugfix"]))
+    except Exception:
+        return None
+
+
+def _win_pref_dirs():
+    """Windows 'Live x.y.z\\Preferences' dirs, best LAST: the running Live's
+    exact version when known, else the highest version (numeric sort)."""
+    dirs = [os.path.join(d, "Preferences")
+            for d in glob.glob(os.path.join(_prefs_base(), "Live *"))]
+    dirs = [d for d in dirs if os.path.isdir(d)]
+    parents = plat.order_pref_dirs(sys.platform,
+                                   [os.path.dirname(d) for d in dirs],
+                                   _running_live_version())
+    return [os.path.join(p, "Preferences") for p in parents]
+
+
+def _documents_dir():
+    """The user's Documents known folder (follows OneDrive redirection on
+    Windows), or None if it can't be resolved."""
+    if not IS_WINDOWS:
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class _GUID(ctypes.Structure):
+            _fields_ = [("a", wintypes.DWORD), ("b", wintypes.WORD),
+                        ("c", wintypes.WORD), ("d", ctypes.c_ubyte * 8)]
+        # FOLDERID_Documents {FDD39AD0-238F-46AF-ADB4-6C85480369C7}
+        fid = _GUID(0xFDD39AD0, 0x238F, 0x46AF,
+                    (ctypes.c_ubyte * 8)(0xAD, 0xB4, 0x6C, 0x85,
+                                         0x48, 0x03, 0x69, 0xC7))
+        out = ctypes.c_wchar_p()
+        if ctypes.windll.shell32.SHGetKnownFolderPath(
+                ctypes.byref(fid), 0, None, ctypes.byref(out)) != 0:
+            return None
+        path = out.value
+        ctypes.windll.ole32.CoTaskMemFree(out)
+        return path
+    except Exception:
+        return None
+
+
+def _osa_unavailable():
+    if IS_WINDOWS:
+        raise RuntimeError("Internal error: a macOS-only UI path was reached on "
+                           "Windows.")
 
 
 def _osa(script):
     """Run an AppleScript and wait. Keystroke/System-Events scripts return
     immediately; used for the dialog answers. Seam for tests."""
+    _osa_unavailable()
     subprocess.run(["/usr/bin/osascript", "-e", script],
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
 
@@ -1812,6 +1991,7 @@ def _osa(script):
 def _osa_async(script):
     """Fire an AppleScript without waiting — for the 'quit' event, which BLOCKS
     until the save dialog (if any) is answered. Seam for tests."""
+    _osa_unavailable()
     subprocess.Popen(["/usr/bin/osascript", "-e", script],
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -1819,6 +1999,7 @@ def _osa_async(script):
 def _osa_get(script):
     """Run an AppleScript and RETURN its stripped stdout ('' on error). Seam for
     tests; used to read UI state (window title, sheet presence)."""
+    _osa_unavailable()
     try:
         out = subprocess.check_output(["/usr/bin/osascript", "-e", script],
                                       stderr=subprocess.DEVNULL, timeout=20)
@@ -1846,7 +2027,13 @@ def _live_window_title(proc=_LIVE_PROC):
     ("Ozone 12/1-Serum 2"). That wrong title poisons every consumer - the set
     looks mis-titled to the .als path resolver (_current_set_path filters log
     lines by it) and save_set reports a save that never landed. Falls back to
-    `window 1` when no standard window is readable."""
+    `window 1` when no standard window is readable.
+
+    On Windows the main window's title is 'Name* - Ableton Live 12 Suite';
+    the app suffix and the unsaved '*' are stripped so callers see the same
+    bare set name as on macOS."""
+    if IS_WINDOWS:
+        return plat.set_title_from_window_title(_os_name(), _win_raw_title())
     title = _osa_get(
         'tell application "System Events" to tell process "%s" to get name of '
         '(first window whose subrole is "AXStandardWindow")' % proc)
@@ -1861,6 +2048,9 @@ def _live_window_count(proc=_LIVE_PROC):
     """Number of windows on the Live process (0 if unreadable / screen locked).
     Live's Save-As path panel appears as an EXTRA standard window (not an
     AXSheet), so a count above the 1-window baseline signals a dialog is open."""
+    if IS_WINDOWS:
+        pid = _win.listening_pid(LIVE_PORT)
+        return len(_win.windows(pid)) if pid else 0
     out = _osa_get(
         'tell application "System Events" to tell process "%s" '
         'to get (count of windows)' % proc)
@@ -1872,7 +2062,12 @@ def _live_window_count(proc=_LIVE_PROC):
 
 def _live_app_and_pid(port=LIVE_PORT):
     """(.app path, pid int) of the Live process listening on `port`, or
-    (None, None). This is authoritatively the Live the MCP talks to."""
+    (None, None). This is authoritatively the Live the MCP talks to. On
+    Windows the 'app' is the Live .exe path."""
+    if IS_WINDOWS:
+        pid = _win.listening_pid(port)
+        exe = _win.process_image(pid) if pid else None
+        return (exe, pid) if exe else (None, None)
     try:
         out = subprocess.check_output(
             ["/usr/sbin/lsof", "-nP", "-iTCP:%d" % port, "-sTCP:LISTEN", "-t"],
@@ -1889,6 +2084,8 @@ def _live_app_and_pid(port=LIVE_PORT):
 
 
 def _pid_alive(pid):
+    if IS_WINDOWS:           # os.kill(pid, 0) TERMINATES a process on Windows
+        return _win.pid_alive(pid)
     try:
         os.kill(pid, 0)
         return True
@@ -1897,10 +2094,15 @@ def _pid_alive(pid):
 
 
 def _open_app(app):
+    if IS_WINDOWS:
+        _win.launch(app)
+        return
     subprocess.run(["/usr/bin/open", "-a", app], check=False)
 
 
 def _port_listening(port=LIVE_PORT):
+    if IS_WINDOWS:
+        return _win.listening_pid(port) is not None
     try:
         out = subprocess.check_output(
             ["/usr/sbin/lsof", "-nP", "-iTCP:%d" % port, "-sTCP:LISTEN", "-t"],
@@ -1911,9 +2113,13 @@ def _port_listening(port=LIVE_PORT):
 
 
 def _app_name(app_path):
-    """'Ableton Live 12 Suite' from a .app path, for AppleScript 'tell app'."""
+    """'Ableton Live 12 Suite' from a .app path (for AppleScript 'tell app') or
+    a Windows .exe path."""
     base = os.path.basename(app_path)
-    return base[:-4] if base.endswith(".app") else base
+    for ext in (".app", ".exe"):
+        if base.lower().endswith(ext):
+            return base[:-len(ext)]
+    return base
 
 
 def _wait_until(predicate, timeout, interval=1.0, sleep=time.sleep):
@@ -1941,7 +2147,11 @@ def _live_press_escape():
 def _click_file_menu(item, proc=_LIVE_PROC):
     """Click a Live File-menu item by name. Clicking the menu is focus-independent
     (unlike a Cmd-key keystroke), so opening the save panel is reliable even if
-    Live isn't frontmost the instant we fire."""
+    Live isn't frontmost the instant we fire. On Windows the item's
+    WM_COMMAND is posted to Live's native menu bar (also focus-independent)."""
+    if IS_WINDOWS:
+        _win.post_menu(_win_live()[1], "File", item)
+        return
     _osa('tell application "System Events" to tell process "%s" to click '
          'menu item "%s" of menu 1 of menu bar item "File" of menu bar 1'
          % (proc, _as_literal(item)))
@@ -1950,17 +2160,297 @@ def _click_file_menu(item, proc=_LIVE_PROC):
 # Roots Ableton may drop a "<name> Project" folder into. The Save panel saves to
 # its LAST-USED location, which isn't introspectable, so we look here best-effort
 # to report the resolved path — but never fail the save if it's not found.
-_SAVE_SEARCH_ROOTS = ("~/Desktop", "~/Music", "~/Documents",
-                      "~/Music/Ableton", "~/Documents/Ableton")
+# --- Windows UI layer ------------------------------------------------------
+# Live 12 on Windows has a native Win32 menu bar, uses the stock Windows Save
+# dialog for Save As / export, and draws its own prompts (exposed through UI
+# Automation). So the Windows flows below post menu commands (focus-free),
+# answer prompts by UIA Invoke (focus-free), and TYPE the file name into the
+# native Save dialog - the one step that brings Live to the front, because the
+# dialog ignores a name set by window message (see win_ui.file_dialog_save).
+
+_WIN_SAVE_SET_DIALOG = "Save Live Set As:"
+_WIN_SAVE_AUDIO_DIALOG = "Save Audio File As:"
+
+
+def _win_live():
+    """(pid, main hwnd, exe) of the Live listening on LIVE_PORT."""
+    pid = _win.listening_pid(LIVE_PORT)
+    hwnd = _win.main_window(pid) if pid else None
+    if not hwnd:
+        raise RuntimeError("No running Ableton Live found on port %d." % LIVE_PORT)
+    return pid, hwnd, _win.process_image(pid)
+
+
+def _win_raw_title():
+    try:
+        return _win.window_title(_win_live()[1])
+    except RuntimeError:
+        return ""
+
+
+def _win_wait_window(pid, title, timeout, sleep=time.sleep):
+    """hwnd of `pid`'s window titled `title` once it appears, else None."""
+    found = []
+
+    def _seen():
+        h = _win.find_window(pid, title)
+        if h:
+            found[:] = [h]
+        return bool(h)
+
+    _wait_until(_seen, timeout=timeout, interval=0.25, sleep=sleep)
+    return found[0] if found else None
+
+
+def _win_prompt(pid):
+    """(hwnd, {button name: element}) of a Live-drawn prompt (an unnamed
+    top-level window with Yes/No/OK/Cancel buttons), or (None, {})."""
+    from ableton_mcp_max import win_uia
+    for hwnd, title, cls in _win.windows(pid):
+        if title or cls != _win.LIVE_WINDOW_CLASS:
+            continue
+        try:
+            root = win_uia.element(hwnd)
+        except Exception:
+            continue
+        buttons = {}
+        for name in ("Yes", "No", "OK", "Cancel"):
+            el = win_uia.find(root, name, win_uia.BUTTON)
+            if el is not None:
+                buttons[name] = el
+        if buttons:
+            return hwnd, buttons
+    return None, {}
+
+
+def _win_press_prompt(buttons, name):
+    from ableton_mcp_max import win_uia
+    win_uia.invoke(buttons[name])
+
+
+def _win_confirm_overwrite(pid, sleep=time.sleep):
+    """Answer an 'already exists - replace it?' confirmation (the stock
+    'Confirm Save As' box or a Live prompt) with Yes. True if one was seen."""
+    from ableton_mcp_max import win_uia
+    for hwnd, title in _win.dialogs(pid):
+        if title.startswith("Confirm"):
+            el = win_uia.find(win_uia.element(hwnd), "Yes", win_uia.BUTTON)
+            if el is not None:
+                win_uia.invoke(el)
+                return True
+            return _win.dialog_click(hwnd, _win.IDYES)
+    _hwnd, buttons = _win_prompt(pid)
+    if "Yes" in buttons and "No" in buttons:
+        _win_press_prompt(buttons, "Yes")
+        return True
+    return False
+
+
+def _win_saved_path(folder, basename):
+    """The .als a Save dialog just wrote into `folder`: Live writes either
+    <folder>/<name>.als (saving inside an existing project) or wraps it as
+    <folder>/<name> Project/<name>.als. '' if neither exists."""
+    best, best_mtime = "", -1.0
+    for cand in (os.path.join(folder, "%s.als" % basename),
+                 os.path.join(folder, "%s Project" % basename, "%s.als" % basename)):
+        try:
+            m = os.path.getmtime(cand)
+        except OSError:
+            continue
+        if m > best_mtime:
+            best, best_mtime = cand, m
+    return best
+
+
+def _win_save_as_impl(name, sleep=time.sleep):
+    basename = clean_set_name(name, illegal=plat.illegal_name_chars(_os_name()))
+    pid, hwnd, exe = _win_live()
+    result = {"app": exe, "name": basename}
+    _win.post_menu(hwnd, "File", "Save Live Set As...")
+    dlg = _win_wait_window(pid, _WIN_SAVE_SET_DIALOG, timeout=8.0, sleep=sleep)
+    if not dlg:
+        result["saved"] = False
+        result["error"] = "The Save Live Set As dialog did not appear."
+        return result
+    folder = _win.file_dialog_folder(dlg)
+    _win.file_dialog_save(dlg, basename)
+    # Re-using a name raises an overwrite confirmation; the name was chosen
+    # explicitly, so confirm it (same as the macOS Replace sheet).
+    def _settled():
+        if _win.find_window(pid, _WIN_SAVE_SET_DIALOG) is None and \
+                _live_window_title() == basename:
+            return True
+        _win_confirm_overwrite(pid)
+        return False
+    if not _wait_until(_settled, timeout=15.0, interval=0.5, sleep=sleep):
+        dlg = _win.find_window(pid, _WIN_SAVE_SET_DIALOG)
+        if dlg:
+            _win.dialog_click(dlg, _win.IDCANCEL)
+        result["saved"] = False
+        result["error"] = ("Save-As did not complete (title is %r, not %r)."
+                           % (_live_window_title(), basename))
+        return result
+    result["saved"] = True
+    path = (_win_saved_path(folder, basename) if folder else "") or \
+        _find_saved_set(basename)
+    if path:
+        result["path"] = path
+        _SAVED_SET_PATHS[basename] = path
+    return result
+
+
+def _win_save_set_impl(name="", sleep=time.sleep):
+    if name:
+        return _win_save_as_impl(name, sleep=sleep)
+    pid, hwnd, exe = _win_live()
+    raw = _win.window_title(hwnd)
+    title = plat.set_title_from_window_title(_os_name(), raw)
+    if is_untitled_title(title):
+        return {"app": exe, "saved": False, "untitled": True, "title": title,
+                "error": ("Set is untitled (no file on disk). Pass a name "
+                          "(save_set(name=...) or save_set_as) to save it.")}
+    _win.post_menu(hwnd, "File", "Save Live Set")
+    # A titled set saves in place; the '*' unsaved marker leaving the title
+    # is the confirmation. A Save-As dialog instead means Live thinks the set
+    # has no file - cancel it rather than guess a location.
+    def _done():
+        if _win.find_window(pid, _WIN_SAVE_SET_DIALOG):
+            return True
+        return not plat.window_title_dirty(_os_name(), _win.window_title(hwnd))
+    _wait_until(_done, timeout=10.0, interval=0.3, sleep=sleep)
+    dlg = _win.find_window(pid, _WIN_SAVE_SET_DIALOG)
+    if dlg:
+        _win.dialog_click(dlg, _win.IDCANCEL)
+        return {"app": exe, "saved": False, "title": title,
+                "error": ("A save dialog appeared on Save - the set looks "
+                          "untitled. Use save_set(name=...) to give it a name.")}
+    if plat.window_title_dirty(_os_name(), _win.window_title(hwnd)):
+        return {"app": exe, "saved": False, "title": title,
+                "error": "Live still shows unsaved changes after Save."}
+    return {"app": exe, "saved": True, "title": title}
+
+
+def _run_before_relaunch(hook, result):
+    """Run a restart's while-Live-is-closed step; a failure is reported, never
+    raised, so Live still relaunches."""
+    if hook is None:
+        return
+    try:
+        result["before_relaunch"] = hook()
+    except Exception as e:
+        logger.error("before_relaunch step failed: %s", e)
+        result["before_relaunch_error"] = str(e)
+
+
+def _win_restart_live_impl(save="discard", relaunch=True, wait_timeout=90.0,
+                           dirty_after=5.0, sleep=time.sleep, before_relaunch=None):
+    if save not in ("discard", "save"):
+        raise ValueError("save must be 'discard' or 'save' (got %r)." % save)
+    pid, hwnd, exe = _win_live()
+    raw = _win.window_title(hwnd)
+    dirty = bool(plat.window_title_dirty(_os_name(), raw))
+    result = {"app": exe, "pid": pid, "save": save, "was_dirty": dirty}
+    if dirty and save == "save" and is_untitled_title(
+            plat.set_title_from_window_title(_os_name(), raw)):
+        # Saving would open a Save-As dialog this can't name - refuse up front
+        # instead of leaving Live half-quit.
+        result["quit"] = False
+        result["error"] = ("The set is Untitled with unsaved changes - save it "
+                           "first with save_set_as, or restart with "
+                           "save='discard'.")
+        return result
+
+    _win.close(hwnd)                       # graceful quit (like Apple 'quit')
+    # A clean set closes its window at once; a dirty one raises Live's
+    # 'Save changes to "X" before closing?' prompt (Yes / No / Cancel).
+    def _settled():
+        return bool(_win_prompt(pid)[1]) or not _win.main_window(pid)
+    _wait_until(_settled, timeout=dirty_after if dirty else 2.0,
+                interval=0.25, sleep=sleep)
+    _hwnd, buttons = _win_prompt(pid)
+    if buttons:
+        result["was_dirty"] = True
+        want = "Yes" if save == "save" else "No"
+        if want in buttons:
+            _win_press_prompt(buttons, want)
+            result["dialog_answered"] = save
+
+    if not _wait_until(lambda: not _win.pid_alive(pid), timeout=45.0,
+                       interval=1.0, sleep=sleep):
+        result["quit"] = False
+        if _win.main_window(pid):
+            result["error"] = ("Live did not quit (a dialog may still be open "
+                               "in Live).")
+        else:
+            # Seen on Windows: the window closes but the process hangs in
+            # shutdown (a thread stuck in the audio driver) and cannot be
+            # killed. Don't relaunch on top of it.
+            result["error"] = ("Live closed its window but the process is still "
+                               "exiting (pid %d). If it stays in Task Manager as "
+                               "'Not responding', end it there or reboot, then "
+                               "start Live." % pid)
+        return result
+    result["quit"] = True
+    _run_before_relaunch(before_relaunch, result)
+
+    if relaunch:
+        _win.launch(exe)
+        result["relaunched"] = True
+        result["surface_up"] = _wait_until(_port_listening, timeout=wait_timeout,
+                                           sleep=sleep)
+    return result
+
+
+def _win_reload_set(path, set_name, settle=0.6, timeout=30.0, sleep=time.sleep,
+                    probe=None):
+    pid, hwnd, _exe = _win_live()
+    _win.post_menu(hwnd, "File", "New Live Set")
+    sleep(settle)
+    for _ in range(3):
+        _p, buttons = _win_prompt(pid)
+        if not buttons:
+            break
+        for answer in ("No", "OK", "Yes"):
+            if answer in buttons:
+                _win_press_prompt(buttons, answer)
+                break
+        sleep(settle)
+    _open_file(path)
+
+    def _ready():
+        if _live_window_title() != set_name:
+            return False
+        if probe is None:
+            return True
+        try:
+            probe()
+            return True
+        except Exception:
+            return False
+
+    ok = _wait_until(_ready, timeout=timeout, interval=1.0, sleep=sleep)
+    return {"reloaded": bool(ok), "title": _live_window_title()}
+
+
+def _save_search_roots():
+    return plat.save_search_roots(sys.platform, os.path.expanduser("~"),
+                                  _documents_dir())
+
+
+# name -> exact .als path of sets this server saved (Windows reads the folder
+# off the Save dialog, so it knows exactly where a Save-As landed).
+_SAVED_SET_PATHS = {}
 
 
 def _find_saved_set(basename):
     """Best-effort absolute path of a just-saved set, or '' if not located.
     Ableton wraps a saved set as '<basename> Project/<basename>.als'."""
+    known = _SAVED_SET_PATHS.get(basename)
+    if known and os.path.exists(known):
+        return known
     best, best_mtime = "", -1.0
-    for root in _SAVE_SEARCH_ROOTS:
-        cand = os.path.join(os.path.expanduser(root),
-                            "%s Project" % basename, "%s.als" % basename)
+    for root in _save_search_roots():
+        cand = os.path.join(root, "%s Project" % basename, "%s.als" % basename)
         try:
             m = os.path.getmtime(cand)
         except OSError:
@@ -1976,6 +2466,8 @@ def _save_as_impl(name, sleep=time.sleep):
     wraps the set in a '<name> Project' folder; arbitrary-directory navigation
     through the panel is not reliably scriptable. Returns a status dict; raises
     ValueError on a bad name / RuntimeError if no running Live is found."""
+    if IS_WINDOWS:
+        return _win_save_as_impl(name, sleep=sleep)
     basename = clean_set_name(name)                # raises ValueError if bad
     app, pid = _live_app_and_pid()
     if not app:
@@ -2019,6 +2511,8 @@ def _save_set_impl(name="", sleep=time.sleep):
     Live Set); an Untitled set needs a name (routes to Save-As). A non-empty
     `name` always Saves-As under that name. Returns a status dict; raises
     ValueError/RuntimeError as _save_as_impl does."""
+    if IS_WINDOWS:
+        return _win_save_set_impl(name=name, sleep=sleep)
     app, pid = _live_app_and_pid()
     if not app:
         raise RuntimeError("No running Ableton Live found on port %d." % LIVE_PORT)
@@ -2046,10 +2540,16 @@ def _save_set_impl(name="", sleep=time.sleep):
 
 
 def _restart_live_impl(save="discard", relaunch=True, wait_timeout=90.0,
-                       dirty_after=5.0, sleep=time.sleep):
+                       dirty_after=5.0, sleep=time.sleep, before_relaunch=None):
     """Gracefully quit (and optionally relaunch) the running Live. Returns a
     status dict; raises ValueError on a bad save policy / RuntimeError if no
-    Live is found."""
+    Live is found. before_relaunch, if given, runs once Live has exited (its
+    return value lands in result['before_relaunch'])."""
+    if IS_WINDOWS:
+        return _win_restart_live_impl(save=save, relaunch=relaunch,
+                                      wait_timeout=wait_timeout,
+                                      dirty_after=dirty_after, sleep=sleep,
+                                      before_relaunch=before_relaunch)
     if save not in ("discard", "save"):
         raise ValueError("save must be 'discard' or 'save' (got %r)." % save)
     app, pid = _live_app_and_pid()
@@ -2094,6 +2594,7 @@ def _restart_live_impl(save="discard", relaunch=True, wait_timeout=90.0,
             "lacks Accessibility permission to answer the dialog.")
         return result
     result["quit"] = True
+    _run_before_relaunch(before_relaunch, result)
 
     # 4. Relaunch and wait for the control surface to bind the port again.
     if relaunch:
@@ -2136,23 +2637,139 @@ def restart_live(ctx: Context, save: str = "discard", relaunch: bool = True,
         return _err("restart_live error: %s" % e)
 
 
+def _live_prefs_cfg():
+    """Path to the running Live's Preferences.cfg (Windows: the running
+    version's 'Live x.y.z\\Preferences'; macOS: the highest 'Live x.y.z'), or
+    ''. Resolve it while Live runs - the version comes from the socket."""
+    if IS_WINDOWS:
+        dirs = _win_pref_dirs()
+    else:
+        dirs = sorted(glob.glob(os.path.join(_prefs_base(), "Live *")),
+                      key=plat.version_key)
+    for d in reversed(dirs):
+        cand = os.path.join(d, "Preferences.cfg")
+        if os.path.isfile(cand):
+            return cand
+    return ""
+
+
+def _write_pref_bool(path, cls, key, value, stamp=None):
+    """Back up Preferences.cfg next to itself, then set one bool in place
+    (temp file + replace). Only call with Live closed. Returns
+    {path, backup, was, now}; raises ValueError if the layout is not
+    recognized (nothing is written then)."""
+    with open(path, "rb") as f:
+        data = f.read()
+    was = _lp.get_bool(data, cls, key)
+    new = _lp.set_bool(data, cls, key, value)
+    stamp = stamp or time.strftime("%Y%m%d-%H%M%S")
+    backup = "%s.bak-%s" % (path, stamp)
+    shutil.copy2(path, backup)
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(new)
+    os.replace(tmp, path)
+    with open(path, "rb") as f:
+        now = _lp.get_bool(f.read(), cls, key)
+    return {"path": path, "backup": backup, "was": was, "now": now}
+
+
+def _set_live_pref_bool_impl(cls, key, value, save="save", restart=None,
+                             reload=None):
+    """Set a Live preference bool: quit Live, write the file, relaunch, and
+    reopen the set that was open. No restart when the file already holds
+    `value`. Returns a status dict; raises ValueError/RuntimeError."""
+    restart = restart or _restart_live_impl
+    reload = reload or (lambda p, n: _reload_set(
+        p, n, probe=lambda: get_ableton_connection().send_command(
+            "get_session_info")))
+    path = _live_prefs_cfg()
+    if not path:
+        raise RuntimeError("Live's Preferences.cfg was not found.")
+    with open(path, "rb") as f:
+        current = _lp.get_bool(f.read(), cls, key)     # refuses unknown layouts
+    result = {"path": path, "key": key, "was": current, "now": current,
+              "changed": False}
+    if current == bool(value):
+        result["note"] = ("Already set in Preferences.cfg (as of Live's last "
+                          "quit); Live was not restarted.")
+        return result
+
+    title = _live_window_title()
+    set_path = ""
+    if not is_untitled_title(title):
+        set_path = _current_set_path(title) or _find_saved_set(title)
+    status = restart(save=save, before_relaunch=lambda: _write_pref_bool(
+        path, cls, key, value))
+    result["restart"] = status
+    written = status.get("before_relaunch") or {}
+    if written:
+        result.update(now=written["now"], changed=written["now"] != current,
+                      backup=written["backup"])
+    if not status.get("quit"):
+        result["error"] = status.get("error", "Live did not quit; nothing written.")
+    elif status.get("before_relaunch_error"):
+        result["error"] = status["before_relaunch_error"]
+    if set_path and status.get("surface_up"):
+        result["reopened"] = reload(set_path, set_name_from_path(set_path))
+    elif not set_path:
+        result["reopened"] = None
+        result["note"] = "No saved set was open, so none was reopened."
+    return result
+
+
+@mcp.tool()
+def set_auto_warp_long_samples(ctx: Context, enabled: bool = False,
+                               save: str = "save") -> str:
+    """Turn Live's "Auto-Warp Long Samples" preference (Preferences >
+    Record/Warp/Launch) on or off. Off keeps long samples - full-song stems -
+    from loading with dozens of guessed warp markers and a start marker moved
+    to the first transient, which knocks stems out of sync.
+
+    Live has no API for its preferences, so this writes Preferences.cfg while
+    Live is closed: it quits Live (save: 'save' (default) keeps unsaved edits,
+    'discard' drops them), backs the file up next to itself
+    (Preferences.cfg.bak-<time>), sets the value, relaunches Live and reopens
+    the set that was open. If the file already holds the value, nothing
+    restarts. The write is refused if this Live version's file layout is not
+    recognized. Verified on Live 12.4.7 / Windows.
+
+    Returns JSON {ok, data:{path, key, was, now, changed, backup?, restart?,
+    reopened?, note?, error?}}.
+    """
+    try:
+        save = (save or "save").lower()
+        data = _set_live_pref_bool_impl(*_lp.AUTO_WARP_LONG_SAMPLES,
+                                        value=bool(enabled), save=save)
+        if data.get("error"):
+            return _err(data["error"], data=data)
+        return _ok(data)
+    except (ValueError, RuntimeError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("set_auto_warp_long_samples error: %s", e)
+        return _err("set_auto_warp_long_samples error: %s" % e)
+
+
 @mcp.tool()
 def save_set(ctx: Context, name: str = "") -> str:
     """Save the current Live set to disk (there is no LOM save API — this drives
-    Live's save UI via System Events, so Live must have Accessibility permission;
-    it briefly brings Live to the front).
+    Live's save UI: via System Events on macOS, so Live must have Accessibility
+    permission; via Live's menu and the Windows Save dialog on Windows. A
+    Save-As briefly brings Live to the front).
 
     name: leave empty to save a TITLED set in place (File > Save Live Set; a
       no-op if clean). For an UNTITLED set you MUST pass a name (an empty call
       returns an error). A non-empty name always Saves-As under that name.
     The set is saved to Live's last-used save location (Ableton wraps it in a
-    '<name> Project' folder); the tool controls the NAME, not the directory —
-    arbitrary-directory save-as isn't reliably scriptable through Live's panel.
-    A name may not contain '/' or ':'.
+    '<name> Project' folder unless that location is already inside a project);
+    the tool controls the NAME, not the directory. A name may not contain '/'
+    or ':' (on Windows, none of \\ / : * ? " < > | either).
 
     Returns JSON {ok, data:{saved, title|name, path?, untitled?, error?}}.
-    'path' is a best-effort location of the saved file (it searches common save
-    folders). Confirmation is by the window title; verify on disk if it matters.
+    'path' is the saved file: exact on Windows (read off the Save dialog),
+    best-effort on macOS (it searches common save folders). Confirmation is by
+    the window title; verify on disk if it matters.
     """
     try:
         data = _save_set_impl(name=name or "")
@@ -2168,15 +2785,17 @@ def save_set(ctx: Context, name: str = "") -> str:
 def save_set_as(ctx: Context, name: str) -> str:
     """Save the current Live set under a new NAME (File > Save Live Set As). Use
     for an Untitled set, or to save a copy under a new name. Drives Live's save
-    UI via System Events (needs Accessibility permission; briefly focuses Live).
+    UI (System Events on macOS - needs Accessibility permission; the Windows
+    Save dialog on Windows) and briefly focuses Live. An existing file of the
+    same name is replaced.
 
     name: the set name (not a path). Saved to Live's last-used save location,
-      wrapped in a '<name> Project' folder — the tool controls the name, not the
-      directory (arbitrary-directory navigation through Live's panel isn't
-      reliably scriptable). A name may not contain '/' or ':'.
+      wrapped in a '<name> Project' folder unless that location is already
+      inside a project - the tool controls the name, not the directory. A name
+      may not contain '/' or ':' (on Windows, none of \\ / : * ? " < > |).
 
-    Returns JSON {ok, data:{saved, name, path?, error?}}. 'path' is a best-effort
-    location of the saved file; confirmation is by the window title.
+    Returns JSON {ok, data:{saved, name, path?, error?}}. 'path' is exact on
+    Windows, best-effort on macOS; confirmation is by the window title.
     """
     try:
         data = _save_as_impl(name)
@@ -2200,7 +2819,9 @@ def save_set_as(ctx: Context, name: str) -> str:
 #     clicked only on a mismatch; a blind click inverts an already-correct one.
 
 _EXPORT_WINDOW = "Export Audio/Video"
-_SAVE_WINDOW = "Save"
+# The panel that asks for the file name after Export (macOS window name /
+# Windows stock Save dialog title).
+_SAVE_WINDOW = "Save Audio File As:" if IS_WINDOWS else "Save"
 _EXPORT_MENU_ITEM = "Export Audio/Video..."
 _RENDER_START_BAR = "Start of Rendered Sample (Bar)"
 _RENDER_START_BEAT = "Start of Rendered Sample (Beat)"
@@ -2225,6 +2846,9 @@ def _rsleep(seconds):
 def _click_edit_menu(item, proc=_LIVE_PROC):
     """Click a Live Edit-menu item by name (same focus-independent path as
     _click_file_menu)."""
+    if IS_WINDOWS:
+        _win.post_menu(_win_live()[1], "Edit", item)
+        return
     _osa('tell application "System Events" to tell process "%s" to click '
          'menu item "%s" of menu 1 of menu bar item "Edit" of menu bar 1'
          % (proc, _as_literal(item)))
@@ -2232,6 +2856,9 @@ def _click_edit_menu(item, proc=_LIVE_PROC):
 
 def _live_window_exists(title, proc=_LIVE_PROC):
     """True if Live currently has a window named `title`."""
+    if IS_WINDOWS:
+        pid = _win.listening_pid(LIVE_PORT)
+        return bool(pid and _win.find_window(pid, title))
     out = _osa_get('tell application "System Events" to tell process "%s" to get '
                    '(count of (windows whose name is "%s"))'
                    % (proc, _as_literal(title)))
@@ -2344,7 +2971,60 @@ class _ExportUI:
         _osa(self._tell('click (%s)' % self._elem("button", desc)))
 
 
-_export_ui = _ExportUI()
+def _win_set_popup(ui, desc, value):
+    """Windows ExportUI.set_popup: expand the ComboBox, pick the item from the
+    unnamed dropdown window Live opens (UIA MenuItems, the selected one named
+    '<x>, checked'), and collapse + raise if it isn't offered."""
+    from ableton_mcp_max import win_uia
+    combo = ui._get(desc, win_uia.COMBO)
+    pid = _win.listening_pid(LIVE_PORT)
+    before = set(h for h, _t, _c in _win.windows(pid))
+    win_uia.expand(combo)
+    items = []
+
+    def _opened():
+        for h, t, c in _win.windows(pid):
+            if h in before or t or c != _win.LIVE_WINDOW_CLASS:
+                continue
+            found = win_uia.find_all(win_uia.element(h), win_uia.MENUITEM)
+            if found:
+                items[:] = found
+                return True
+        return False
+
+    _wait_until(_opened, timeout=3.0, interval=0.15, sleep=_rsleep)
+    names = [el.CurrentName for el in items]
+    pick = choose_menu_item(names, value)
+    if pick is None:
+        try:
+            win_uia.collapse(combo)
+        except Exception:
+            pass
+        raise RuntimeError(
+            "The '%s' dropdown has no '%s' option (it offers: %s)."
+            % (desc, value,
+               ", ".join(strip_menu_check(n) for n in names) or "nothing"))
+    win_uia.invoke(items[names.index(pick)])
+    _rsleep(0.2)
+
+
+class _LazyWinExportUI:
+    """Builds the UIA ExportUI on first use, so comtypes/UIA load only when a
+    render actually runs - a UIA problem then fails render_audio alone, not
+    the whole server at import."""
+    _real = None
+
+    def __getattr__(self, attr):
+        if _LazyWinExportUI._real is None:
+            from ableton_mcp_max import win_uia
+            _LazyWinExportUI._real = win_uia.ExportUI(
+                lambda: _win.find_window(_win.listening_pid(LIVE_PORT) or 0,
+                                         _EXPORT_WINDOW),
+                _win_set_popup)
+        return getattr(_LazyWinExportUI._real, attr)
+
+
+_export_ui = _LazyWinExportUI() if IS_WINDOWS else _ExportUI()
 
 
 def _apply_toggles(toggles, ui):
@@ -2426,12 +3106,26 @@ def _dismiss_export_dialog(ui):
             return True
         try:
             if _live_window_exists(_SAVE_WINDOW):
-                _live_press_escape()      # the Save panel has no AX Cancel
+                if IS_WINDOWS:
+                    pid = _win.listening_pid(LIVE_PORT)
+                    _win.dialog_click(_win.find_window(pid, _SAVE_WINDOW),
+                                      _win.IDCANCEL)
+                else:
+                    _live_press_escape()  # the Save panel has no AX Cancel
             else:
                 ui.press("Cancel")
         except Exception as e:
             logger.error("render_audio: could not dismiss the dialog: %s", e)
-            _live_press_escape()
+            if IS_WINDOWS:
+                # The dialog may already be closing; WM_CLOSE whatever is left
+                # (equivalent to its Cancel).
+                pid = _win.listening_pid(LIVE_PORT)
+                for title in (_SAVE_WINDOW, _EXPORT_WINDOW):
+                    h = _win.find_window(pid, title) if pid else None
+                    if h:
+                        _win.close(h)
+            else:
+                _live_press_escape()
         _rsleep(0.5)
     left = _dialog_is_open()
     if left:
@@ -2472,16 +3166,57 @@ def _mdfind_named(basename):
         return []
 
 
-def _resolve_render_path(basename, exts, since):
+def _live_window_handles():
+    """Windows: hwnds of Live's visible top-level windows (a snapshot taken
+    before a render, so windows that were already open - plugin editors,
+    Settings - never count as render windows)."""
+    pid = _win.listening_pid(LIVE_PORT)
+    return set(h for h, _t, _c in _win.windows(pid)) if pid else set()
+
+
+def _render_finished(baseline=None):
+    """True once the render's dialogs are all gone. On Windows also wait for
+    any window that appeared since `baseline` (the render progress box) to
+    close, so the file is complete before it is claimed."""
+    if _live_window_exists(_EXPORT_WINDOW) or _live_window_exists(_SAVE_WINDOW):
+        return False
+    if IS_WINDOWS and baseline is not None:
+        return not (_live_window_handles() - baseline)
+    return True
+
+
+def _render_candidates(basename, folder=None):
+    """Paths that might be the render: Spotlight hits on macOS; on Windows the
+    exact file in the Save dialog's folder, else a shallow walk of the usual
+    export folders (no Spotlight there)."""
+    if not IS_WINDOWS:
+        return _mdfind_named(basename)
+    if folder:
+        return [os.path.join(folder, n) for n in os.listdir(folder)] \
+            if os.path.isdir(folder) else []
+    out = []
+    for root in plat.render_search_roots(_os_name(), os.path.expanduser("~"),
+                                         _documents_dir()):
+        base_depth = root.rstrip("\\/").count(os.sep)
+        for dirpath, dirnames, filenames in os.walk(root):
+            if dirpath.count(os.sep) - base_depth >= 3:
+                dirnames[:] = []
+            out.extend(os.path.join(dirpath, f) for f in filenames
+                       if f.lower().startswith(basename.lower() + "."))
+    return out
+
+
+def _resolve_render_path(basename, exts, since, folder=None):
     """Newest '<basename>.<ext>' (any ext in `exts`) modified at/after `since`,
     or ''. Spotlight, NOT a `find ~ -not -path "*/Library/*"` walk: Live renders
     into its last-used export directory, which is commonly iCloud Drive under
     ~/Library/Mobile Documents - such a walk silently misses the file. `since` is
     taken before the dialog opens, so a same-named file older than it is a stale
-    leftover and must not be claimed."""
+    leftover and must not be claimed. On Windows `folder` is the directory the
+    Save dialog showed, read before saving."""
     want = set(("%s.%s" % (basename, e)).lower() for e in exts)
     best, best_mtime = "", -1.0
-    for path in _mdfind_named(basename):
+    for path in _render_candidates(basename, folder):
         if os.path.basename(path).lower() not in want:
             continue
         try:
@@ -2517,7 +3252,8 @@ def _render_audio_impl(name, start_bar=None, end_bar=None, file_type="WAV",
                        bit_depth=24, sample_rate=44100, normalize=False,
                        mp3=False, mono=False,
                        analysis_file=True, dither="No Dither", timeout=600.0):
-    basename = clean_render_name(name)             # raises ValueError if bad
+    basename = clean_render_name(                  # raises ValueError if bad
+        name, illegal=plat.illegal_name_chars(_os_name()))
     plan = plan_export(file_type=file_type, bit_depth=bit_depth,
                        sample_rate=sample_rate, normalize=normalize, mp3=mp3,
                        mono=mono,
@@ -2564,13 +3300,23 @@ def _render_with_dialog(ableton, app, basename, plan, sig, start_beats,
                           "length": length_beats})
     ableton.send_command("focus_view", {"view": "Arranger"})
     appname = _app_name(app)
-    _osa('tell application "%s" to activate' % appname)
+    if IS_WINDOWS:
+        # Select Loop acts on Live's focused view: with another Live window in
+        # front (Settings, a plugin editor) it silently does nothing and the
+        # dialog seeds a 1/16 range. Bring the SET window to the front first.
+        _win.activate(_win_live()[1])
+    else:
+        _osa('tell application "%s" to activate' % appname)
     _rsleep(0.4)
     _click_edit_menu("Select Loop")
     _rsleep(0.3)
 
     since = time.time()
+    baseline = _live_window_handles() if IS_WINDOWS else None
     if not _open_export_dialog():
+        if IS_WINDOWS:
+            return _err("The Export Audio/Video dialog did not appear (another "
+                        "dialog may be open in Live).")
         return _err("The Export Audio/Video dialog did not appear (System Events "
                     "may lack Accessibility permission, or the screen is locked).")
 
@@ -2604,29 +3350,42 @@ def _render_with_dialog(ableton, app, basename, plan, sig, start_beats,
         return _err("Export was pressed but the Save panel never appeared.",
                     rendered=False)
 
-    # The Save panel has no AX-pressable Save button: confirm by typing the name
-    # and pressing Return (the _save_as_impl pattern).
-    _osa('tell application "%s" to activate' % appname)
-    _rsleep(0.3)
-    _osa('tell application "System Events" to keystroke "a" using {command down}')
-    _rsleep(0.2)
-    _keystroke(basename)
-    _rsleep(0.3)
-    _press_return()
-    # Re-rendering an existing name raises a '"x.wav" already exists. Do you want
-    # to replace it?' sheet. It is a SHEET OF THE SAVE PANEL (not of the Export
-    # dialog), and Return does NOT confirm it - but unlike the Save panel itself
-    # it has real AX buttons, addressable by NAME. Click "Replace" outright; a
-    # blind Return loop here hangs to the render timeout with the sheet up.
-    _wait_until(lambda: not _live_window_exists(_SAVE_WINDOW)
-                or _replace_sheet_open(),
-                timeout=5.0, interval=0.5, sleep=_rsleep)
-    if _replace_sheet_open():
-        _confirm_replace_sheet()
+    folder = None
+    if IS_WINDOWS:
+        # Stock Windows Save dialog: read its target folder off the address
+        # bar (so the result path is exact, no search), type the name and
+        # press Save. An overwrite prompt is confirmed below.
+        pid = _win.listening_pid(LIVE_PORT)
+        dlg = _win.find_window(pid, _SAVE_WINDOW)
+        folder = _win.file_dialog_folder(dlg) or None
+        _win.file_dialog_save(dlg, basename)
+        _wait_until(lambda: not _live_window_exists(_SAVE_WINDOW)
+                    or _win_confirm_overwrite(pid),
+                    timeout=5.0, interval=0.5, sleep=_rsleep)
+    else:
+        # The Save panel has no AX-pressable Save button: confirm by typing
+        # the name and pressing Return (the _save_as_impl pattern).
+        _osa('tell application "%s" to activate' % appname)
+        _rsleep(0.3)
+        _osa('tell application "System Events" to keystroke "a" using {command down}')
+        _rsleep(0.2)
+        _keystroke(basename)
+        _rsleep(0.3)
+        _press_return()
+        # Re-rendering an existing name raises a '"x.wav" already exists. Do you
+        # want to replace it?' sheet. It is a SHEET OF THE SAVE PANEL (not of
+        # the Export dialog), and Return does NOT confirm it - but unlike the
+        # Save panel itself it has real AX buttons, addressable by NAME. Click
+        # "Replace" outright; a blind Return loop here hangs to the render
+        # timeout with the sheet up.
+        _wait_until(lambda: not _live_window_exists(_SAVE_WINDOW)
+                    or _replace_sheet_open(),
+                    timeout=5.0, interval=0.5, sleep=_rsleep)
+        if _replace_sheet_open():
+            _confirm_replace_sheet()
 
-    done = _wait_until(lambda: not _live_window_exists(_EXPORT_WINDOW)
-                       and not _live_window_exists(_SAVE_WINDOW),
-                       timeout=timeout, interval=1.0, sleep=_rsleep)
+    done = _wait_until(lambda: _render_finished(baseline), timeout=timeout,
+                       interval=1.0, sleep=_rsleep)
     if not done:
         return _err("The render did not finish within %ss (the Export/Save "
                     "windows are still open). No file is claimed; check Live."
@@ -2634,18 +3393,23 @@ def _render_with_dialog(ableton, app, basename, plan, sig, start_beats,
 
     primary_exts = (_RENDER_EXT[plan["file_type"]] if plan["pcm"]
                     else _RENDER_EXT["MP3"])
+
+    def _resolve(exts):
+        if folder is not None:      # Windows: the dialog told us the folder
+            return _resolve_render_path(basename, exts, since, folder=folder)
+        return _resolve_render_path(basename, exts, since)
+
     # Spotlight does not index the file the instant Live closes it, so a single
     # mdfind right after the render loses the race and reports path=null for a
     # file that is sitting on disk. Poll briefly.
-    _wait_until(lambda: bool(_resolve_render_path(basename, primary_exts, since)),
+    _wait_until(lambda: bool(_resolve(primary_exts)),
                 timeout=15.0, interval=1.0, sleep=_rsleep)
-    path = _resolve_render_path(basename, primary_exts, since)
+    path = _resolve(primary_exts)
     extra = []
     if plan["pcm"] and plan["mp3"]:
-        _wait_until(
-            lambda: bool(_resolve_render_path(basename, _RENDER_EXT["MP3"], since)),
-            timeout=15.0, interval=1.0, sleep=_rsleep)
-        mp3_path = _resolve_render_path(basename, _RENDER_EXT["MP3"], since)
+        _wait_until(lambda: bool(_resolve(_RENDER_EXT["MP3"])),
+                    timeout=15.0, interval=1.0, sleep=_rsleep)
+        mp3_path = _resolve(_RENDER_EXT["MP3"])
         if mp3_path:
             extra.append(mp3_path)
     size, duration = _file_stats(path) if path else (None, None)
@@ -2676,12 +3440,14 @@ def render_audio(ctx: Context, name: str, start_bar: Optional[int] = None,
                  analysis_file: bool = True,
                  dither: str = "No Dither", timeout: float = 600.0) -> str:
     """Bounce the set's Main output to an audio file on disk (there is no LOM
-    render API - this drives Live's Export Audio/Video dialog via System Events,
-    so Live needs Accessibility permission; it briefly focuses Live and switches
+    render API - this drives Live's Export Audio/Video dialog: via System
+    Events on macOS, so Live needs Accessibility permission; via UI Automation
+    and the Windows Save dialog on Windows. It briefly focuses Live and switches
     it to the Arrangement view).
 
-    name: the file name (not a path; may not contain '/' or ':'). Re-using a
-      name overwrites the existing file (the panel's Replace prompt is confirmed).
+    name: the file name (not a path; may not contain '/' or ':', and on Windows
+      none of \\ / : * ? " < > |). Re-using a name overwrites the existing file
+      (the Replace prompt is confirmed).
     start_bar / end_bar: 1-based bar range, end EXCLUSIVE (5..13 = 8 bars). Pass
       neither to render the whole song. The range is applied by setting the
       arrangement loop and selecting it - the dialog's own range sliders are not
@@ -2698,7 +3464,8 @@ def render_audio(ctx: Context, name: str, start_bar: Optional[int] = None,
       time; the tool polls, it never sleeps a fixed amount).
 
     The output DIRECTORY is Live's last-used export location and is not
-    controllable; 'path' is resolved afterwards via Spotlight and may be null
+    controllable. On Windows 'path' is exact (the folder is read off the Save
+    dialog). On macOS it is resolved afterwards via Spotlight and may be null
     even on a successful render (the file exists, we just could not locate it).
 
     Returns JSON {ok, data:{name, path, extra_paths, bytes, duration_s,
@@ -2725,9 +3492,12 @@ def render_audio(ctx: Context, name: str, start_bar: Optional[int] = None,
 
 def _live_log_path():
     """Path to the running Live version's Log.txt (best-effort: latest version
-    directory under ~/Library/Preferences/Ableton)."""
-    base = os.path.expanduser("~/Library/Preferences/Ableton")
-    dirs = sorted(glob.glob(os.path.join(base, "Live *")))
+    directory under ~/Library/Preferences/Ableton; on Windows the running
+    version's %APPDATA%\\Ableton\\Live x.y.z\\Preferences)."""
+    if IS_WINDOWS:
+        dirs = _win_pref_dirs()
+    else:
+        dirs = sorted(glob.glob(os.path.join(_prefs_base(), "Live *")))
     for d in reversed(dirs):
         cand = os.path.join(d, "Log.txt")
         if os.path.exists(cand):
@@ -2748,14 +3518,14 @@ def _current_set_path(title=None):
     if not log:
         return ""
     try:
-        with open(log, "r", errors="replace") as f:
+        with open(log, "r", encoding="utf-8", errors="replace") as f:
             data = f.read()
     except OSError:
         return ""
     best = ""
     for m in re.finditer(r'Loading document "([^"]+\.als)"', data):
         p = m.group(1)
-        if "/Applications/" in p:        # factory default set
+        if plat.is_factory_set_path(sys.platform, p):   # factory default set
             continue
         if title and set_name_from_path(p) != title:
             continue
@@ -2766,6 +3536,9 @@ def _current_set_path(title=None):
 
 def _open_file(path):
     """Open a file with its default app (Live for .als). Seam for tests."""
+    if IS_WINDOWS:
+        _win.open_file(path)
+        return
     subprocess.run(["/usr/bin/open", path], check=False)
 
 
@@ -2787,7 +3560,15 @@ def _reload_set(path, set_name, settle=0.6, timeout=30.0, sleep=time.sleep,
     here (that's the SAVE dialog's Don't-Save, which won't appear on a clean set;
     and Return on a save dialog would mean Save, overwriting our patched .als).
     After Cmd+N proceeds, Live sits on a silent blank set, so the subsequent
-    `open` loads with no stop-audio prompt."""
+    `open` loads with no stop-audio prompt.
+
+    Windows: File > New Live Set is posted to the menu. If Live still asks to
+    save, the answer is No - the patched .als on disk is what must load, and
+    saving the in-memory set would overwrite the patch. Any other prompt (e.g.
+    a stop-audio confirmation) is accepted with its OK/Yes."""
+    if IS_WINDOWS:
+        return _win_reload_set(path, set_name, settle=settle, timeout=timeout,
+                               sleep=sleep, probe=probe)
     app, pid = _live_app_and_pid()
     if not app:
         raise RuntimeError("No running Ableton Live found on port %d." % LIVE_PORT)
@@ -2993,7 +3774,7 @@ def set_arrangement_automation(
     automation — the LOM cannot (clip envelopes are session-only).
 
     The set MUST be saved to a real file first (an Untitled set errors — use
-    save_set_as). Live is briefly focused (System Events) for the in-place
+    save_set_as). Live is briefly focused (System Events on macOS) for the in-place
     reload, and the open set is reloaded from disk (~5s); one MCP call right
     after may transiently fail and self-heal.
 
@@ -3769,9 +4550,17 @@ def _ozone_state_mutate_impl(track_index, device_index, track_type, changes, *,
         normalized.setdefault(_oz.normalize_module(m), {}).update(p)
     st = _osu.decode(_osu.from_hex(xml[s:e]))
     applied, skipped = _osu.apply_changes(st.tree, normalized)
+    # Bypass False means "turn this module on": a module outside the chain
+    # processes nothing, so put it in the chain too.
+    enable = [a["module"] for a in applied
+              if a["param"] == "Bypass" and a["value"] is False
+              and a["module"] in _osu.CHAIN_MODULES]
+    chain_added = _osu.ensure_in_chain(st.tree, enable) if enable else []
+    chain = _osu.element_chain(st.tree)
     if not applied:
         return {"ok": True, "reloaded": False, "set_path": path,
-                "applied": applied, "skipped": skipped}
+                "applied": applied, "skipped": skipped, "chain": chain,
+                "chain_added": []}
     new_hex = _osu.to_hex(_osu.encode(st, st.tree))
     xml = xml[:s] + new_hex + xml[e:]
     write_als(path, xml)
@@ -3780,7 +4569,8 @@ def _ozone_state_mutate_impl(track_index, device_index, track_type, changes, *,
         rr = reload_impl(path, set_name_from_path(path))
         reloaded = bool(rr.get("reloaded", False)) if isinstance(rr, dict) else bool(rr)
     return {"ok": True, "reloaded": reloaded, "set_path": path,
-            "applied": applied, "skipped": skipped}
+            "applied": applied, "skipped": skipped, "chain": chain,
+            "chain_added": chain_added}
 
 
 @mcp.tool()
@@ -5609,12 +6399,17 @@ def set_clip_property(
     clip_index: int,
     property: str,
     value: Union[int, float, str, bool],
+    clip_location: str = "session",
 ) -> str:
     """
     Set a single clip property. Audio-only properties are rejected on MIDI clips.
 
     Parameters:
     - track_index / clip_index: locate the clip
+    - clip_location: "session" (default; clip_index is the clip slot) or
+      "arrangement" (clip_index indexes get_arrangement_clips). Moving an
+      arrangement clip's start_marker shifts which part of the audio plays at
+      the clip's position without adding warp markers.
     - property: one of looping, loop_start, loop_end, start_marker, end_marker,
       signature_numerator, signature_denominator, warping, warp_mode, gain,
       pitch_coarse, pitch_fine, and the launch settings launch_mode,
@@ -5629,6 +6424,8 @@ def set_clip_property(
     try:
         canonical = normalize_clip_property(property)
         coerced = coerce_clip_value(canonical, value)
+        if clip_location not in ("session", "arrangement"):
+            raise ValueError("clip_location must be 'session' or 'arrangement'")
         ableton = get_ableton_connection()
         result = ableton.send_command(
             "set_clip_property",
@@ -5637,6 +6434,7 @@ def set_clip_property(
                 "clip_index": clip_index,
                 "property": canonical,
                 "value": coerced,
+                "clip_location": clip_location,
             },
         )
         return _ok(result)
@@ -6965,8 +7763,7 @@ def load_preset(ctx: Context, track_index: int, path: str, name: str = None, tra
 # Multi-version glob fallback: matches any installed Live bundle's Core Library.
 # hits[0] is alphabetical = Live 11 when both 11 and 12 are installed (the safer
 # cross-version source — Live upgrades older preset schemas on load).
-_APP_CORE = ("/Applications/Ableton*Live*.app/Contents/App-Resources/"
-             "Core Library")
+_APP_CORE = plat.core_library_glob(sys.platform)
 _FACTORY_TABLE_CACHE = None
 
 
@@ -6983,9 +7780,7 @@ def _running_live_major():
 def _core_for_major(major):
     """Core Library path of an installed Live with the given major version, or
     None. Seam so _app_core is unit-testable without real .app bundles."""
-    hits = sorted(glob.glob(
-        "/Applications/Ableton*Live*%d*.app/Contents/App-Resources/Core Library"
-        % major))
+    hits = sorted(glob.glob(plat.core_library_glob(sys.platform, major)))
     return hits[0] if hits else None
 
 
@@ -7009,8 +7804,9 @@ def _factory_default_adv(filename, category="Instruments"):
     hits = glob.glob("%s/Defaults/%s/%s" % (_app_core(), category, filename))
     if not hits:
         raise FileNotFoundError(
-            "Factory default %s/%s not found under /Applications/Ableton*.app. "
-            "Is Ableton Live (11 or 12) Suite installed?" % (category, filename)
+            "Factory default %s/%s not found under %s. "
+            "Is Ableton Live (11 or 12) Suite installed?"
+            % (category, filename, _app_core())
         )
     return hits[0]
 
@@ -7031,11 +7827,13 @@ def _user_library_dir():
     <ProjectPath> on others, so prefer whichever holds a Presets/ tree. Falls
     back to ~/Music/Ableton/User Library.
     """
-    cfgs = sorted(
-        glob.glob(os.path.expanduser(
-            "~/Library/Preferences/Ableton/Live */Library.cfg")),
-        key=lambda p: os.path.getmtime(p), reverse=True,
-    )
+    if IS_WINDOWS:
+        cfgs = [os.path.join(d, "Library.cfg") for d in reversed(_win_pref_dirs())]
+    else:
+        cfgs = sorted(
+            glob.glob(os.path.join(_prefs_base(), "Live *", "Library.cfg")),
+            key=lambda p: os.path.getmtime(p), reverse=True,
+        )
     for cfg in cfgs:
         try:
             with open(cfg, "rb") as f:
@@ -7049,10 +7847,12 @@ def _user_library_dir():
         if not m:
             continue
         base = m.group(1)
+        if IS_WINDOWS:            # Library.cfg stores 'C:/Users/...' (slashes)
+            base = os.path.normpath(base)
         for cand in (os.path.join(base, "User Library"), base):
             if os.path.isdir(os.path.join(cand, "Presets")):
                 return cand
-    return os.path.expanduser("~/Music/Ableton/User Library")
+    return plat.user_library_fallback(sys.platform, os.path.expanduser("~"))
 
 
 def _write_user_preset(xml, name, device_folder, category="Instruments",
@@ -7312,11 +8112,12 @@ def _ensure_local(sample_path, timeout=30):
         raise RuntimeError(
             "Sample not found and no iCloud placeholder present: %s" % sample_path)
 
-    try:
-        subprocess.run(["/usr/bin/brctl", "download", sample_path],
-                       timeout=timeout, check=False)
-    except Exception as e:
-        logger.warning("brctl download failed for %s: %s", sample_path, e)
+    if not IS_WINDOWS:     # iCloud is macOS-only; OneDrive hydrates on read
+        try:
+            subprocess.run(["/usr/bin/brctl", "download", sample_path],
+                           timeout=timeout, check=False)
+        except Exception as e:
+            logger.warning("brctl download failed for %s: %s", sample_path, e)
 
     deadline = time.monotonic() + max(1, timeout)
     while time.monotonic() < deadline:
@@ -7330,25 +8131,65 @@ def _ensure_local(sample_path, timeout=30):
         % (timeout, sample_path))
 
 
+_SAMPLE_FALLBACK_CATEGORIES = ("user_folders", "current_project")
+
+
+def _in_live_project(path):
+    """True if `path` sits inside a Live project folder (an ancestor holds an
+    'Ableton Project Info' folder)."""
+    d = os.path.dirname(os.path.abspath(path))
+    while True:
+        if os.path.isdir(os.path.join(d, "Ableton Project Info")):
+            return True
+        up = os.path.dirname(d)
+        if up == d:
+            return False
+        d = up
+
+
+def _wait_for_clip(ableton, track_index, slot_index, timeout=30.0, interval=0.5,
+                   sleep=time.sleep):
+    """Poll until the session slot holds a clip. load_browser_item's 'loaded'
+    only says the browser accepted the item - with Arrangement view in front
+    nothing may land (issue #63) - and a long sample takes >10 s to load."""
+    def landed():
+        info = ableton.send_command("get_track_info", {"track_index": track_index})
+        slots = (info or {}).get("clip_slots") or []
+        return slot_index < len(slots) and bool(slots[slot_index].get("has_clip"))
+    return _wait_until(landed, timeout=timeout, interval=interval, sleep=sleep)
+
+
 def _resolve_sample_uri(sample_path, category="samples"):
     """Resolve a sample file path to its Live browser URI via the Remote Script.
 
     The LOM browser exposes a sample's name + uri but not its filesystem path,
     so the loaders (which hold the path from a filesystem walk) resolve the uri
     here by base name. Matches the first browser item with that name (a
-    duplicate name across packs resolves to the first match). Raises
+    duplicate name across packs resolves to the first match). If `category`
+    has no match, falls back to Places (user_folders) and the current
+    project, descending only folders named along the file's path. Raises
     RuntimeError if the sample is not indexed in the browser.
     """
     name = os.path.basename(sample_path)
+    parents = [p for p in re.split(r"[\\/]",os.path.dirname(sample_path)) if p]
     ableton = get_ableton_connection()
-    res = ableton.send_command("find_sample_uri", {"name": name, "category": category})
-    uri = (res or {}).get("uri")
-    if not uri:
-        raise RuntimeError(
-            "Could not resolve '%s' to a browser item. Live may not have indexed "
-            "it yet (refresh the browser or relaunch Live), or it is in a category "
-            "other than '%s'." % (name, category))
-    return uri
+    tried = [category] + [c for c in _SAMPLE_FALLBACK_CATEGORIES if c != category]
+    if _in_live_project(sample_path) and "current_project" in tried:
+        # A name-only match elsewhere (stem packs all ship '1 Drums.wav') could
+        # load another song's file; the project's own copy comes first.
+        tried = ["current_project"] + [c for c in tried if c != "current_project"]
+    for cat in tried:
+        params = {"name": name, "category": cat}
+        if cat != category or cat == "current_project":
+            params["parents"] = parents
+        res = ableton.send_command("find_sample_uri", params)
+        uri = (res or {}).get("uri")
+        if uri:
+            return uri
+    raise RuntimeError(
+        "Could not resolve '%s' to a browser item in %s. Live may not have "
+        "indexed it yet (refresh the browser or relaunch Live), or its folder "
+        "is not a Place." % (name, ", ".join(tried)))
 
 
 def _read_audio_meta(path):
@@ -7570,6 +8411,22 @@ def search_samples(
 # ---------------------------------------------------------------------------
 
 _BREW_PY = "/opt/homebrew/bin/python3"
+
+
+def _analysis_python():
+    """Command prefix for the interpreter that runs the librosa scripts, or
+    None. ABLETON_MCP_ANALYSIS_PYTHON overrides; otherwise brew python on
+    macOS and the `py -3` launcher on Windows. An interpreter without librosa
+    just makes the script fail, which the callers already degrade on."""
+    override = os.environ.get("ABLETON_MCP_ANALYSIS_PYTHON")
+    if override:
+        return [override] if os.path.exists(override) else None
+    if IS_WINDOWS:
+        launcher = shutil.which("py")
+        return [launcher, "-3"] if launcher else None
+    return [_BREW_PY] if os.path.exists(_BREW_PY) else None
+
+
 _ANALYZE_SCRIPT = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "scripts", "analyze_audio.py")
@@ -7598,11 +8455,12 @@ def _run_analysis(audio_path, timeout=120):
     Degrades gracefully: any failure (no brew python, librosa missing, decode
     error) yields (None, None, None) so the caller keeps the default tempo.
     """
-    if not os.path.exists(_BREW_PY):
+    py = _analysis_python()
+    if not py:
         return (None, None, None)
     try:
         proc = subprocess.run(
-            [_BREW_PY, _ANALYZE_SCRIPT, audio_path],
+            py + [_ANALYZE_SCRIPT, audio_path],
             capture_output=True, text=True, timeout=timeout)
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return (None, None, None)
@@ -7619,11 +8477,12 @@ def _run_chroma(items, timeout=180):
     """Run scripts/chroma_profile.py under brew python on a list of
     {path, transpose} dicts. Returns {profile, analyzed, skipped} or None on any
     failure (so the caller degrades to MIDI-only)."""
-    if not items or not os.path.exists(_BREW_PY):
+    py = _analysis_python()
+    if not items or not py:
         return None
     try:
         proc = subprocess.run(
-            [_BREW_PY, _CHROMA_SCRIPT], input=json.dumps(items),
+            py + [_CHROMA_SCRIPT], input=json.dumps(items),
             capture_output=True, text=True, timeout=timeout)
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return None
@@ -7659,20 +8518,26 @@ def _stem_uri(browser_folder, stem_filename, retries=12, delay=1.0):
     return None
 
 
-def _lay_stem_on_track(ableton, track_index, stem_name, uri, sample_path):
+def _lay_stem_on_track(ableton, track_index, stem_name, uri, sample_path,
+                       start_offset=0.0, wait_clip=None):
     """Load a resolved stem uri into session slot 0, warp off + name it,
     duplicate to arrangement at bar 1, then delete the session staging clip.
+    start_offset (seconds) is where in the file every stem starts, the same
+    for all stems of a song so they stay in sync.
 
-    Returns dict {name, track_index, path, loaded}.
+    Returns dict {name, track_index, path, loaded, error?, clip?}.
     """
+    wait_clip = wait_clip or _wait_for_clip
+    ableton.send_command("focus_view", {"view": "Session"})
     ableton.send_command("set_highlighted_clip_slot",
                          {"track_index": track_index, "scene_index": 0})
     res = ableton.send_command("load_browser_item", {
         "track_index": track_index, "item_uri": uri, "track_type": "regular"})
     loaded = bool((res or {}).get("loaded", False))
-    if not loaded:
+    if not loaded or not wait_clip(ableton, track_index, 0):
         return {"name": stem_name, "track_index": track_index,
-                "path": sample_path, "loaded": False}
+                "path": sample_path, "loaded": False,
+                "error": "no clip landed in slot 0"}
     # Name on the SESSION clip; the arrangement copy inherits it. Do NOT unwarp
     # the session clip here - leaving it warped lets the arrangement-clip
     # normalize below (warp off, fresh) extend end_marker to the full sample.
@@ -7687,14 +8552,101 @@ def _lay_stem_on_track(ableton, track_index, stem_name, uri, sample_path):
     # end_marker to the full sample length (seconds) so the whole stem plays.
     _size, frames, rate = _read_audio_meta(sample_path)
     clip_seconds = float(frames) / rate if rate else 0.0
-    ableton.send_command("duplicate_clip_to_arrangement", {
+    placed = ableton.send_command("duplicate_clip_to_arrangement", {
         "track_index": track_index, "source_slot_index": 0,
         "destination_time": 0.0,
-        "warp_off": True, "clip_seconds": clip_seconds})
+        "warp_off": True, "clip_seconds": clip_seconds,
+        "start_offset": float(start_offset)})
     ableton.send_command("delete_clip", {
         "track_index": track_index, "clip_index": 0})
-    return {"name": stem_name, "track_index": track_index,
-            "path": sample_path, "loaded": True}
+    out = {"name": stem_name, "track_index": track_index,
+           "path": sample_path, "loaded": True}
+    clip = (placed or {}).get("new_clip") or {}
+    if clip:
+        out["clip"] = clip
+    problems = list(clip.get("normalize_errors") or [])
+    if clip.get("warping"):
+        problems.append("warp is still on")
+    if "start_marker" in clip and abs(clip["start_marker"] - start_offset) > 1e-3:
+        problems.append("start marker %.3f s, wanted %.3f s"
+                        % (clip["start_marker"], start_offset))
+    if problems:
+        out["error"] = "; ".join(problems)
+    return out
+
+
+def _place_stems_impl(ableton, folder, start_offset=0.0, tempo=None,
+                      wait_clip=None):
+    names = stem_utils.order_stem_files(os.listdir(folder))
+    if not names:
+        raise ValueError("No audio files (%s) in %s"
+                         % (", ".join(stem_utils.STEM_EXTS), folder))
+    if tempo:
+        ableton.send_command("set_tempo", {"tempo": float(tempo)})
+    info = ableton.send_command("get_session_info") or {}
+    index = int(info.get("track_count", 0))
+    stems = []
+    for name in names:
+        path = os.path.join(folder, name)
+        track = stem_utils.stem_track_name(name)
+        ableton.send_command("create_audio_track", {"index": -1})
+        ableton.send_command("set_track_name", {"track_index": index, "name": track})
+        try:
+            uri = _resolve_sample_uri(path)
+        except RuntimeError as e:
+            stems.append({"name": track, "track_index": index, "path": path,
+                          "loaded": False, "error": str(e)})
+        else:
+            stems.append(_lay_stem_on_track(ableton, index, track, uri, path,
+                                            start_offset=start_offset,
+                                            wait_clip=wait_clip))
+        index += 1
+    ableton.send_command("focus_view", {"view": "Arranger"})
+    failed = [s["name"] for s in stems if not s.get("loaded") or s.get("error")]
+    return {"folder": folder, "start_offset": float(start_offset),
+            "tempo": tempo, "stems": stems, "failed": failed}
+
+
+@mcp.tool()
+def place_stems_to_arrangement(ctx: Context, folder: str,
+                               start_offset: float = 0.0,
+                               tempo: float = None) -> str:
+    """Put every stem in a folder (a stem pack: '0 Lead Vocals.wav',
+    '1 Drums.wav', ...) on its own new audio track at bar 1 of the
+    Arrangement, Warp OFF, all starting at the same point in their files so
+    they stay in sync. Tracks are named from the files, in the pack's order.
+
+    Copy the pack into the open set's project folder first (e.g.
+    <Project>/Samples/Stems): files there resolve to the project's own copy,
+    not a same-named file elsewhere in the browser.
+
+    Parameters:
+    - folder: the folder holding the stems (not searched recursively). WAV and
+      AIFF only - other formats are skipped, since their length can't be read
+      to place them whole.
+    - start_offset: seconds into every file where beat 1 is (a stem pack's
+      lead-in, e.g. 0.154). Default 0.
+    - tempo: optional BPM to set first (unwarped stems play at their own
+      speed, so the set tempo only aligns the grid).
+
+    Returns JSON {ok, data:{folder, start_offset, tempo, stems:[{name,
+    track_index, path, loaded, clip?, error?}], failed:[names]}}. ok is
+    false when any stem failed to land or normalize.
+    """
+    try:
+        if not os.path.isdir(folder):
+            return _err("Folder not found: %s" % folder)
+        data = _place_stems_impl(get_ableton_connection(), folder,
+                                 start_offset=start_offset, tempo=tempo)
+        if data["failed"]:
+            return _err("Stems that did not land cleanly: %s"
+                        % ", ".join(data["failed"]), data=data)
+        return _ok(data)
+    except (ValueError, RuntimeError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("place_stems_to_arrangement error: %s", e)
+        return _err("place_stems_to_arrangement error: %s" % e)
 
 
 @mcp.tool()
@@ -7858,6 +8810,10 @@ def load_audio_clip(
             tempo = float(ableton.send_command("get_transport").get("tempo", 120.0))
         except Exception:
             pass
+        # A browser load lands in the highlighted slot only with Session view in
+        # front; with Arrangement in front it can report success and place
+        # nothing (issue #63).
+        ableton.send_command("focus_view", {"view": "Session"})
         ableton.send_command("set_highlighted_clip_slot",
                              {"track_index": track_index, "scene_index": clip_index})
         result = ableton.send_command("load_browser_item", {
@@ -7869,6 +8825,9 @@ def load_audio_clip(
         if not loaded:
             return _err("Failed to load audio clip from %s (load_browser_item did "
                         "not confirm)." % os.path.basename(local))
+        if not _wait_for_clip(ableton, track_index, clip_index):
+            return _err("Live accepted %s but no clip appeared in track %d slot %d."
+                        % (os.path.basename(local), track_index, clip_index))
         kind = refine_kind_by_length(
             classify_sample(os.path.basename(local), local), frames, rate, tempo)
         return _ok({
@@ -8293,8 +9252,10 @@ def get_arrangement_clips(ctx: Context, track_index: int, limit: int = 200) -> s
       to stay within size limits; raise `limit` for more.
 
     Returns JSON {track_index, count, returned, truncated, clips:[{index, name,
-    start_time, end_time, length, is_midi_clip}, ...]}. `count` is the full
-    total; `clips` holds at most `limit` of them.
+    start_time, end_time, length, is_midi_clip, start_marker, end_marker,
+    looping, loop_start, loop_end, and for audio warping, warp_mode,
+    warp_marker_count}, ...]}. `count` is the full total; `clips` holds at most
+    `limit` of them.
     """
     try:
         idx = coerce_index(track_index)
@@ -8368,6 +9329,38 @@ def delete_arrangement_clip(ctx: Context, track_index: int,
     except Exception as e:
         logger.error(f"Error deleting arrangement clip: {str(e)}")
         return _err(f"Error deleting arrangement clip: {str(e)}")
+
+
+@mcp.tool()
+def move_arrangement_clip(ctx: Context, track_index: int, clip_index: int,
+                          destination_time: float) -> str:
+    """
+    Move a clip along its track's Arrangement timeline.
+
+    Live has no direct move, so the clip is copied to destination_time and the
+    original (or the sliver left when the copy overlaps it) is deleted. Notes,
+    warp markers and clip envelopes travel with the copy.
+
+    Parameters:
+    - track_index: Index of the track.
+    - clip_index: Index into get_arrangement_clips' list. Indices change
+      after a move - re-read before the next one.
+    - destination_time: New start position in beats (>= 0).
+    """
+    try:
+        t_idx = coerce_index(track_index)
+        c_idx = coerce_index(clip_index)
+        dest = coerce_time(destination_time)
+        ableton = get_ableton_connection()
+        result = ableton.send_command("move_arrangement_clip", {
+            "track_index": t_idx,
+            "clip_index": c_idx,
+            "destination_time": dest,
+        })
+        return _ok(result)
+    except Exception as e:
+        logger.error(f"Error moving arrangement clip: {str(e)}")
+        return _err(f"Error moving arrangement clip: {str(e)}")
 
 
 @mcp.tool()
@@ -9112,7 +10105,6 @@ def detect_key(ctx: Context, source: str = "auto",
 _catalog_db_conn = None
 _catalog_checked = {}
 _CATALOG_THROTTLE_S = 60
-_SERUM_FACTORY = "/Library/Audio/Presets/Xfer Records/Serum 2 Presets/Presets"
 _catalog_device_indexed = False
 _catalog_live_disconnected = False
 
@@ -9125,13 +10117,9 @@ def _catalog_conn():
 
 
 def _serum_roots():
-    roots = []
-    if os.path.isdir(_SERUM_FACTORY):
-        roots.append((_SERUM_FACTORY, "factory"))
-    user = os.path.expanduser("~/Music/Serum/Presets")
-    if os.path.isdir(user):
-        roots.append((user, "user"))
-    return roots
+    return [(path, label) for path, label in plat.serum_preset_roots(
+                sys.platform, os.path.expanduser("~"), _documents_dir())
+            if os.path.isdir(path)]
 
 
 def _browser_reader(path):
@@ -9288,12 +10276,13 @@ def reindex_catalog(ctx: Context, domains: list = None,
 
 
 def _user_serum_presets_dir():
-    """Where serum_clone writes new presets. Prefer ~/Music/Serum/Presets/User,
-    creating it if the Serum tree exists; else the User Library."""
-    base = os.path.expanduser("~/Music/Serum/Presets")
-    dest = os.path.join(base, "User") if os.path.isdir(base) else \
-        os.path.join(_user_library_dir(), "Serum Presets")
-    return dest
+    """Where serum_clone writes new presets. Prefer Serum's own User preset
+    folder (~/Music/Serum/Presets/User on macOS, <Documents>\\Xfer\\Serum 2
+    Presets\\Presets\\User on Windows) if the Serum tree exists; else the User
+    Library."""
+    dest = plat.serum_user_preset_dir(sys.platform, os.path.expanduser("~"),
+                                      _documents_dir(), isdir=os.path.isdir)
+    return dest or os.path.join(_user_library_dir(), "Serum Presets")
 
 
 def _serum_clone_impl(base_preset, name, fx_edits=None):
@@ -9438,22 +10427,38 @@ def recommend_master(ctx: Context, intent: str, target: float = None,
 @mcp.tool()
 def apply_master(ctx: Context, chain: dict, track_index: int = 0,
                  device_index: int = 0, track_type: str = "master",
-                 deploy_tap: bool = True) -> str:
+                 deploy_tap: bool = True, input_gain_db: float = None) -> str:
     """Apply a mastering chain (from recommend_master) to an Ozone 12 instance in
     one shot, then set up the live trim loop. Writes the chain via set_ozone_state
     (one reload, un-clamped native values), exposes the Maximizer so the skill can
     nudge ceiling/gain without further reloads, and deploys a master tap so
     measure_loudness has post-fader audio. Errors clearly if the target device is
     not Ozone 12. Returns {ok, data:{applied, skipped, reloaded, exposed, tap,
-    next}}. deploy_tap=False skips the tap (loop then runs un-metered)."""
+    next}}. deploy_tap=False skips the tap (loop then runs un-metered).
+
+    The chain's Maximizer 'Target Loudness' does NOT set output loudness (it is
+    the auto-learn goal). input_gain_db sets Ozone's input trim in dB (negative =
+    quieter), which is what brings a mix that is already hotter than the target
+    down to it: render, measure integrated LUFS, pass target - measured, then
+    render again to confirm. The Maximizer Gain only drives louder."""
     try:
         get_ableton_connection()  # fail fast if Live is unreachable
+        if input_gain_db is not None:
+            chain = _mp.input_trim_changes(
+                input_gain_db, {k: dict(v) for k, v in (chain or {}).items()})
         # 1. Write the chain (this also detects non-Ozone via set_ozone_state).
         sos = json.loads(set_ozone_state(ctx, track_index, chain, device_index,
                                          track_type, reload=True))
         if not sos.get("ok"):
             return _err(sos.get("error", "apply_master: chain write failed"))
         wrote = sos["data"]
+        # A module that is configured but not in Ozone's chain processes nothing.
+        wanted = [_oz.normalize_module(m) for m, p in (chain or {}).items()
+                  if isinstance(p, dict) and p.get("Bypass") is False]
+        missing = [m for m in wanted if m not in (wrote.get("chain") or [])]
+        if missing:
+            return _err("apply_master: %s not in Ozone's signal chain after the "
+                        "write (chain: %s)" % (", ".join(missing), wrote.get("chain")))
         # 2. Expose the Maximizer for the reload-free live trim loop.
         exp = json.loads(expose_ozone_modules(ctx, track_index, ["MAX"],
                                               device_index, track_type))
@@ -9473,9 +10478,11 @@ def apply_master(ctx: Context, chain: dict, track_index: int = 0,
         return _ok({"applied": wrote.get("applied"), "skipped": wrote.get("skipped"),
                     "reloaded": wrote.get("reloaded"), "exposed": exposed,
                     "tap": tap,
-                    "next": ("run the trim loop: play the densest section, "
-                             "measure_loudness, nudge set_ozone_maximizer toward "
-                             "target")})
+                    "next": ("verify loudness by render (render_audio + an "
+                             "EBU R128 meter), not by read-back: Target Loudness "
+                             "does not drive output. Too loud -> rerun with "
+                             "input_gain_db = target - measured; too quiet -> "
+                             "raise the Maximizer gain (set_ozone_maximizer).")})
     except Exception as e:
         logger.error("apply_master error: %s", e)
         return _err("apply_master error: %s" % e)

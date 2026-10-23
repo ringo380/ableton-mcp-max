@@ -23,7 +23,8 @@ GROUPS = [
         "set_track_fold", "focus_view",
     ]),
     ("Batch", ["batch"]),
-    ("Host lifecycle", ["restart_live", "save_set", "save_set_as"]),
+    ("Host lifecycle", ["restart_live", "save_set", "save_set_as",
+                        "set_auto_warp_long_samples"]),
     ("Tracks (lifecycle)", [
         "get_track_info", "create_midi_track", "create_audio_track",
         "create_return_track", "set_track_name", "delete_track",
@@ -49,7 +50,7 @@ GROUPS = [
         "get_ozone_modules", "expose_ozone_modules", "get_ozone_module",
         "set_ozone_module_param", "set_ozone_module_enabled",
         "set_ozone_eq_band", "set_ozone_maximizer", "set_ozone_dynamics_band",
-        "get_ozone_state", "set_ozone_state",
+        "get_ozone_state", "set_ozone_state", "get_izotope_states",
         "recommend_master", "apply_master", "ensure_ozone_master",
     ]),
     ("Clips & MIDI notes", [
@@ -77,7 +78,8 @@ GROUPS = [
     ]),
     ("Arrangement", [
         "get_arrangement_clips", "duplicate_clip_to_arrangement",
-        "delete_arrangement_clip", "get_cue_points", "create_cue_point",
+        "delete_arrangement_clip", "move_arrangement_clip",
+        "get_cue_points", "create_cue_point",
         "delete_cue_point", "set_arrangement_loop", "jump_to_cue",
         "back_to_arrangement", "re_enable_automation",
     ]),
@@ -143,6 +145,7 @@ GROUPS = [
         "load_sample_to_drum_pad",
         "populate_drum_rack",
         "separate_stems_to_arrangement",
+        "place_stems_to_arrangement",
     ]),
     ("Catalog", [
         "search_catalog", "find_similar", "catalog_stats", "reindex_catalog",
@@ -185,7 +188,7 @@ def first_line(doc):
 
 
 def main():
-    tree = ast.parse(open(SERVER).read())
+    tree = ast.parse(open(SERVER, encoding="utf-8").read())
     docs = {}
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -213,7 +216,8 @@ def main():
         for n in names:
             lines.append("- **`%s`** - %s" % (n, docs[n]))
         lines.append("")
-    open(OUT, "w").write("\n".join(lines).rstrip() + "\n")
+    open(OUT, "w", encoding="utf-8", newline="\n").write(
+        "\n".join(lines).rstrip() + "\n")
     print("Wrote %s (%d tools)" % (OUT, len(docs)))
 
 

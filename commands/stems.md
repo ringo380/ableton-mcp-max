@@ -10,6 +10,13 @@ track at bar 1 of the Arrangement (Warp OFF).
 
 > Load the tool if deferred: `ToolSearch select:mcp__AbletonMCPMax__separate_stems_to_arrangement`
 
+**Already have stems** (a stem pack zip or folder, e.g. from Suno)? Don't run
+Demucs. Copy the stems into the open set's project folder (`<Project>/Samples/Stems`),
+then call `place_stems_to_arrangement(folder, start_offset=<lead-in seconds>, tempo=<bpm>)`.
+Every stem gets the same start so they stay in sync. Before importing long stems,
+call `set_auto_warp_long_samples(enabled=False)` once (it restarts Live) so Live
+doesn't guess warp markers on them.
+
 ## Workflow
 
 ### 1. Resolve the audio path

@@ -52,7 +52,7 @@ CATEGORIES = [
         "get_ozone_modules", "expose_ozone_modules", "get_ozone_module",
         "set_ozone_module_param", "set_ozone_module_enabled",
         "set_ozone_eq_band", "set_ozone_maximizer", "set_ozone_dynamics_band",
-        "get_ozone_state", "set_ozone_state",
+        "get_ozone_state", "set_ozone_state", "get_izotope_states",
         "recommend_master", "apply_master", "ensure_ozone_master",
     ]),
     ("mixer-routing", "Mixer & Routing", "Volume, pan, sends, and input/output routing for every track type.", [
@@ -72,7 +72,7 @@ CATEGORIES = [
     ]),
     ("arrangement", "Arrangement & Cues", "Cue points, the arrangement loop, and arrangement-timeline clips.", [
         "get_cue_points", "create_cue_point", "delete_cue_point", "jump_to_cue", "set_arrangement_loop",
-        "back_to_arrangement", "get_arrangement_clips", "duplicate_clip_to_arrangement", "delete_arrangement_clip",
+        "back_to_arrangement", "get_arrangement_clips", "duplicate_clip_to_arrangement", "delete_arrangement_clip", "move_arrangement_clip",
     ]),
     ("arrangement-structure", "Arrangement Structure", "Read the structural layout of the arrangement (section map from cue points or clip inference) and build multi-section arrangements from section definitions.", [
         "get_arrangement_structure", "build_arrangement",
@@ -96,6 +96,7 @@ CATEGORIES = [
         "restart_live",
         "save_set",
         "save_set_as",
+        "set_auto_warp_long_samples",
     ]),
     ("analysis", "Analysis", "Inspect the open set against best-practice rulesets and surface findings by domain.", [
         "analyze_set",
@@ -138,6 +139,7 @@ CATEGORIES = [
         "load_sample_to_drum_pad",
         "populate_drum_rack",
         "separate_stems_to_arrangement",
+        "place_stems_to_arrangement",
     ]),
     ("catalog", "Catalog", "Persistent local index of Serum presets, samples, "
      "grooves, and device presets, with similarity search and reuse-vs-create "
@@ -192,7 +194,7 @@ def signature(fn):
 
 
 def collect():
-    tree = ast.parse(open(SERVER).read())
+    tree = ast.parse(open(SERVER, encoding="utf-8").read())
     tools = {}
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and is_tool(node):
@@ -281,10 +283,13 @@ def main():
     assert not extra, f"Categorized names that don't exist: {sorted(extra)}"
     assert len(mapped) == len(set(mapped)), "Duplicate tool in category map"
     os.makedirs(TOOLS_DIR, exist_ok=True)
-    open(os.path.join(TOOLS_DIR, "index.md"), "w").write(render_index(len(tools)))
+    # newline="\n": identical bytes whether generated on macOS or Windows.
+    open(os.path.join(TOOLS_DIR, "index.md"), "w", encoding="utf-8",
+         newline="\n").write(render_index(len(tools)))
     for i, (slug, title, blurb, names) in enumerate(CATEGORIES, start=1):
         path = os.path.join(TOOLS_DIR, f"{slug}.md")
-        open(path, "w").write(render_category(slug, title, blurb, names, tools, i))
+        open(path, "w", encoding="utf-8", newline="\n").write(
+            render_category(slug, title, blurb, names, tools, i))
     print(f"Generated {len(tools)} tools across {len(CATEGORIES)} categories into docs/tools/")
 
 

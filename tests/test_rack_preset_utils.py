@@ -1,7 +1,11 @@
 # tests/test_rack_preset_utils.py
 import gzip
 import os
+import sys
+
 import pytest
+
+from ableton_mcp_max import platform_utils as plat
 
 from ableton_mcp_max.rack_preset_utils import (
     detect_rack_type, RACK_TYPES,
@@ -303,8 +307,7 @@ import glob
 
 def _factory_rack(subdir):
     hits = glob.glob(
-        "/Applications/Ableton*Live*.app/Contents/App-Resources/Core Library/"
-        "Racks/%s/*/*.adg" % subdir)
+        os.path.join(plat.core_library_glob(sys.platform), "Racks", subdir, "*", "*.adg"))
     return hits[0] if hits else None
 
 
@@ -500,12 +503,15 @@ def test_real_audio_rack_mapping_roundtrip():
     dev = _find_child(adp_xml, "Device")
     device_el = adp_xml[dev[0]:dev[1]]
     dtag, ds, de = _child_elements(device_el)[0]
-    # first real parameter child of the device element (has a <LomId> and <Manual>)
+    # first real parameter child of the device element (has a <LomId> and
+    # <Manual>) that is NOT already macro-mapped - mapping an already-mapped
+    # param replaces its <KeyMidi> rather than adding one (e.g. Basic Bass Amp's
+    # Gate 'On', which the Windows glob order picks first).
     param_tag = None
     inner = device_el[ds:de]
     for t, s, e in _child_elements(inner):
         block = inner[s:e]
-        if "<LomId" in block and "<Manual" in block:
+        if "<LomId" in block and "<Manual" in block and "<KeyMidi>" not in block:
             param_tag = t
             break
     assert param_tag is not None
@@ -748,8 +754,7 @@ def _factory_nested_rack():
     returns (path, rack_type, branch_tag, device_index) or None.
     """
     for f in sorted(glob.glob(
-            "/Applications/Ableton*Live*.app/Contents/App-Resources/Core Library/"
-            "Racks/**/*.adg", recursive=True)):
+            os.path.join(plat.core_library_glob(sys.platform), "Racks", "**", "*.adg"), recursive=True)):
         try:
             with gzip.open(f, "rt", errors="replace") as fh:
                 x = fh.read()

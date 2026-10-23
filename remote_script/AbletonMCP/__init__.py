@@ -322,7 +322,8 @@ class AbletonMCP(ControlSurface):
             prop = params.get("property", "")
             value = params.get("value", None)
             result = self._set_clip_property(
-                track_index, clip_index, prop, value)
+                track_index, clip_index, prop, value,
+                params.get("clip_location", "session"))
         elif command_type == "set_clip_loop":
             track_index = params.get("track_index", 0)
             clip_index = params.get("clip_index", 0)
@@ -497,14 +498,20 @@ class AbletonMCP(ControlSurface):
             destination_time = params.get("destination_time", 0.0)
             warp_off = params.get("warp_off", False)
             clip_seconds = params.get("clip_seconds", 0.0)
+            start_offset = params.get("start_offset", 0.0)
             result = self._duplicate_clip_to_arrangement(
                 track_index, source_slot_index, destination_time,
-                warp_off, clip_seconds)
+                warp_off, clip_seconds, start_offset)
         elif command_type == "delete_arrangement_clip":
             track_index = params.get("track_index", 0)
             clip_index = params.get("clip_index", 0)
             result = self._delete_arrangement_clip(
                 track_index, clip_index)
+        elif command_type == "move_arrangement_clip":
+            result = self._move_arrangement_clip(
+                params.get("track_index", 0),
+                params.get("clip_index", 0),
+                params.get("destination_time", 0.0))
         elif command_type == "create_audio_track":
             index = params.get("index", -1)
             result = self._create_audio_track(index)
@@ -683,6 +690,7 @@ class AbletonMCP(ControlSurface):
                                  "delete_cue_at_playhead",
                                  "duplicate_clip_to_arrangement",
                                  "delete_arrangement_clip",
+                                 "move_arrangement_clip",
                                  "create_audio_track", "create_return_track",
                                  "delete_track", "delete_return_track",
                                  "duplicate_track", "undo", "redo",
@@ -752,7 +760,8 @@ class AbletonMCP(ControlSurface):
             elif command_type == "find_sample_uri":
                 name = params.get("name", "")
                 category = params.get("category", "samples")
-                response["result"] = self.find_sample_uri(name, category)
+                parents = params.get("parents")
+                response["result"] = self.find_sample_uri(name, category, parents)
             elif command_type == "get_device_parameters":
                 track_index = params.get("track_index", 0)
                 device_index = params.get("device_index", 0)
@@ -1003,7 +1012,100 @@ class AbletonMCP(ControlSurface):
             info["on"] = bool(device.parameters[0].value) if device.parameters else True
         except Exception:
             pass
+        info["key_params"] = self._key_params(device)
+        auto = self._automated_param_names(device.parameters)
+        info["automated_params"] = len(auto)
+        if auto:
+            info["automated"] = auto[:8]
+        try:
+            if device.can_have_chains:
+                inner = []
+                for ch in device.chains:
+                    for d in ch.devices:
+                        inner.append(d.name)
+                info["chain_devices"] = inner[:16]
+        except Exception:
+            pass
         return info
+
+    # Native-device params worth reporting in the analysis snapshot, keyed by
+    # class_name. Values are Live's display strings ("1/8", "2.50 s", "-1.0 dB").
+    # Names a device lacks are skipped, so extra candidates are harmless.
+    _KEY_PARAM_NAMES = {
+        "Delay": ("L Sync", "R Sync", "L 16th", "R 16th", "L Time", "R Time",
+                  "Feedback", "Dry/Wet"),
+        "Echo": ("L Sync", "R Sync", "L Division", "R Division", "L Time",
+                 "R Time", "Feedback", "Dry Wet"),
+        "Reverb": ("Decay Time", "Predelay", "Room Size", "Dry/Wet"),
+        "Hybrid": ("Decay", "Predelay", "Dry/Wet"),
+        "AutoFilter": ("Frequency", "Filter Type", "LFO Amount", "Env Amount"),
+        "AutoFilter2": ("Frequency", "Filter Type", "LFO Amount", "Env Amount"),
+        "AutoPan": ("Amount", "Rate"),
+        "Limiter": ("Ceiling", "Gain", "Mode", "True Peak"),
+        "Compressor2": ("Threshold", "Ratio", "Attack", "Release"),
+        "GlueCompressor": ("Threshold", "Ratio", "Makeup"),
+        "Utility": ("Gain", "Width"),
+    }
+
+    def _param_display(self, p):
+        try:
+            return p.str_for_value(p.value)
+        except Exception:
+            try:
+                return str(p)
+            except Exception:
+                return None
+
+    def _key_params(self, device):
+        names = self._KEY_PARAM_NAMES.get(device.class_name)
+        if not names:
+            return {}
+        out = {}
+        try:
+            for p in device.parameters:
+                if p.name in names:
+                    out[p.name] = self._param_display(p)
+        except Exception:
+            pass
+        return out
+
+    def _automated_param_names(self, params):
+        # automation_state: 0 = none, 1 = playing, 2 = overridden.
+        out = []
+        try:
+            for p in params:
+                try:
+                    if p.automation_state:
+                        out.append(p.name)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return out
+
+    def _arrangement_summary(self, track):
+        """Arrangement-timeline clip counts (group tracks have none and raise)."""
+        try:
+            clips = list(track.arrangement_clips)
+        except Exception:
+            return None
+        audio = midi = warped = markers = 0
+        for c in clips:
+            try:
+                if c.is_audio_clip:
+                    audio += 1
+                    if c.warping:
+                        warped += 1
+                    try:
+                        markers += len(c.warp_markers)
+                    except Exception:
+                        pass
+                else:
+                    midi += 1
+            except Exception:
+                pass
+        return {"count": len(clips), "audio": audio, "midi": midi,
+                "warped": warped, "warp_markers": markers}
 
     def _clip_summary(self, track):
         count = named = warped = empty = 0
@@ -1048,6 +1150,30 @@ class AbletonMCP(ControlSurface):
             info["sends"] = [s.value for s in track.mixer_device.sends]
         except Exception:
             info["sends"] = []
+        md = track.mixer_device
+        info["volume_display"] = self._param_display(md.volume)
+        try:
+            returns = list(self._song.return_tracks)
+            info["sends_detail"] = [
+                {"return": returns[i].name if i < len(returns) else "",
+                 "value": s.value, "display": self._param_display(s)}
+                for i, s in enumerate(md.sends)]
+        except Exception:
+            pass
+        mixer_params = [md.volume, md.panning]
+        try:
+            mixer_params += list(md.sends)
+        except Exception:
+            pass
+        info["automated_mixer"] = self._automated_param_names(mixer_params)
+        try:
+            if track.is_grouped and track.group_track is not None:
+                info["group_track"] = track.group_track.name
+        except Exception:
+            pass
+        arr = self._arrangement_summary(track)
+        if arr is not None:
+            info["arrangement"] = arr
         # arm is regular-track-only; group/return/master raise.
         try:
             info["arm"] = track.arm
@@ -1110,6 +1236,7 @@ class AbletonMCP(ControlSurface):
                 "master": {
                     "name": "Master",
                     "volume": master.mixer_device.volume.value,
+                    "volume_display": self._param_display(master.mixer_device.volume),
                     "panning": master.mixer_device.panning.value,
                     "devices": master_devices,
                 },
@@ -2462,11 +2589,14 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error modifying clip notes: " + str(e))
             raise
 
-    def _set_clip_property(self, track_index, clip_index, prop, value):
+    def _set_clip_property(self, track_index, clip_index, prop, value,
+                           clip_location="session"):
         """Set one clip property. `prop` is canonical (server normalizes/coerces
-        first). Audio-only props on a MIDI clip raise a clear error."""
+        first). Audio-only props on a MIDI clip raise a clear error.
+        clip_location "arrangement" indexes track.arrangement_clips."""
         try:
-            clip = self._resolve_clip(track_index, clip_index)
+            clip = self._resolve_clip_loc(track_index, clip_index,
+                                          clip_location)
             audio_only = ("warping", "warp_mode", "gain",
                           "pitch_coarse", "pitch_fine")
             if prop in audio_only and not clip.is_audio_clip:
@@ -2476,6 +2606,7 @@ class AbletonMCP(ControlSurface):
             return {
                 "track_index": track_index,
                 "clip_index": clip_index,
+                "clip_location": clip_location,
                 "property": prop,
                 "value": getattr(clip, prop),
             }
@@ -3174,6 +3305,11 @@ class AbletonMCP(ControlSurface):
         """Set the arrangement loop brace (only the provided fields)."""
         try:
             song = self._song
+            if start is not None and length is not None:
+                # Live rejects a loop_start whose start + CURRENT length runs
+                # past the song end ("Cannot set the Loopstart behind the
+                # Songlength"), so shrink the brace before moving it.
+                song.loop_length = min(song.loop_length, float(length))
             if start is not None:
                 song.loop_start = float(start)
             if length is not None:
@@ -3286,14 +3422,27 @@ class AbletonMCP(ControlSurface):
             out = []
             for i in range(len(clips)):
                 c = clips[i]
-                out.append({
+                info = {
                     "index": i,
                     "name": c.name,
                     "start_time": c.start_time,
                     "end_time": c.end_time,
                     "length": c.length,
                     "is_midi_clip": c.is_midi_clip,
-                })
+                    "start_marker": c.start_marker,
+                    "end_marker": c.end_marker,
+                    "looping": c.looping,
+                    "loop_start": c.loop_start,
+                    "loop_end": c.loop_end,
+                }
+                if c.is_audio_clip:
+                    info["warping"] = c.warping
+                    info["warp_mode"] = c.warp_mode
+                    try:
+                        info["warp_marker_count"] = len(c.warp_markers)
+                    except Exception:
+                        pass
+                out.append(info)
             return {"track_index": track_index, "count": len(out), "clips": out}
         except Exception as e:
             self.log_message("Error getting arrangement clips: " + str(e))
@@ -3301,15 +3450,16 @@ class AbletonMCP(ControlSurface):
 
     def _duplicate_clip_to_arrangement(self, track_index, source_slot_index,
                                        destination_time, warp_off=False,
-                                       clip_seconds=0.0):
+                                       clip_seconds=0.0, start_offset=0.0):
         """Place a same-track Session-slot clip onto the Arrangement timeline.
 
         warp_off / clip_seconds normalize the placed clip to play its FULL
         sample unwarped (used by stem layout): Live auto-warps a loaded sample,
         which makes the placed clip's length the warp-derived beat count and can
-        truncate the audio. Turning the arrangement clip's warp off makes its
-        markers seconds-based; setting end_marker to the sample's true length in
-        seconds (clip_seconds) extends the clip to span the whole sample.
+        truncate the audio, and moves its start marker to the first transient.
+        Turning the arrangement clip's warp off makes its markers seconds-based;
+        start_offset (seconds, default 0) resets the start and clip_seconds
+        extends the end to span the whole sample.
         """
         try:
             tracks = self._song.tracks
@@ -3330,26 +3480,35 @@ class AbletonMCP(ControlSurface):
                 slot.clip, float(destination_time))
             info = None
             if new_clip is not None:
+                errors = []
                 # Turn warp OFF first (switches markers to seconds), then extend
                 # end_marker to the full sample so no audio is truncated.
                 if warp_off:
                     try:
                         new_clip.warping = False
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        errors.append("warping: %s" % e)
                 if clip_seconds and clip_seconds > 0:
                     try:
                         new_clip.looping = False
-                        new_clip.start_marker = 0.0
                         new_clip.end_marker = float(clip_seconds)
-                    except Exception:
-                        pass
+                        new_clip.start_marker = float(start_offset)
+                        new_clip.loop_start = float(start_offset)
+                    except Exception as e:
+                        errors.append("markers: %s" % e)
                 info = {
                     "name": new_clip.name,
                     "start_time": new_clip.start_time,
                     "end_time": new_clip.end_time,
-                    "warping": new_clip.warping,
                 }
+                # .warping raises "Warping is only available for Audio Clips"
+                # on a MIDI clip, after the clip was already placed.
+                if new_clip.is_audio_clip:
+                    info["warping"] = new_clip.warping
+                    info["start_marker"] = new_clip.start_marker
+                    info["end_marker"] = new_clip.end_marker
+                if errors:
+                    info["normalize_errors"] = errors
             return {
                 "track_index": track_index,
                 "source_slot_index": source_slot_index,
@@ -3383,6 +3542,61 @@ class AbletonMCP(ControlSurface):
                     "deleted": True, "name": name}
         except Exception as e:
             self.log_message("Error deleting arrangement clip: " + str(e))
+            raise
+
+    def _move_arrangement_clip(self, track_index, clip_index,
+                               destination_time):
+        """Move an Arrangement clip to a new start time on the same track.
+
+        Live exposes arrangement start_time read-only, so this copies the
+        clip to the destination and deletes the original. Notes, warp
+        markers, envelopes and clip settings travel with the copy."""
+        try:
+            tracks = self._song.tracks
+            if track_index < 0 or track_index >= len(tracks):
+                raise IndexError(
+                    "Track index out of range (0..%d)" % (len(tracks) - 1))
+            track = tracks[track_index]
+            clips = track.arrangement_clips
+            if clip_index < 0 or clip_index >= len(clips):
+                raise IndexError("Arrangement clip index out of range")
+            src = clips[clip_index]
+            old_start = src.start_time
+            dest = float(destination_time)
+            if dest < 0:
+                raise ValueError("destination_time must be >= 0")
+            name = src.name
+            old_end = src.end_time
+
+            def key(c):
+                return (round(c.start_time, 6), round(c.end_time, 6), c.name)
+
+            others = set(key(c) for c in clips if c is not src)
+            track.duplicate_clip_to_arrangement(src, dest)
+            # The original (or, when the copy overlaps it, the sliver Live
+            # trims it to) is whatever is left in the old range that was not
+            # there before. Other clips are left alone.
+            removed = 0
+            for c in list(track.arrangement_clips):
+                if abs(c.start_time - dest) < 1e-6 and c.name == name:
+                    continue
+                if key(c) in others:
+                    continue
+                if (c.name == name and c.start_time >= old_start - 1e-6
+                        and c.end_time <= old_end + 1e-6):
+                    track.delete_clip(c)
+                    removed += 1
+            moved = None
+            for i, c in enumerate(track.arrangement_clips):
+                if abs(c.start_time - dest) < 1e-6 and c.name == name:
+                    moved = {"index": i, "start_time": c.start_time,
+                             "end_time": c.end_time}
+            return {"track_index": track_index, "name": name,
+                    "old_start": old_start, "destination_time": dest,
+                    "removed": removed,
+                    "clip": moved}
+        except Exception as e:
+            self.log_message("Error moving arrangement clip: " + str(e))
             raise
 
     def _re_enable_automation(self):
@@ -3941,7 +4155,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error getting browser presets: {0}".format(str(e)))
             self.log_message(traceback.format_exc())
 
-    def find_sample_uri(self, name, category="samples"):
+    def find_sample_uri(self, name, category="samples", parents=None):
         """Resolve a sample base name to its browser URI by walking a category.
 
         The LOM browser exposes a loadable item's name + uri but not its file
@@ -3949,6 +4163,11 @@ class AbletonMCP(ControlSurface):
         the uri here by matching the base name. Returns
         {"uri": <first match or None>, "matches": <count>}; matches exactly
         first, then case-insensitively.
+
+        Some categories (user_folders) are a list of roots rather than one
+        item. When `parents` (the folder names along the file's path) is
+        given, only folders with one of those names are descended, so a
+        large Place is not walked in full.
         """
         try:
             app = self.application()
@@ -3957,6 +4176,10 @@ class AbletonMCP(ControlSurface):
             root = getattr(app.browser, category, None)
             if root is None:
                 return {"uri": None, "matches": 0}
+            roots = [root] if hasattr(root, 'children') else list(root)
+            allowed = None
+            if parents:
+                allowed = set(p.lower() for p in parents)
             lower = name.lower()
             exact = []
             ci = []
@@ -3973,9 +4196,13 @@ class AbletonMCP(ControlSurface):
                         elif cname.lower() == lower:
                             ci.append(child.uri)
                     if hasattr(child, 'children') and child.children:
-                        walk(child, depth + 1)
+                        if allowed is None or cname.lower() in allowed:
+                            walk(child, depth + 1)
 
-            walk(root, 0)
+            for r in roots:
+                rname = r.name if hasattr(r, 'name') else ""
+                if allowed is None or r is root or rname.lower() in allowed:
+                    walk(r, 0)
             if exact:
                 return {"uri": exact[0], "matches": len(exact)}
             if ci:

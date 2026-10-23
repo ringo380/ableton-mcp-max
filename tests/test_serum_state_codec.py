@@ -1,9 +1,19 @@
 # tests/test_serum_state_codec.py
-import binascii, gzip, re, glob, os
+import binascii, gzip, re, glob, os, sys
 import pytest
 from ableton_mcp_max import serum_state_codec as sc
 
-FACTORY = "/Library/Audio/Presets/Xfer Records/Serum 2 Presets/Presets"
+def _serum_factory_root():
+    """Serum 2's factory preset dir on this OS (macOS path unchanged)."""
+    from ableton_mcp_max import platform_utils as plat, server
+    for path, label in plat.serum_preset_roots(
+            sys.platform, os.path.expanduser("~"), server._documents_dir()):
+        if label == "factory" and os.path.isdir(path):
+            return path
+    return plat.serum_preset_roots(sys.platform, os.path.expanduser("~"))[0][0]
+
+
+FACTORY = _serum_factory_root()
 TEST_ALS = "/Users/ryanrobson/Desktop/serum2_test Project/serum2_idtest.als"
 
 def _als_processor_blob(path):

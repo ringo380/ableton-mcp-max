@@ -1,3 +1,7 @@
+import os
+import sys
+
+from ableton_mcp_max import platform_utils as plat
 import glob, pytest
 from ableton_mcp_max import groove_preset_utils as gpu
 
@@ -66,8 +70,8 @@ def test_agr_to_pool_groove_strips_original_file_ref():
 
 
 def _factory_agr():
-    hits = glob.glob("/Applications/Ableton*Live*.app/Contents/App-Resources/"
-                     "Core Library/Grooves/**/*.agr", recursive=True)
+    hits = glob.glob(os.path.join(plat.core_library_glob(sys.platform), "Grooves", "**", "*.agr"),
+                     recursive=True)
     # Find the first text file (skip binary .agr files).
     for path in hits:
         try:

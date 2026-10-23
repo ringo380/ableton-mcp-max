@@ -193,6 +193,21 @@ def test_find_track_span_handles_extra_attrs():
     assert 'Id="9"' in xml[s1:e1]
 
 
+def test_find_track_span_counts_group_tracks_like_the_lom():
+    # song.tracks = [GroupTrack, AudioTrack (in group), MidiTrack]; returns excluded.
+    xml = ('<Tracks><GroupTrack Id="1"><DeviceChain/></GroupTrack>'
+           '<AudioTrack Id="2"><DeviceChain/></AudioTrack>'
+           '<MidiTrack Id="3"><DeviceChain/></MidiTrack>'
+           '<ReturnTrack Id="4"><DeviceChain/></ReturnTrack></Tracks>')
+    s, e = find_track_span(xml, 0)
+    assert xml[s:e].startswith('<GroupTrack Id="1"')
+    assert xml[s:e].endswith("</GroupTrack>")
+    s, e = find_track_span(xml, 2)
+    assert xml[s:e].startswith('<MidiTrack Id="3"')
+    with pytest.raises(ValueError):
+        find_track_span(xml, 3)
+
+
 def test_find_track_span_out_of_range_raises():
     with pytest.raises(ValueError):
         find_track_span(_two_track_xml(), 5)

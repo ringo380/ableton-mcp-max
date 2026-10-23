@@ -6,7 +6,7 @@ allowed-tools: ["Bash", "Read"]
 
 # /ableton:setup
 
-Take the user from "plugin enabled" to "issuing Ableton Live commands from Claude Code" in one session.
+Take the user from "plugin enabled" to "issuing Ableton Live commands from Claude Code" in one session. Works on **macOS and Windows** - each step below gives both; run the one for the user's OS.
 
 This plugin has **two halves** that both must be in place:
 
@@ -23,9 +23,14 @@ This plugin has **two halves** that both must be in place:
    ```
 
 2. Confirm Ableton Live (11 or 12) is present:
-   ```bash
-   ls -d /Applications/Ableton*Live*.app 2>/dev/null || echo "Ableton Live not found at the default path — ask the user where Live is installed."
-   ```
+   - macOS:
+     ```bash
+     ls -d /Applications/Ableton*Live*.app 2>/dev/null || echo "Ableton Live not found at the default path — ask the user where Live is installed."
+     ```
+   - Windows:
+     ```bash
+     ls -d "/c/ProgramData/Ableton/Live"* 2>/dev/null || echo "Ableton Live not found under C:\ProgramData\Ableton - ask the user where Live is installed."
+     ```
 
 3. Warm the server venv so the first MCP call doesn't time out (creates/syncs the venv from `uv.lock`):
    ```bash
@@ -34,21 +39,26 @@ This plugin has **two halves** that both must be in place:
 
 ## Install the Remote Script
 
-The repo ships `scripts/install_remote_script.sh`, which copies the Remote Script into Live's MIDI Remote Scripts folder, backs up any existing install, and fixes ownership (Live silently skips root-owned script folders). Run it:
+The repo ships an installer per OS. Each copies the Remote Script into every installed Live's `MIDI Remote Scripts` folder and backs up any existing install (outside that folder - Live would try to import a backup).
 
-```bash
-bash "$CLAUDE_PLUGIN_ROOT/scripts/install_remote_script.sh"
-```
+- macOS - `install_remote_script.sh` also fixes ownership (Live silently skips root-owned script folders). It prompts for `sudo` (writes into the app bundle):
+  ```bash
+  bash "$CLAUDE_PLUGIN_ROOT/scripts/install_remote_script.sh"
+  ```
+- Windows - installs into `C:\ProgramData\Ableton\Live <edition>\Resources\MIDI Remote Scripts\AbletonMCP`:
+  ```bash
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$CLAUDE_PLUGIN_ROOT/scripts/install_remote_script.ps1"
+  ```
 
-It will prompt for `sudo` (writes into the app bundle). On success it prints the destination path.
+On success it prints the destination path.
 
 ## Enable the Control Surface (manual — user does this in Live)
 
 Tell the user to:
 
 1. Open **Ableton Live** (or quit + reopen if it was already running — Live only scans Remote Scripts at launch).
-2. Go to **Settings/Preferences → Link, Tempo & MIDI** (named "Link/MIDI" in some versions).
-3. Under **Control Surface**, pick **AbletonMCP** from the dropdown. Leave Input/Output as needed (the script uses a socket, not MIDI ports).
+2. Open the settings: **Live > Settings** on macOS, **Options > Settings** on Windows, then the **Link, Tempo & MIDI** tab (named "Link/MIDI" in some versions).
+3. Under **Control Surface**, pick **AbletonMCP** from the dropdown. Leave Input/Output as None (the script uses a socket, not MIDI ports).
 4. Live is now listening on `localhost:9877`.
 
 ## Verify
@@ -59,11 +69,18 @@ Run a smoke check through the MCP server (load the tool first if deferred: `Tool
 - The **first** call right after enabling the surface (or after any Claude Code restart) can fail while the server reconnects — just retry once.
 
 If it still fails:
-```bash
-pgrep -fl "Ableton Live" || echo "Live is not running"
-lsof -nP -iTCP:9877 -sTCP:LISTEN || echo "Nothing listening on 9877 — Control Surface not selected, or Live needs a restart"
-```
-Remote Script load errors are logged in `~/Library/Preferences/Ableton/Live 1[12]*/Log.txt` (grep for `AbletonMCP` or `Traceback`).
+- macOS:
+  ```bash
+  pgrep -fl "Ableton Live" || echo "Live is not running"
+  lsof -nP -iTCP:9877 -sTCP:LISTEN || echo "Nothing listening on 9877 — Control Surface not selected, or Live needs a restart"
+  ```
+  Remote Script load errors are logged in `~/Library/Preferences/Ableton/Live 1[12]*/Log.txt` (grep for `AbletonMCP` or `Traceback`).
+- Windows:
+  ```bash
+  tasklist //FI "IMAGENAME eq Ableton Live*" || echo "Live is not running"
+  netstat -ano | grep ":9877 " || echo "Nothing listening on 9877 - Control Surface not selected, or Live needs a restart"
+  ```
+  Remote Script load errors are logged in `%APPDATA%\Ableton\Live <version>\Preferences\Log.txt` (grep for `AbletonMCP` or `Traceback`).
 
 ## Done
 

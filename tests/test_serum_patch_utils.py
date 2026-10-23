@@ -76,11 +76,21 @@ def test_summarize_reports_present_modules():
     assert mac0["name"] == "HIGH" and mac0["value"] == 56.0
 
 
-import glob, os
+import glob, os, sys
 from ableton_mcp_max import serum_state_codec as ssc
 from ableton_mcp_max import serum_patch_catalog as realpc
 
-_ROOT = "/Library/Audio/Presets/Xfer Records/Serum 2 Presets/Presets"
+def _serum_factory_root():
+    """Serum 2's factory preset dir on this OS (macOS path unchanged)."""
+    from ableton_mcp_max import platform_utils as plat, server
+    for path, label in plat.serum_preset_roots(
+            sys.platform, os.path.expanduser("~"), server._documents_dir()):
+        if label == "factory" and os.path.isdir(path):
+            return path
+    return plat.serum_preset_roots(sys.platform, os.path.expanduser("~"))[0][0]
+
+
+_ROOT = _serum_factory_root()
 
 @pytest.mark.skipif(not glob.glob(os.path.join(_ROOT, "**", "*.SerumPreset"), recursive=True),
                     reason="factory presets absent")

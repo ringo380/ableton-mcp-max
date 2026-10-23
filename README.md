@@ -4,13 +4,25 @@ A self-owned, extensible MCP server for Ableton Live, forked from
 [ahujasid/ableton-mcp](https://github.com/ahujasid/ableton-mcp) and extended
 toward broad Live Object Model coverage.
 
-**Documentation:** [ringo380.github.io/ableton-mcp-max](https://ringo380.github.io/ableton-mcp-max/) - landing page, install guide, and reference for all 187 tools.
+**Documentation:** [ringo380.github.io/ableton-mcp-max](https://ringo380.github.io/ableton-mcp-max/) - landing page, install guide, and reference for all 191 tools.
 
 ## Install
-1. `bash scripts/install_remote_script.sh` - installs the Live Remote Script.
-2. Restart Ableton Live; enable **AbletonMCP** under Settings → Link, Tempo & MIDI → Control Surface.
-3. `bash scripts/register_mcp.sh` - registers the MCP server with Claude Code.
+Runs on macOS and Windows (Live 11 or 12). Needs [uv](https://docs.astral.sh/uv/).
+
+1. Install the Live Remote Script:
+   - macOS: `bash scripts/install_remote_script.sh`
+   - Windows: `powershell -ExecutionPolicy Bypass -File scripts\install_remote_script.ps1`
+2. Restart Ableton Live; enable **AbletonMCP** under Settings → Link, Tempo & MIDI → Control Surface (Settings is under the Live menu on macOS, the Options menu on Windows).
+3. Register the MCP server with Claude Code:
+   - macOS: `bash scripts/register_mcp.sh`
+   - Windows: `powershell -ExecutionPolicy Bypass -File scripts\register_mcp.ps1`
 4. Restart Claude Code.
+
+The tools that drive Live's own windows (`save_set`, `save_set_as`, `render_audio`,
+`restart_live`, `set_arrangement_automation`) use System Events on macOS (Live needs
+Accessibility permission) and Live's native menu, UI Automation and the stock Save
+dialog on Windows. On Windows they briefly bring Live's Save dialog to the front to
+type a file name.
 
 **Optional - per-track + master metering:** drag `m4l/MCP Tap.amxd` into Live's
 browser (onto User Library) once - a plain file-copy isn't indexed by the browser

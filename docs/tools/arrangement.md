@@ -113,8 +113,10 @@ Parameters:
   to stay within size limits; raise `limit` for more.
 
 Returns JSON {track_index, count, returned, truncated, clips:[{index, name,
-start_time, end_time, length, is_midi_clip}, ...]}. `count` is the full
-total; `clips` holds at most `limit` of them.
+start_time, end_time, length, is_midi_clip, start_marker, end_marker,
+looping, loop_start, loop_end, and for audio warping, warp_mode,
+warp_marker_count}, ...]}. `count` is the full total; `clips` holds at most
+`limit` of them.
 
 ## duplicate_clip_to_arrangement
 
@@ -148,4 +150,22 @@ Parameters:
 - track_index: Index of the track.
 - clip_index: Index into get_arrangement_clips' list (>= 0). Deleting
   re-indexes the remaining clips — re-read after.
+
+## move_arrangement_clip
+
+```python
+move_arrangement_clip(track_index: int, clip_index: int, destination_time: float)
+```
+
+Move a clip along its track's Arrangement timeline.
+
+Live has no direct move, so the clip is copied to destination_time and the
+original (or the sliver left when the copy overlaps it) is deleted. Notes,
+warp markers and clip envelopes travel with the copy.
+
+Parameters:
+- track_index: Index of the track.
+- clip_index: Index into get_arrangement_clips' list. Indices change
+  after a move - re-read before the next one.
+- destination_time: New start position in beats (>= 0).
 

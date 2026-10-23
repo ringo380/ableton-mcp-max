@@ -4,6 +4,7 @@ Prints a distilled tool-usage core when a music context is detected
 (Ableton Live running, or a project-brief.md in the cwd), plus a pointer
 to per-project state files when a project-brief.md is present. Silent otherwise.
 """
+import json
 import os
 import pathlib
 import shutil
@@ -53,6 +54,15 @@ def build_orientation(brief_exists: bool, live_running: bool) -> str:
 
 
 def _live_running() -> bool:
+    if sys.platform.startswith("win"):
+        try:
+            out = subprocess.run(
+                ["tasklist", "/FO", "CSV", "/NH"],
+                capture_output=True, text=True, timeout=10,
+            ).stdout
+            return '"Ableton Live' in out
+        except Exception:
+            return False
     if shutil.which("pgrep") is None:
         return False
     try:
@@ -68,10 +78,24 @@ def _live_running() -> bool:
         return False
 
 
+def _session_cwd() -> str:
+    """The Claude Code session's cwd. `uv run --directory` moves the process
+    into the plugin root, so read it from the hook's stdin JSON ("cwd"), or
+    ORIENT_PWD when a wrapper set it."""
+    if os.environ.get("ORIENT_PWD"):
+        return os.environ["ORIENT_PWD"]
+    try:
+        if not sys.stdin.isatty():
+            data = json.loads(sys.stdin.read() or "{}")
+            if isinstance(data, dict) and data.get("cwd"):
+                return data["cwd"]
+    except Exception:
+        pass
+    return os.getcwd()
+
+
 def main() -> None:
-    # ORIENT_PWD is set by orient.sh to preserve the session cwd before
-    # uv run --directory changes it to the plugin root.
-    cwd = pathlib.Path(os.environ.get("ORIENT_PWD") or os.getcwd())
+    cwd = pathlib.Path(_session_cwd())
     brief_exists = (cwd / "project-brief.md").is_file()
     text = build_orientation(brief_exists=brief_exists, live_running=_live_running())
     if text:

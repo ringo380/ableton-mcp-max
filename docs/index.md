@@ -2,26 +2,26 @@
 layout: default
 title: Home
 nav_order: 1
-description: "Control Ableton Live 11 and 12 from Claude with 187 MCP tools."
+description: "Control Ableton Live 11 and 12 from Claude with 191 MCP tools."
 permalink: /
 ---
 
 <div class="hero" markdown="0">
   <div class="hero__eyebrow">Claude Code plugin · MCP server</div>
   <h1 class="hero__title">ableton-mcp-max</h1>
-  <p class="hero__tagline">Drive Ableton Live 11 and 12 straight from Claude. 187 tools spanning tracks,
+  <p class="hero__tagline">Drive Ableton Live 11 and 12 straight from Claude. 191 tools spanning tracks,
   clips, MIDI, devices, mixing, automation, arrangement, scenes, transport, composition, and full
   preset generation - built on the Live Object Model with preset-XML backdoors for the
   controls Live keeps hidden.</p>
   <div class="stats">
-    <div><div class="stats__num">187</div><div class="stats__label">Tools</div></div>
+    <div><div class="stats__num">191</div><div class="stats__label">Tools</div></div>
     <div><div class="stats__num">24</div><div class="stats__label">Categories</div></div>
     <div><div class="stats__num">Live 11 &amp; 12</div><div class="stats__label">Target</div></div>
     <div><div class="stats__num">Free non-commercial</div><div class="stats__label">License</div></div>
   </div>
 </div>
 
-[Browse all 187 tools](./tools/){: .btn .btn-primary .mr-2 }
+[Browse all 191 tools](./tools/){: .btn .btn-primary .mr-2 }
 [Get it on the marketplace](https://github.com/robworks-code/robworks-claude-code-plugins){: .btn }
 
 ---
@@ -66,8 +66,10 @@ the server reconnects - just retry once.
 
 > **Manual install (without the plugin):** clone
 > [the repo](https://github.com/ringo380/ableton-mcp-max), run
-> `bash scripts/install_remote_script.sh`, enable the Control Surface, run
-> `bash scripts/register_mcp.sh`, then restart Claude Code.
+> `bash scripts/install_remote_script.sh` (Windows:
+> `powershell -ExecutionPolicy Bypass -File scripts\install_remote_script.ps1`),
+> enable the Control Surface, run `bash scripts/register_mcp.sh` (Windows:
+> `scripts\register_mcp.ps1`), then restart Claude Code.
 
 ---
 
@@ -90,7 +92,7 @@ the server reconnects - just retry once.
 
 Two halves talk over `localhost:9877`:
 
-- A **FastMCP server** (Python, launched by Claude Code) exposes the 187 `@mcp.tool()` functions.
+- A **FastMCP server** (Python, launched by Claude Code) exposes the 191 `@mcp.tool()` functions.
 - A **Remote Script** running inside Live's own Python applies them against the Live Object Model.
 
 Values are resolved, normalized, and clamped on the server, so the Remote Script just applies
