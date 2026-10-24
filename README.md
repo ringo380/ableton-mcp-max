@@ -40,7 +40,7 @@ the v0.7.0 master-only `MCP Audio Tap`.)
 - `/ableton:add-to-track` - guided sequence for adding devices or clips to an existing track.
 - `/ableton:analyze` - check the open set against best-practice rulesets and report findings by domain.
 
-See `PROGRESS.md` for capability status and `docs/superpowers/specs/` for the design.
+See `PROGRESS.md` for capability status.
 
 ## Stem separation prerequisites
 

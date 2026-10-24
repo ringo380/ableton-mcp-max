@@ -7,8 +7,7 @@ duplicate_clip_to_arrangement, and there is no track-level breakpoint API), so
 we patch the saved set: arrangement automation for a parameter is one
 <AutomationEnvelope> in the owning track's <AutomationEnvelopes><Envelopes>
 list, whose <EnvelopeTarget><PointeeId> equals that parameter's
-<AutomationTarget Id>. See
-docs/superpowers/specs/2026-06-21-arrangement-automation-design.md.
+<AutomationTarget Id>.
 
 No Live dependency (server.py imports this; the Remote Script cannot).
 

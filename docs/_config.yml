@@ -28,9 +28,7 @@ footer_content: >-
   Built by Ryan Robson / Robworks Software LLC.
   Not affiliated with or endorsed by Ableton AG.
 
-# Keep the committed superpowers specs/plans out of the built site.
 exclude:
-  - superpowers/
   - Gemfile
   - Gemfile.lock
   - vendor/

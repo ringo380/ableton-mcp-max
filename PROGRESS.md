@@ -48,9 +48,7 @@ gain envelope in the .als, reloaded in place); `restart_live(save='discard')` on
 relaunched, surface up in 4.2s). Offline: 1204 passed.
 
 ## render_audio + focus_view - SHIPPED v0.33.0 (2026-07-14)
-Bounce the set's Main output to disk. **2 new `@mcp.tool()`s** (built via SDD; spec
-`docs/superpowers/specs/2026-07-13-render-audio-design.md`, plan
-`docs/superpowers/plans/2026-07-13-render-audio.md`), **185 -> 187 tools**, new **"Export"** category
+Bounce the set's Main output to disk. **2 new `@mcp.tool()`s**, **185 -> 187 tools**, new **"Export"** category
 (23 -> 24):
 - `render_audio(name, start_bar=None, end_bar=None, ...)` - bounces the Main output. Optional 1-based,
   end-EXCLUSIVE bar range (or the whole song). WAV/AIFF/FLAC/MP3, bit depth, sample rate, dither, mono,
@@ -90,9 +88,8 @@ is Live's last-used export location (uncontrollable, commonly **iCloud** - so a
 **Next action: nothing functional queued.**
 
 ## Phase 3 - mastering recommend integration - LIVE-VERIFIED, pending ship v0.31.0 (2026-07-06)
-Gives mastering the same recommend-then-apply intelligence the instrument flow has. **2 new `@mcp.tool()`s**
-(built via SDD, plan `docs/superpowers/plans/2026-07-06-mastering-recommend-integration.md`; spec
-`docs/superpowers/specs/2026-07-06-mastering-recommend-integration-design.md`), **182 -> 184 tools**, both
+Gives mastering the same recommend-then-apply intelligence the instrument flow has. **2 new `@mcp.tool()`s**,
+**182 -> 184 tools**, both
 under the "Mastering (Ozone)" category (23 categories unchanged):
 - `recommend_master(intent, target=None, true_peak=-1, prefer_reuse=True)` - PROPOSE-ONLY. Parses a free-text
   intent into one of 5 character buckets (transparent/warm/loud_club/punchy/bright) + resolves the LUFS target
@@ -110,7 +107,7 @@ EQ shelves are BEST-EFFORT (audible only if EQ is in the user's active chain). R
 `skills/ableton-mastering/SKILL.md` (recommend -> apply -> live measure/nudge trim loop via `set_ozone_maximizer`,
 NOT `set_ozone_state` which reloads) + wired `/ableton:produce` Stage 6 (Ozone primary path + non-Ozone degrade).
 
-**SDD:** 7 tasks all review-clean; opus final whole-branch review = MERGE (no Critical/Important). Offline gate
+7 tasks, each reviewed clean; final whole-branch review = MERGE (no Critical/Important). Offline gate
 1094 passed / 2 skipped, import clean. **LIVE-VERIFIED (Live 12 + Ozone on master):** recommend_master parsed
 loud_club + hit the live catalog (reuse "DJ Master Channel"); apply_master applied all 9 params un-clamped
 (skipped:[]) + exposed the Maximizer + non-fatal tap handling; `set_ozone_maximizer` nudged live with no reload.
@@ -120,8 +117,7 @@ DEFERRED minor: apply_master always `deploy_taps([-1])` with no skip-if-present 
 ## Ozone 12 deep mastering support - Phase 2 - native param authoring - LIVE-VERIFIED, pending ship v0.30.0 (2026-07-05)
 Removes Phase 1's two hard limits (128-slot Configure cap + identity-normalization clamp that forced
 Hz/dB args to [0,1]) by reading/writing ALL Ozone params directly in the plugin's `<ProcessorState>`
-JSON blob inside the `.als`. **2 new `@mcp.tool()`s** (built via SDD, plan
-`docs/superpowers/plans/2026-07-05-ozone12-phase2-native-param-authoring.md`, tasks 1-6 offline + task-7
+JSON blob inside the `.als`. **2 new `@mcp.tool()`s** (tasks 1-6 offline + task-7
 live): `get_ozone_state` (read native param values by module, or a whole-instance module summary) and
 `set_ozone_state` (batch-author native params across modules in one call, splice + reload in place).
 Non-breaking: Phase 1's 8 module-aware tools stay. **182 tools total.**
@@ -156,8 +152,7 @@ Offline gate: 1070 passed / 2 skipped, server import clean. Final whole-branch r
 Module-aware control of an iZotope **Ozone 12** instance on the master, via the generic plugin-exposure
 engine (`_expose_plugin_impl`): Ozone reports 873 params but Ableton Configures at most 128 at once, so
 we selectively fill the device's Configure slots with a requested module's params, patch the `.als` on
-disk, and reload in place. **8 new `@mcp.tool()`s** (built via SDD, plan
-`docs/superpowers/plans/2026-07-01-ozone12-support-phase1.md`, tasks 1-8 offline + task-9 live):
+disk, and reload in place. **8 new `@mcp.tool()`s** (tasks 1-8 offline + task-9 live):
 `get_ozone_modules`, `expose_ozone_modules`, `get_ozone_module`, `set_ozone_module_param`,
 `set_ozone_module_enabled`, `set_ozone_eq_band`, `set_ozone_maximizer`, `set_ozone_dynamics_band`.
 Pure logic in `ozone_utils.py` (param-name parse, module map, `pack_modules` selection/overflow,
@@ -203,8 +198,8 @@ Serum instance count (busy penalty >=3), portability (prefer_native auto when se
 degrades to intent-only when Live disconnected (never errors). Scoring: ROLE 1.0 / GENRE 2.0 / CHAR 2.5 /
 NATIVE_BONUS 1.0, penalties 3.0. Sound-design skill got a "Choosing the engine" section. **PR #51
 squash-merged @a2aad7c (main=origin=tag v0.28.0); marketplace `ableton` ref v0.27.2->v0.28.0 @801bb6b.**
-172 tools / 22 cat (joined Catalog). Offline 1032 pass / 2 skip. Built via SDD (7 tasks, all task-reviews +
-opus final review clean - READY TO MERGE, 0 Critical/Important). **LIVE-VERIFIED 2026-07-01 (Live 12.4,
+172 tools / 22 cat (joined Catalog). Offline 1032 pass / 2 skip. 7 tasks, all task reviews +
+final review clean - READY TO MERGE, 0 Critical/Important. **LIVE-VERIFIED 2026-07-01 (Live 12.4,
 in-process against real FS + the open set):** serum_installed=True off the real machine FS; the actual
 loaded "Serum 2" PluginDevice classifies as `serum`; summarize_environment off the open set (1 Serum
 instance, a 3rd-party plugin present) -> prefer_native auto=False; recommend() end-to-end:
@@ -251,7 +246,7 @@ live `.als` and reloading in place (same processor-only mechanism as Release 2).
 (161 -> **171**, "Plugins (VST/AU)" category, 22 total): `get_serum_patch`, `set_serum_oscillator`,
 `set_serum_filter`, `set_serum_envelope`, `set_serum_lfo`, `set_serum_macro`, `set_serum_wavetable`,
 `add_serum_mod_route`, `clear_serum_mod_route`, `create_serum_patch` (declarative whole-patch composer,
-one reload). Branch `feat/serum-patch-authoring` (SDD-executed; spec+plan under docs/superpowers/).
+one reload). Branch `feat/serum-patch-authoring`.
 Pure `serum_patch_utils.py` + friendly-name catalog `param_maps/serum2_patch.json` (built from 791-preset
 scan: per-module params/ranges, string oscillator-mode enum, mod-dest type/paramID Rosetta). Reuses the
 Release 2 `_serum_fx_read_impl`/`_serum_fx_mutate_impl` scaffolding (generalized, backward-compatible).
@@ -289,7 +284,7 @@ groove 219 / device_preset 3539, all 6 tools pass).
 Author Serum 2's FX racks by patching the plugin-state blob in the live `.als` and reloading in place
 (same Option-A delivery as Release 1). 5 new tools (150 -> **155**, "Plugins (VST/AU)" category):
 `get_serum_fx`, `set_serum_fx_param`, `insert_serum_fx`, `remove_serum_fx`, `reorder_serum_fx`. Branch
-`feat/serum-fx-path` (SDD-executed; spec+plan under docs/superpowers/). Codec `serum_state_codec.py`
+`feat/serum-fx-path`. Codec `serum_state_codec.py`
 (XferJson = magic+uint64 meta-len+JSON+8-byte `<II` header+zstd-CBOR; md5(zstd)=hash, recomputed on encode;
 roundtrip-gated over all 791 factory presets), catalog `serum2_fx.json` (16 FX types from factory scan),
 pure `serum_fx_utils.py`, navigator `plugin_config_utils.locate_plugin_state`/`is_serum_state`.
@@ -569,7 +564,7 @@ published, marketplace `ableton` ref bumped v0.16.0->v0.17.0 + pushed. Release c
 - 749 offline tests pass.
 
 ## Groove Pool loading (#36) - v0.16.0, 141 tools (2026-06-21)
-Branch `feat/groove-pool-loading` (base `main` @ed32446). Spec + plan under `docs/superpowers/`.
+Branch `feat/groove-pool-loading` (base `main` @ed32446).
 Follow-up to #27: there was no MCP path to ADD a groove to the Groove Pool (assignment only worked
 on grooves already in it). SOLVED via the `.alc` clip-embed backdoor, spiked + PROVEN live on Live 12.4
 (pool grew 1->2, groove assignable).
@@ -603,7 +598,7 @@ on grooves already in it). SOLVED via the `.alc` clip-embed backdoor, spiked + P
 - **NEXT:** ship - PR, squash-merge, release v0.16.0, bump marketplace `ableton` ref + build-readme.
 
 ## Groove & swing (#27) - Phase 0 SPIKE VERDICT 2026-06-21
-Branch `feat/groove-swing` (base `main` @6def31e). Spec/plan under `docs/superpowers/`.
+Branch `feat/groove-swing` (base `main` @6def31e).
 - **Task 1** groove_utils pure swing math: DONE (6e5cf8a..310d659).
 - **Task 2** `swing_clip` tool: DONE (4a59695), live-verified on Live 12.
 - **Task 3** Phase 0 groove-assignment spike: **DONE - VERDICT: Python LOM assignment WORKS** (Live 12.4).
@@ -634,8 +629,7 @@ Branch `feat/groove-swing` (base `main` @6def31e). Spec/plan under `docs/superpo
     investigate Max LiveAPI / `.alc` backdoor).
 
 ## /ableton:produce command (#4b) - LIVE VERIFICATION DONE 2026-06-20
-Branch `feat/produce-command` (base `main` @01a8af6). Spec + plan committed under
-`docs/superpowers/`. Command authored (`commands/produce.md`); Tasks 1-2 done.
+Branch `feat/produce-command` (base `main` @01a8af6). Command authored (`commands/produce.md`); Tasks 1-2 done.
 **Task 3 (live verification) COMPLETE** - drove all stages end-to-end against Live
 12.4 building a House track (124 BPM, A minor, 6 tracks, 128 bars / 8 sections;
 saved as `tester8.als`). Stages run: Foundation -> Parts -> Arrangement -> FX ->
@@ -668,8 +662,6 @@ produce command + the #32 fix together (v0.13.0 -> v0.14.0: bump
 pyproject/plugin.json + `uv lock`, release, marketplace `ableton` ref bump).
 
 ## Closed-loop remediation (roadmap #3) - SHIPPED 2026-06-19 as v0.12.0
-Spec: `docs/superpowers/specs/2026-06-18-closed-loop-remediation-design.md`
-Plan: `docs/superpowers/plans/2026-06-18-closed-loop-remediation.md`
 4 new tools (128 -> 132), new "Remediation" category (19 total), no RS changes, 656 tests, version 0.12.0:
 - **`adjust_track_gain`**: shift a track fader by delta_db (no playback; uses live_volume_to_db inverse)
 - **`gain_stage_track`**: play + measure LUFS via tap + iterative convergence to target_db
@@ -751,8 +743,7 @@ server-side MIDI-composition primitives that emit notes through the existing not
   [0,2,4,5,7,9,11]), so custom set scales work too. Feasibility confirmed against the Live 11/12 LOM doc
   (scale_name/root_note read/write, scale_intervals read).
 - **Tests:** 48 new offline composition tests (scales/chords/generators/transformers), full suite **566
-  passed**; server imports clean; RS py_compile clean. Built subagent-driven (spec + quality review each
-  task; reviews caught + fixed: walking-bassline fractional-segment bug, durations-length validation,
+  passed**; server imports clean; RS py_compile clean. Reviewed per task (reviews caught + fixed: walking-bassline fractional-segment bug, durations-length validation,
   arpeggiate single-note re-trigger footgun, clip_slot_index->clip_index API consistency).
 - **LIVE-VERIFIED 2026-06-16 vs Live 12 Suite** (working-tree server.py driven directly against the live
   9877 socket, bypassing MCP, on a self-cleaning scratch MIDI track): all 8 tools pass. chords -> 12 notes,
@@ -770,8 +761,7 @@ server-side MIDI-composition primitives that emit notes through the existing not
   triads (I=C-E-G 60/64/67, IV=F-A-C, V=G-B-D - E natural 64, NOT the fallback Eb 63). Scratch track
   deleted -> 4 tracks restored. **Composition layer is now FULLY live-verified.** **NOT yet released** -
   per plan, one release will bundle #0 + gap C + #1.
-- Specs/plans: `docs/superpowers/specs/2026-06-16-composition-layer-design.md`,
-  `docs/superpowers/plans/2026-06-16-composition-layer.md`. NEXT = release (PR feat/composition-layer ->
+- NEXT = release (PR feat/composition-layer ->
   main, bundle the unreleased master/return #24 already on main + composition layer as v0.10.0).
 
 ## Master/return device access: params + effect loading (2026-06-16)
@@ -791,16 +781,14 @@ the master/return chain was unreachable for device-parameter read/write AND devi
   FEASIBILITY CONFIRMED LIVE: `load_item` honors a master/return selection - NO holder-track+copy workaround
   needed (supersedes the old "master/return can't host loaded devices" note).
 - **Offline:** +6 tests (test_device_params_track_type.py x3, test_load_track_type.py x3), full suite 518 passed,
-  py_compile clean, server imports. Subagent-driven (spec+quality reviewed each task). Docs regenerated, tool
+  py_compile clean, server imports. Reviewed per task. Docs regenerated, tool
   count UNCHANGED at 118 (arg-only changes, no new tools).
 - **LIVE-VERIFIED 2026-06-16 vs Live 12.4 (working-tree server via AbletonDev):** Return A Reverb param
   read+write(Decay Time 0.443->0.75)+separate-read-back+restore; Master EQ Eight read(84 params)+write(`1 Gain A`
   0->6)+restore; loaded EQ Eight onto Master (idx 0) AND Return A (idx 1, appended after Reverb) via track_type;
   regular-track load still works with no track_type; all scratch devices deleted (master->0, returnA->1 Reverb,
   regular->0). RS reinstalled + Live bounced via restart_live twice during the cycle.
-- **Out of scope (later specs):** master/return automation envelopes (B). Specs/plans:
-  `docs/superpowers/specs/2026-06-16-master-return-device-params-design.md` (+ `-load-devices-onto-master-return-design.md`),
-  matching plans under `docs/superpowers/plans/`. NEXT = finish branch (PR) -> release; then sub-project #1 (composition layer).
+- **Out of scope (later specs):** master/return automation envelopes (B). NEXT = finish branch (PR) -> release; then sub-project #1 (composition layer).
 
 ## Adapt factory-asset reads to the RUNNING Live version (2026-06-15)
 Closes the one spot that ignored which Live the user runs: on a machine with BOTH 11 and 12 installed,
@@ -902,8 +890,7 @@ registry poll exactly as designed (tap streaming, block_count climbing; removed 
 rebuilt + pushed (@15c0981 in robworks-claude-code-plugins). Live-verified end-to-end (see the Phase 5 entry).
 Replaces the v0.7.0 master tap with a self-identifying M4L device family reporting to a Python-hosted TCP
 **registry** (one socket, port 9878; devices are CLIENTS that announce identity + stream stats). Shipped as
-**v0.8.0 (BREAKING device change)**. Spec `docs/superpowers/specs/2026-06-13-per-track-signal-taps-bridge-design.md`,
-plan `docs/superpowers/plans/2026-06-13-per-track-signal-taps-bridge.md`. Subagent-driven (spec+quality review each task).
+**v0.8.0 (BREAKING device change)**. Reviewed per task.
 - **PHASE 1 (bridge + levels device) COMPLETE + LIVE-VERIFIED 2026-06-14.** Offline **454 passed**. Commits:
   `tap_registry.py` (`parse_frames` + thread-safe `TapState` ring buffers + `TapRegistry` TCP server w/
   testable `feed()` seam + disconnect eviction); server.py hosts `_tap_registry` on 9878, `_uuid_for_index`,
@@ -925,8 +912,7 @@ plan `docs/superpowers/plans/2026-06-13-per-track-signal-taps-bridge.md`. Subage
 - **KNOWN PHASE-1 GAP:** the device sends no RMS (grafted v0.7.0 chain has no RMS tap) -> read_track_meter
   `rms`/`crest` are null; `bands`/`mid`/`side` are zeroed. RMS + 8-band spectrum + stereo land in the Phase 2/3
   DSP rework (the `block` frame already reserves the slots).
-- **PHASE 2/3/4 PURE-PYTHON CORE COMPLETE + offline-tested (2026-06-14, offline 480 passed).** Built
-  subagent-driven (spec+quality review each): `spectrum_utils.py` (`integrate_bands` + `band_profile_db`
+- **PHASE 2/3/4 PURE-PYTHON CORE COMPLETE + offline-tested (2026-06-14, offline 480 passed).** Reviewed per task: `spectrum_utils.py` (`integrate_bands` + `band_profile_db`
   power-dB profile + `stereo_metrics` width/correlation); `masking_utils.py` (`masking_score` cosine overlap,
   `loudness_balance`, `headroom_flags`, `stereo_flags`); `measure_mix` MCP tool (reset-all-buffers ->
   `_run_measure_playback` seam -> read -> per-track signal via extended `_integrate_buffer` [now also emits
@@ -1010,10 +996,8 @@ one; pasting a .maxpat into the device editor is fragile, the script-built .amxd
 `feat/m4l-audio-tap`, 2026-06-12).** Closes the field-wide gap: the LOM exposes no audio signal, so
 `analyze_set` deferred all loudness/true-peak rules. A Max-for-Live device on the Master meters the bus and
 serves metering over a SECOND socket (`localhost:9878`, decoupled from the 9877 Remote Script). Tool count
-108 -> **112** (new category "Metering (Audio Tap)"). Spec
-`docs/superpowers/specs/2026-06-12-m4l-audio-tap-design.md`, plan
-`docs/superpowers/plans/2026-06-12-m4l-audio-tap.md`. Built via subagent-driven TDD (Tasks 1-4 each
-spec+quality reviewed; reviews caught bad gate-test vectors, missing retry-path tests).
+108 -> **112** (new category "Metering (Audio Tap)"). Built test-first (Tasks 1-4 each
+reviewed; reviews caught bad gate-test vectors, missing retry-path tests).
 - **Tasks 1-4 (Python) DONE + offline 427 passed.** (1) `loudness_utils.py` - pure BS.1770 gating/integration
   (absolute -70 LUFS + relative -10 LU gates, momentary/short-term windows, dBTP), stdlib-only, pytest-tested.
   (2) `tap_connection.py` - `AudioTapConnection` (9878 TCP, `{ok,data}`, reconnect-retry, graceful tap-absent).
@@ -1052,9 +1036,8 @@ exposes no audio signal); loudness/true-peak/masking rules are `deferred` and su
 "Needs metering". Pure modules `analysis_utils.py` + `ruleset_utils.py` (server-side-only), fully
 unit-tested: offline **399 passed** (added test_analysis_utils / test_ruleset_utils / test_snapshot_normalize
 / test_analyze_tool). Remote half py_compile-clean + installed (`install_remote_script.sh` ran;
-backup -> ~/.ableton-mcp-rs-backups). Spec `docs/superpowers/specs/2026-06-11-track-analysis-rulesets-design.md`,
-plan `docs/superpowers/plans/2026-06-11-track-analysis-rulesets.md`. Built via subagent-driven TDD
-(11 tasks, two-stage review each; review caught real remote-handler bugs: hasattr->try/except,
+backup -> ~/.ableton-mcp-rs-backups). Built test-first
+(11 tasks, reviewed each; review caught real remote-handler bugs: hasattr->try/except,
 instrument detection via `device.type`, group-before-midi classification). **LIVE-VERIFY PASS (2026-06-12):**
 Claude-launched Live (blank default set: 4 tracks 1-MIDI/2-MIDI/3-Audio/4-Audio, returns A-Reverb/B-Delay,
 empty master), installed remote handler confirmed identical to working tree. `analyze_set(all)` returned a
@@ -1071,8 +1054,7 @@ on top of the v0.5.0 base.
 `main` AND LIVE-VERIFIED (2026-06-11; offline 353/353 + live-tested against Live 11.3.43). Branch
 `feat/connection-robustness` fast-forward-merged + deleted; repo settled, working tree clean. A public
 GitHub Pages docs site is live (see below). Phases 0-11 + all preset-patch rack tools (through v0.4.0,
-rack macro-mapping v2) remain SHIPPED, released, marketplace ref bumped, live-verified. Plan:
-`docs/superpowers/plans/2026-06-07-robustness-efficiency-polish.md`. (Built order was A -> B -> C -> E -> D.)
+rack macro-mapping v2) remain SHIPPED, released, marketplace ref bumped, live-verified. (Built order was A -> B -> C -> E -> D.)
 
 **Live-verify results (2026-06-11):** ALL PASS. (A) After kill+reopen Live mid-session, a single
 get_session_info auto-recovered on the first call - transparent reconnect to the new Live with no manual
@@ -1516,8 +1498,6 @@ Extends Phase 5 from cue reads/navigation into cue + arrangement-clip editing. P
         confirmed in BEATS); empty source slot → clean "No clip in session slot N on track M".
   - [x] delete_arrangement_clip(track_index, clip_index) — Live: deleted + remaining clips re-index
         (clip@8 became index 0); index 999 → clean "out of range".
-- Spec: `docs/superpowers/specs/2026-05-26-phase-8-arrangement-authoring-design.md`;
-  Plan: `docs/superpowers/plans/2026-05-26-phase-8-arrangement-authoring.md`.
 
 ### Phase 8 live findings (2026-05-26) — design changes driven by live behavior
 - **In-task `current_song_time` writes are async (Phase 5 gotcha, confirmed harder here):** the
@@ -1554,8 +1534,6 @@ track type (1:1 with LOM), per design.
 - **Negatives:** delete_track(999) → handler-side "Track index out of range (0..6)"; duplicate_track(-5)
   → server-side coercion "Index must be >= 0; got -5" (no socket call). All scratch tracks cleaned up
   via the new delete tools → set restored to baseline 7 regular / 2 returns.
-- Spec: `docs/superpowers/specs/2026-05-27-phase-9-track-lifecycle-design.md`;
-  Plan: `docs/superpowers/plans/2026-05-27-phase-9-track-lifecycle.md`.
 
 ### Phase 9 live findings (2026-05-27)
 - **Track-structural undo readback is STALE (new, important):** immediately after `undo()` of a
@@ -1603,8 +1581,6 @@ trigger_session_record/stop_all_clips/tap_tempo) is feasible but DEFERRED by use
         highlighted-slot has_clip all returned.
   - [x] get_track_info extended (+3 reads): is_foldable/is_grouped present on all tracks read;
         fold_state omitted on non-foldable tracks (getattr raised → defensive skip).
-- Spec: `docs/superpowers/specs/2026-05-27-phase-10-feel-launch-view-design.md`;
-  Plan: `docs/superpowers/plans/2026-05-27-phase-10-feel-launch-view.md`.
 
 ### Phase 10 live findings (2026-05-27)
 - **Quantization enums CONFIRMED:** clip_trigger_quantization default reads 4 = `1_bar`; name "1/4"→7.
@@ -1653,8 +1629,6 @@ Closes the capture/recording set deferred during the Phase 10 gap-audit. All 5 L
 - **transport_utils helpers:** resolve_capture_destination (None→auto), resolve_capture_mode (None→all),
   coerce_record_length (None→omit; else float >0). stop_all_clips reuses coerce_on_value +
   track_utils.coerce_track_index.
-- Spec: `docs/superpowers/specs/2026-05-27-phase-11-capture-recording-design.md`;
-  Plan: `docs/superpowers/plans/2026-05-27-phase-11-capture-recording.md`.
 - **Live-test reminders:** confirm effects via SEPARATE follow-up reads (song-property-write lag);
   capture tools do nothing on an empty blank set (need playing material); clean up captured clips/scenes
   + restore the set; stop session-record promptly (auto-starts playback).
@@ -1671,8 +1645,7 @@ Shared pure core: `ableton_mcp_max/preset_patch.py` (set_attr/set_manual/scope/g
 - **Rack macro-mapping & zones — Phase A: LIVE-VERIFIED 2026-05-29** (branch `feat/preset-patch-backdoor`).
   Pure XML in `rack_preset_utils.py` (depth-aware branch scanner finds chain-level zones that are
   DIRECT children of a branch, ignoring nested sampler multisample KeyRanges); 4 tools in server.py.
-  Spec: `docs/superpowers/specs/2026-05-29-rack-preset-macro-mapping-design.md`;
-  Plan: `docs/superpowers/plans/2026-05-29-rack-preset-macro-mapping.md`. Offline 293/293.
+  Offline 293/293.
   - [x] inspect_rack_preset — live: "808 Drifter" → instrument, 8 visible macros, all 16 read
         (named + color + default; unnamed color -1), 1 chain w/ key/vel/selector zones.
   - [x] clone_rack — live: 808 Drifter → User Library `Instruments/Instrument Rack/MCP RackTest.adg`
@@ -1700,8 +1673,7 @@ Shared pure core: `ableton_mcp_max/preset_patch.py` (set_attr/set_manual/scope/g
   - **`add_rack_macro_mappings` (Phase B v1): LIVE-VERIFIED 2026-05-29.** Tool + `patch_macro_mappings`
     in `rack_preset_utils.py` (depth-aware `_child_elements` scanner navigates branch→DevicePresets→
     AbletonDevicePreset→Device→device-element→param; injects KeyMidi after `<LomId>`; idempotent replace;
-    many-to-one; bad chain/device/param rejected with available-tag listing). Plan:
-    `docs/superpowers/plans/2026-05-29-rack-macro-mappings.md`. Offline 307/307.
+    many-to-one; bad chain/device/param rejected with available-tag listing). Offline 307/307.
     Live: cloned "Basic Bass Amp"→MCP MapVerify, mapped Macro 16→chain0/device0(Gate)/Attack via the util,
     loaded onto a scratch track → Live PARSED it cleanly AND `get_rack_macros` showed macro 16 auto-renamed
     "Attack" (Live auto-labels a single-mapped unnamed macro with its target = proof the mapping bound).
