@@ -10,7 +10,7 @@ resolution-markers = [
 
 [[package]]
 name = "ableton-mcp-max"
-version = "0.35.0"
+version = "0.35.1"
 source = { editable = "." }
 dependencies = [
     { name = "cbor2" },

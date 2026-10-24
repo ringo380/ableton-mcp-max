@@ -1,6 +1,6 @@
 [project]
 name = "ableton-mcp-max"
-version = "0.35.0"
+version = "0.35.1"
 description = "Self-owned, extensible Ableton Live MCP server"
 requires-python = ">=3.10"
 license = "PolyForm-Noncommercial-1.0.0"
