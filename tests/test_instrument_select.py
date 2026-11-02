@@ -2,7 +2,8 @@ from ableton_mcp_max import instrument_select as isel
 
 # valid recommend_asset domains (server.py recommend_asset accepts these)
 _VALID_DOMAINS = {"serum", "sample", "groove", "device_preset", "wavetable", "simpler"}
-_ROLES = {"bass", "lead", "pad", "pluck", "fx", "drums"}
+_ROLES = {"bass", "lead", "pad", "pluck", "fx", "drums", "keys", "strings",
+          "brass", "winds", "vocal"}
 
 
 def test_load_profiles_shape():

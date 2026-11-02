@@ -46,3 +46,57 @@ def test_load_preset_forwards_return(monkeypatch):
     assert out["ok"] is True
     call = next(c for c in conn.calls if c[0] == "load_browser_item")
     assert call[1]["track_type"] == "return"
+
+
+class _StrayLoadConn(_RecordingConn):
+    """A Live whose browser load lands on another track: the target track's
+    devices read the same before and after."""
+    def send_command(self, cmd, params=None):
+        if cmd == "get_track_info":
+            return {"devices": [{"name": "Old Bass"}]}
+        if cmd == "get_view_selection":
+            return {"selected_track_index": 13, "selected_track_name": "Drums MIDI"}
+        return super().send_command(cmd, params)
+
+
+class _LandedConn(_RecordingConn):
+    def __init__(self):
+        super().__init__()
+        self.loaded = False
+
+    def send_command(self, cmd, params=None):
+        if cmd == "get_track_info":
+            return {"devices": [{"name": "New Bass" if self.loaded else "Old Bass"}]}
+        if cmd == "load_browser_item":
+            self.loaded = True
+        return super().send_command(cmd, params)
+
+
+def test_load_instrument_reports_a_load_that_landed_elsewhere(monkeypatch):
+    conn = _StrayLoadConn()
+    monkeypatch.setattr(server, "get_ableton_connection", lambda: conn)
+    out = json.loads(server.load_instrument_or_effect(None, 11, "query:Synths#X"))
+    assert out["ok"] is False
+    assert "did not land on regular track 11" in out["error"]
+    assert "13 (Drums MIDI)" in out["error"]
+
+
+def test_load_instrument_verified_by_device_change(monkeypatch):
+    conn = _LandedConn()
+    monkeypatch.setattr(server, "get_ableton_connection", lambda: conn)
+    out = json.loads(server.load_instrument_or_effect(None, 11, "query:Synths#X"))
+    assert out["ok"] is True and "New Bass" in out["data"]
+
+
+def test_load_instrument_accepts_reloading_the_same_preset(monkeypatch):
+    class _SameConn(_RecordingConn):
+        def send_command(self, cmd, params=None):
+            if cmd == "get_track_info":
+                return {"devices": [{"name": "Drive Bass"}]}
+            if cmd == "load_browser_item":
+                return {"loaded": True, "item_name": "Drive Bass.adg", "track_name": "T"}
+            return super().send_command(cmd, params)
+    conn = _SameConn()
+    monkeypatch.setattr(server, "get_ableton_connection", lambda: conn)
+    out = json.loads(server.load_instrument_or_effect(None, 11, "query:Synths#X"))
+    assert out["ok"] is True

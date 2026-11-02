@@ -24,7 +24,7 @@ Cross-cutting reminders (see `/ableton:best-practices` for detail):
   (default 200) and report `count`/`returned`/`truncated` in `data`.
 
 
-_191 tools._
+_195 tools._
 
 ## Session & view
 
@@ -43,7 +43,8 @@ _191 tools._
 
 ## Host lifecycle
 
-- **`restart_live`** - Gracefully quit and relaunch the running Ableton Live (no crash-recovery
+- **`restart_live`** - Gracefully quit and relaunch Live (answers a crash-recovery prompt).
+- **`answer_live_prompt`** - Read, and optionally answer, a prompt Live has open (Windows only).
 - **`save_set`** - Save the current Live set to disk (there is no LOM save API — this drives
 - **`save_set_as`** - Save the current Live set under a new NAME (File > Save Live Set As). Use
 - **`set_auto_warp_long_samples`** - Turn Live's "Auto-Warp Long Samples" preference (Preferences >
@@ -290,6 +291,9 @@ _191 tools._
 - **`recommend_asset`** - Propose reuse-vs-create for a described asset. domain in
 - **`recommend_instrument`** - Choose which instrument engine to reach for from a free-text intent
 - **`create_from_plan`** - Execute a create_plan from recommend_asset. confirm=False (default)
+- **`recommend_track_instrument`** - Classify a MIDI track's part from its notes and rank presets for it.
+- **`recommend_set_instruments`** - recommend_track_instrument for every MIDI track, with set-wide context.
+- **`apply_instrument_plan`** - Load a reviewed instrument plan (hot-swap) and verify each device.
 
 ## Export
 

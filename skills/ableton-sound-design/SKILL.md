@@ -17,6 +17,21 @@ Goal: a fit-for-purpose instrument/effect sound, repeatable via presets and rack
 - Racks: `inspect_rack_preset`, `clone_rack`, `rename_rack_macros`, `set_rack_zones`,
   `add_rack_macro_mappings`, `get_rack_macros` / `set_rack_macro`.
 
+## Choosing a sound for an existing MIDI part
+- When the notes already exist (an imported MIDI pack, a recorded part), do not
+  guess from the track name: call `recommend_track_instrument(track_index)` (one
+  part) or `recommend_set_instruments()` (every MIDI track). They read the clip,
+  classify what the part is (bass / pad / keys / stabs / lead / arp / drums ...),
+  use the name only as a prior and report a conflict when the notes disagree,
+  then rank loadable stock presets for that role and list installed plugins
+  that fit. Add `intent="boom bap, warm"` for genre/character.
+- Show the user the table (role, conflict, current sound, proposal) BEFORE
+  loading anything, then `apply_instrument_plan(plan, confirm=True)`. It
+  hot-swaps the track's instrument and verifies the device landed.
+- A plugin candidate (Kontakt, Serum, Astra ...) loads bare: the LOM cannot
+  pick a library or patch, so say so and leave the patch to the user.
+- The classifier is a heuristic: judge the result by ear.
+
 ## Choosing the engine
 - Before loading a synth for a described sound, call `recommend_instrument` with
   a free-text intent (role + genre + character, e.g. "gritty evolving reese bass

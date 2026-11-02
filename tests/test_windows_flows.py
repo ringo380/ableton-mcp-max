@@ -338,3 +338,100 @@ def test_strip_menu_check_windows_suffix():
     assert strip_menu_check("WAV, checked") == "WAV"
     assert choose_menu_item(["WAV, checked", "AIFF"], "WAV") == "WAV, checked"
     assert choose_menu_item(["Main, checked"], "Master") == "Main, checked"
+
+
+# --- answer_live_prompt / startup recovery prompt ----------------------------
+
+def _prompt_fixture(fake, monkeypatch, buttons, dismiss_on):
+    """A Live prompt (on a process the port cannot see) that goes away when
+    one of `dismiss_on` methods is used. Returns the recorded actions."""
+    state = {"open": True}
+    actions = []
+    fake.live_pids = lambda prefix="Ableton Live": [9999]
+    fake.click_point = lambda x, y: actions.append(("click", x, y))
+    monkeypatch.setattr(server, "_win_prompt",
+                        lambda pid: (700, dict(buttons)) if state["open"] else (None, {}))
+
+    def press(btns, name):
+        actions.append(("invoke", name))
+        if "invoke" in dismiss_on:
+            state["open"] = False
+    monkeypatch.setattr(server, "_win_press_prompt", press)
+
+    def click(btns, name):
+        actions.append(("click", name))
+        if "click" in dismiss_on:
+            state["open"] = False
+        return True
+    monkeypatch.setattr(server, "_win_click_prompt", click)
+    return actions, state
+
+
+def test_answer_prompt_reports_without_pressing(fake, monkeypatch):
+    actions, _ = _prompt_fixture(fake, monkeypatch, {"Yes": 1, "No": 2}, {"invoke"})
+    out = server._win_answer_prompt_impl(sleep=NOSLEEP)
+    assert out == {"found": True, "pid": 9999, "buttons": ["No", "Yes"]}
+    assert actions == []
+
+
+def test_answer_prompt_no_prompt(fake, monkeypatch):
+    fake.live_pids = lambda prefix="Ableton Live": [9999]
+    out = server._win_answer_prompt_impl(answer="No", wait=1.0, sleep=NOSLEEP)
+    assert out == {"found": False, "buttons": []}
+
+
+def test_answer_prompt_invoke_dismisses(fake, monkeypatch):
+    actions, _ = _prompt_fixture(fake, monkeypatch, {"Yes": 1, "No": 2}, {"invoke"})
+    out = server._win_answer_prompt_impl(answer="No", sleep=NOSLEEP)
+    assert out["dismissed"] is True and out["method"] == "invoke"
+    assert actions == [("invoke", "No")]
+
+
+def test_answer_prompt_falls_back_to_click(fake, monkeypatch):
+    actions, _ = _prompt_fixture(fake, monkeypatch, {"Yes": 1, "No": 2}, {"click"})
+    out = server._win_answer_prompt_impl(answer="No", sleep=NOSLEEP)
+    assert out["dismissed"] is True and out["method"] == "click"
+    assert actions == [("invoke", "No"), ("click", "No")]
+
+
+def test_answer_prompt_reports_a_prompt_that_will_not_close(fake, monkeypatch):
+    actions, _ = _prompt_fixture(fake, monkeypatch, {"Yes": 1, "No": 2}, set())
+    out = server._win_answer_prompt_impl(answer="No", sleep=NOSLEEP)
+    assert out["dismissed"] is False and "by hand" in out["error"]
+    assert actions == [("invoke", "No"), ("click", "No")]
+
+
+def test_answer_prompt_unknown_button(fake, monkeypatch):
+    _prompt_fixture(fake, monkeypatch, {"OK": 1}, {"invoke"})
+    with pytest.raises(ValueError, match="no 'No' button"):
+        server._win_answer_prompt_impl(answer="No", sleep=NOSLEEP)
+
+
+def test_restart_relaunch_answers_recovery_prompt(fake, monkeypatch):
+    """After relaunch Live may ask 'recover your work?' before binding the
+    port: the relaunch wait answers it (No) and then sees the port come up."""
+    fake.title = "Song - Ableton Live 12 Suite"
+    fake.on_close = lambda: (setattr(fake, "alive", False), setattr(fake, "title", None))
+    state = {"prompt": False, "port": False}
+    pressed = []
+
+    def launch(exe):
+        fake.calls.append(("launch", exe))
+        state["prompt"] = True             # Live is up, sitting on the prompt
+    fake.launch = launch
+    fake.live_pids = lambda prefix="Ableton Live": [4343]
+    monkeypatch.setattr(server, "_port_listening", lambda port=9877: state["port"])
+    monkeypatch.setattr(server, "_win_prompt", lambda pid: (
+        (700, {"Yes": 1, "No": 2}) if (pid == 4343 and state["prompt"]) else (None, {})))
+
+    def press(buttons, name):
+        pressed.append(name)
+        state["prompt"] = False
+        state["port"] = True
+    monkeypatch.setattr(server, "_win_press_prompt", press)
+
+    out = server._restart_live_impl(save="discard", sleep=NOSLEEP)
+    assert out["quit"] is True and out["surface_up"] is True
+    assert out["startup_prompt"] == {"buttons": ["No", "Yes"], "answered": "No",
+                                     "dismissed": True, "method": "invoke"}
+    assert pressed == ["No"]

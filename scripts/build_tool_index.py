@@ -23,8 +23,8 @@ GROUPS = [
         "set_track_fold", "focus_view",
     ]),
     ("Batch", ["batch"]),
-    ("Host lifecycle", ["restart_live", "save_set", "save_set_as",
-                        "set_auto_warp_long_samples"]),
+    ("Host lifecycle", ["restart_live", "answer_live_prompt", "save_set",
+                        "save_set_as", "set_auto_warp_long_samples"]),
     ("Tracks (lifecycle)", [
         "get_track_info", "create_midi_track", "create_audio_track",
         "create_return_track", "set_track_name", "delete_track",
@@ -150,6 +150,8 @@ GROUPS = [
     ("Catalog", [
         "search_catalog", "find_similar", "catalog_stats", "reindex_catalog",
         "recommend_asset", "recommend_instrument", "create_from_plan",
+        "recommend_track_instrument", "recommend_set_instruments",
+        "apply_instrument_plan",
     ]),
     ("Export", ["render_audio"]),
 ]

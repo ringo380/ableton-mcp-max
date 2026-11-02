@@ -69,8 +69,12 @@ def listening_pid(port):
                        ctypes.POINTER(_MIB_TCPROW_OWNER_PID * count)).contents
     for row in rows:
         # dwLocalPort is in network byte order in its low 16 bits.
+        # The LISTENER table only ever holds listening sockets, so membership
+        # is the test: Live's listener has been seen with dwState 6 (not the
+        # documented LISTEN value 2) after clients came and went, and a strict
+        # state check then reported "No running Ableton Live" with Live up.
         p = ((row.dwLocalPort & 0xFF) << 8) | ((row.dwLocalPort >> 8) & 0xFF)
-        if p == port and row.dwState == _MIB_TCP_STATE_LISTEN:
+        if p == port:
             return int(row.dwOwningPid)
     return None
 
@@ -267,17 +271,53 @@ def file_dialog_name(dlg):
     return get_text(edit) if edit else ""
 
 
-def file_dialog_save(dlg, name, timeout=5.0):
-    """TYPE `name` into the dialog's File name box and press Save (Enter).
+WM_CHAR = 0x0102
+EM_SETSEL = 0x00B1
 
-    The dialog is brought to the foreground first; every keystroke is refused
-    unless the dialog itself is the foreground window. Save is pressed only
-    after the box reads back exactly `name` - on any mismatch the dialog is
-    CANCELLED and RuntimeError raised, so a failed fill can never save under
-    the old name."""
+
+def _type_into_edit(edit, name):
+    """Replace an edit control's text by sending it WM_CHAR per character
+    (after EM_SETSEL select-all). Targeted at the control's hwnd, so nothing
+    can land in another window - unlike SendInput, which goes to whatever is
+    in the foreground at that instant. The stock Save dialog honours typed
+    characters (WM_SETTEXT it ignores, see above)."""
+    user32.SendMessageW(edit, EM_SETSEL, 0, -1)
+    for ch in str(name):
+        user32.SendMessageW(edit, WM_CHAR, ord(ch), 0)
+
+
+def file_dialog_save(dlg, name, timeout=5.0):
+    """Put `name` into the dialog's File name box and press Save.
+
+    First by WM_CHAR to the edit control plus BM_CLICK on Save (no global
+    input at all). If the box does not read back exactly `name`, fall back to
+    the keystroke path (foreground-checked SendInput). On any final mismatch
+    the dialog is CANCELLED and RuntimeError raised, so a failed fill can
+    never save under the old name.
+
+    Why no keystrokes by default: on 2026-11-02 a render left 32 beats of
+    silence inserted across the whole arrangement at the render range - the
+    signature of Ctrl+I (Insert Silence) reaching Live's set window while the
+    time selection was the loop. The only global keystrokes in the render path
+    were this function's Ctrl+A + typed name + Return."""
     edit = _file_name_edit(dlg)
-    if not edit or not _button(dlg, IDOK):
+    save = _button(dlg, IDOK)
+    if not edit or not save:
         raise RuntimeError("Save dialog controls not found.")
+    _type_into_edit(edit, name)
+    end = time.monotonic() + 2.0
+    while time.monotonic() < end and get_text(edit) != name:
+        time.sleep(0.1)
+    if get_text(edit) == name:
+        user32.PostMessageW(save, BM_CLICK, 0, 0)
+        return
+    _file_dialog_save_keys(dlg, name, edit, timeout)
+
+
+def _file_dialog_save_keys(dlg, name, edit, timeout=5.0):
+    """Keystroke fallback: bring the dialog to the foreground, Ctrl+A, type,
+    Return. Every keystroke is refused unless the dialog itself is the
+    foreground window."""
     if not activate(dlg):
         dialog_click(dlg, IDCANCEL)
         raise RuntimeError("Could not bring Live's Save dialog to the front to "
@@ -393,6 +433,14 @@ def activate(hwnd):
         return False
     if user32.IsIconic(hwnd):
         user32.ShowWindow(hwnd, SW_RESTORE)
+    if user32.GetForegroundWindow() == hwnd:
+        return True
+    # Plain request first (works when this process or its caller last had
+    # input); the Alt tap is a global keystroke and is a last resort only.
+    user32.SetForegroundWindow(hwnd)
+    time.sleep(0.15)
+    if user32.GetForegroundWindow() == hwnd:
+        return True
     _send([(VK_MENU, 0, 0), (VK_MENU, 0, _KEYEVENTF_KEYUP)])
     user32.SetForegroundWindow(hwnd)
     time.sleep(0.15)
@@ -434,3 +482,76 @@ def send_key(hwnd, vk, ctrl=False):
     if ctrl:
         ev.append((VK_CONTROL, 0, _KEYEVENTF_KEYUP))
     _send(ev)
+
+
+# --- processes / pointer -----------------------------------------------------
+
+_TH32CS_SNAPPROCESS = 0x00000002
+_INVALID_HANDLE_VALUE = wintypes.HANDLE(-1).value
+
+
+class _PROCESSENTRY32W(ctypes.Structure):
+    _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD),
+                ("th32ProcessID", wintypes.DWORD),
+                ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
+                ("th32ModuleID", wintypes.DWORD), ("cntThreads", wintypes.DWORD),
+                ("th32ParentProcessID", wintypes.DWORD),
+                ("pcPriClassBase", ctypes.c_long), ("dwFlags", wintypes.DWORD),
+                ("szExeFile", ctypes.c_wchar * 260)]
+
+
+kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+kernel32.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(_PROCESSENTRY32W)]
+kernel32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(_PROCESSENTRY32W)]
+
+
+def live_pids(prefix="Ableton Live"):
+    """PIDs of every running process whose image name starts with `prefix`,
+    whether or not it has bound the control-surface port yet. A Live that is
+    still starting (crash-recovery prompt, splash) is only findable this way;
+    listening_pid() sees it only once the Remote Script is up."""
+    snap = kernel32.CreateToolhelp32Snapshot(_TH32CS_SNAPPROCESS, 0)
+    if snap == _INVALID_HANDLE_VALUE or not snap:
+        return []
+    out = []
+    try:
+        e = _PROCESSENTRY32W()
+        e.dwSize = ctypes.sizeof(e)
+        ok = kernel32.Process32FirstW(snap, ctypes.byref(e))
+        while ok:
+            if e.szExeFile.lower().startswith(prefix.lower()):
+                out.append(int(e.th32ProcessID))
+            ok = kernel32.Process32NextW(snap, ctypes.byref(e))
+    finally:
+        kernel32.CloseHandle(snap)
+    return out
+
+
+class _MOUSEINPUT(ctypes.Structure):
+    _fields_ = [("dx", ctypes.c_long), ("dy", ctypes.c_long),
+                ("mouseData", wintypes.DWORD), ("dwFlags", wintypes.DWORD),
+                ("time", wintypes.DWORD), ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))]
+
+
+class _MINPUT(ctypes.Structure):
+    _fields_ = [("type", wintypes.DWORD), ("mi", _MOUSEINPUT)]
+
+
+_MOUSEEVENTF_MOVE, _MOUSEEVENTF_LEFTDOWN = 0x0001, 0x0002
+_MOUSEEVENTF_LEFTUP, _MOUSEEVENTF_ABSOLUTE = 0x0004, 0x8000
+
+
+def click_point(x, y):
+    """Left-click at SCREEN pixel (x, y) with SendInput (absolute coordinates).
+    The pointer moves there - used only as a fallback when a UIA Invoke is
+    ignored (Live's startup prompts do not honour Invoke)."""
+    sw, sh = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+    ax = int(x * 65535 / max(1, sw - 1))
+    ay = int(y * 65535 / max(1, sh - 1))
+
+    for flags in (_MOUSEEVENTF_MOVE | _MOUSEEVENTF_ABSOLUTE,
+                  _MOUSEEVENTF_LEFTDOWN | _MOUSEEVENTF_ABSOLUTE,
+                  _MOUSEEVENTF_LEFTUP | _MOUSEEVENTF_ABSOLUTE):
+        i = _MINPUT(0, _MOUSEINPUT(ax, ay, 0, flags, 0, None))
+        user32.SendInput(1, ctypes.byref(i), ctypes.sizeof(i))
+        time.sleep(0.05)

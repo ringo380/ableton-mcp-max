@@ -1,0 +1,176 @@
+{
+  "_comment": "Role -> where to look in the device-preset catalog (folder = '<Engine>/<Category>' as Live's browser files it), descriptive terms that lift a candidate, and plugin suggestions used only when the plugin is listed in Live's browser.",
+  "roles": {
+    "drums": {
+      "browser_path": "drums",
+      "folders": [],
+      "secondary_folders": [],
+      "terms": ["kit"],
+      "plugins": []
+    },
+    "percussion": {
+      "browser_path": "drums",
+      "folders": ["Percussive"],
+      "secondary_folders": ["Mallets"],
+      "terms": ["perc", "percussion", "shaker", "conga", "bongo", "tabla", "kit"],
+      "plugins": []
+    },
+    "bass": {
+      "folders": ["Bass"],
+      "secondary_folders": [],
+      "terms": ["bass"],
+      "feature_terms": [
+        {"when": {"onsets_per_beat_min": 1.0, "pitch_range_min": 12},
+         "boost": ["analog", "synth", "finger", "pick", "moog", "acid", "funk", "walking"],
+         "avoid": ["sub", "808", "sine", "boom"],
+         "why": "a moving line, not a static sub"},
+        {"when": {"onsets_per_beat_max": 0.999},
+         "boost": ["sub", "808", "sine", "deep"],
+         "why": "sparse low notes suit a sub"}
+      ],
+      "plugins": [
+        {"name": "Serum 2", "why": "wavetable/analog bass with heavy modulation"},
+        {"name": "Massive", "why": "classic synth bass"}
+      ]
+    },
+    "lead": {
+      "folders": ["Synth Lead"],
+      "secondary_folders": ["Synth Keys", "Guitar & Plucked"],
+      "terms": ["lead", "solo"],
+      "plugins": [
+        {"name": "Serum 2", "why": "modern synth lead"},
+        {"name": "Astra", "why": "polysynth lead/keys"}
+      ]
+    },
+    "pad": {
+      "folders": ["Pad", "Ambient & Evolving"],
+      "secondary_folders": ["Strings", "Synth Keys"],
+      "terms": ["pad", "soft", "warm", "ensemble", "evolving"],
+      "feature_terms": [
+        {"when": {"velocity_mean_max": 70},
+         "boost": ["soft", "gentle", "air", "warm"],
+         "why": "played quietly"},
+        {"when": {"pitch_median_max": 55},
+         "boost": ["dark", "deep", "low"],
+         "why": "sits low"}
+      ],
+      "plugins": [
+        {"name": "Astra", "why": "lush pads"},
+        {"name": "Serum 2", "why": "evolving wavetable pads"}
+      ]
+    },
+    "keys": {
+      "folders": ["Piano & Keys"],
+      "secondary_folders": ["Synth Keys", "Mallets"],
+      "terms": ["piano", "keys", "e-piano", "epiano", "rhodes", "wurli", "organ", "clav", "electric"],
+      "plugins": [
+        {"name": "Kontakt 8", "why": "sampled piano / e-piano libraries"}
+      ]
+    },
+    "stabs": {
+      "folders": ["Synth Keys", "Brass"],
+      "secondary_folders": ["Synth Rhythmic", "Piano & Keys"],
+      "terms": ["stab", "chord", "pluck", "short", "staccato"],
+      "plugins": [
+        {"name": "Serum 2", "why": "chord stabs"}
+      ]
+    },
+    "pluck": {
+      "folders": ["Guitar & Plucked"],
+      "secondary_folders": ["Mallets", "Synth Rhythmic"],
+      "terms": ["pluck", "guitar", "harp", "nylon", "acoustic"],
+      "plugins": [
+        {"name": "Kontakt 8", "why": "sampled guitar libraries"}
+      ]
+    },
+    "arp": {
+      "folders": ["Synth Rhythmic"],
+      "secondary_folders": ["Guitar & Plucked", "Synth Keys"],
+      "terms": ["arp", "sequence", "rhythmic", "pluck"],
+      "plugins": [
+        {"name": "Serum 2", "why": "sequenced plucks"}
+      ]
+    },
+    "strings": {
+      "folders": ["Strings"],
+      "secondary_folders": ["Pad", "Ambient & Evolving"],
+      "terms": ["strings", "string", "violin", "cello", "viola", "orchestra", "ensemble"],
+      "plugins": [
+        {"name": "Kontakt 8", "why": "sampled orchestral strings"}
+      ]
+    },
+    "brass": {
+      "folders": ["Brass"],
+      "secondary_folders": ["Winds", "Synth Lead"],
+      "terms": ["brass", "horn", "trumpet", "trombone", "sax"],
+      "plugins": [
+        {"name": "Kontakt 8", "why": "sampled brass"}
+      ]
+    },
+    "winds": {
+      "folders": ["Winds"],
+      "secondary_folders": ["Synth Lead", "Brass"],
+      "terms": ["flute", "wind", "clarinet", "oboe", "whistle", "recorder"],
+      "plugins": [
+        {"name": "Kontakt 8", "why": "sampled woodwinds"}
+      ]
+    },
+    "vocal": {
+      "folders": ["Voices"],
+      "secondary_folders": ["Pad", "Synth Lead", "Ambient & Evolving"],
+      "terms": ["choir", "vox", "voice", "vocal", "ensemble", "formant", "ahh", "ooh"],
+      "feature_terms": [
+        {"when": {"median_duration_max": 0.5, "max_polyphony_max": 3},
+         "boost": ["vox", "lead", "solo", "formant", "talk"],
+         "avoid": ["choir", "ensemble", "pad"],
+         "why": "a fast single line, not a sustained choir"},
+        {"when": {"median_duration_min": 1.0},
+         "boost": ["choir", "ensemble", "ahh", "ooh"],
+         "why": "sustained notes suit a choir"}
+      ],
+      "plugins": [
+        {"name": "Kontakt 8", "why": "sampled choir / vocal phrases"},
+        {"name": "VOCALOID VSTi", "why": "synthesized singing (needs lyrics)"}
+      ]
+    },
+    "mallets": {
+      "folders": ["Mallets"],
+      "secondary_folders": ["Piano & Keys", "Guitar & Plucked"],
+      "terms": ["marimba", "vibes", "mallet", "bell", "kalimba", "xylo", "glock"],
+      "plugins": []
+    },
+    "fx": {
+      "folders": ["Effects"],
+      "secondary_folders": ["Ambient & Evolving", "Percussive"],
+      "terms": ["fx", "riser", "sweep", "noise", "hit", "impact", "texture"],
+      "plugins": [
+        {"name": "Serum 2", "why": "risers and noise fx"}
+      ]
+    }
+  },
+  "name_hints": {
+    "drums": ["drum", "drums", "kit", "beat", "beats", "kick", "snare", "hat", "hats"],
+    "percussion": ["perc", "percussion", "shaker", "conga", "bongo", "tabla"],
+    "bass": ["bass", "sub", "808"],
+    "lead": ["lead", "synth", "melody", "solo", "hook"],
+    "pad": ["pad", "pads", "atmos", "ambient", "drone"],
+    "keys": ["key", "keys", "keyboard", "piano", "rhodes", "epiano", "e-piano", "wurli", "organ", "clav"],
+    "pluck": ["guitar", "gtr", "pluck", "harp", "banjo", "ukulele"],
+    "arp": ["arp", "arpeggio", "sequence", "seq"],
+    "strings": ["string", "strings", "violin", "cello", "viola", "orchestra", "orchestral"],
+    "brass": ["brass", "horn", "horns", "trumpet", "trombone", "sax", "saxophone"],
+    "winds": ["wind", "winds", "woodwind", "woodwinds", "flute", "clarinet", "oboe", "bassoon"],
+    "vocal": ["vocal", "vocals", "vox", "voice", "choir", "chorus", "singer"],
+    "mallets": ["mallet", "mallets", "marimba", "vibes", "vibraphone", "bells", "kalimba", "glock"],
+    "fx": ["fx", "effect", "effects", "riser", "sweep", "noise", "texture"]
+  },
+  "engine_preference": {
+    "_comment": "Tie-break bonus per engine folder prefix; sampled/physical engines lead for acoustic roles.",
+    "default": {"Drift": 1.0, "Wavetable": 0.8, "Operator": 0.6, "Analog": 0.6, "Instrument Rack": 0.9, "Meld": 0.5, "Electric": 0.5, "Tension": 0.3, "Collision": 0.3, "Simpler": 0.4, "Sampler": 0.4},
+    "keys": {"Electric": 2.0, "Instrument Rack": 1.2, "Simpler": 1.0, "Sampler": 1.0, "Drift": 0.8},
+    "strings": {"Tension": 1.2, "Simpler": 1.5, "Sampler": 1.5, "Instrument Rack": 1.2},
+    "pluck": {"Tension": 1.5, "Simpler": 1.2, "Instrument Rack": 1.0},
+    "mallets": {"Collision": 2.0, "Simpler": 1.0},
+    "vocal": {"Operator": 1.5, "Simpler": 1.2, "Instrument Rack": 1.0}
+  }
+}
