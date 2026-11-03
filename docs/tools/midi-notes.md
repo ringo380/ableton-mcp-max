@@ -49,6 +49,7 @@ get_clip_notes(
     time_span: float = -1.0,
     from_pitch: int = 0,
     pitch_span: int = 128,
+    clip_location: str = 'session',
 )
 ```
 
@@ -63,6 +64,8 @@ Parameters:
 - time_span: length of the window in beats; -1 (default) = whole clip length
 - from_pitch: lowest pitch to include (default 0)
 - pitch_span: number of pitches to include (default 128 = all)
+- clip_location: "session" (default; clip_index is the slot) or
+  "arrangement" (clip_index is the position in get_arrangement_clips)
 
 ## replace_clip_notes
 

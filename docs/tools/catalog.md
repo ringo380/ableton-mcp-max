@@ -104,3 +104,67 @@ returns a dry-run describing what would be created and writes nothing.
 confirm=True invokes the matching creator (Wavetable, Simpler, or a Serum
 base-preset clone). Returns {ok, data:{...}}.
 
+## recommend_track_instrument
+
+```python
+recommend_track_instrument(
+    track_index: int,
+    clip_index: int = 0,
+    clip_location: str = 'auto',
+    intent: str = '',
+    limit: int = 5,
+    include_plugins: bool = True,
+)
+```
+
+Classify a MIDI track's part from its notes and rank presets for it.
+
+Measures the clip (pitch range, polyphony, note length, density), classifies the
+musical texture (bass / pad / keys / stabs / lead / arp / drums ...), uses
+the track name as a prior (content wins on a conflict, which is reported),
+then ranks loadable stock presets from the catalog for that role and lists
+installed plugins that suit it. intent adds free text to the ranking
+("warm", "boom bap", "orchestral"). clip_location "auto" reads session
+slot clip_index and falls back to arrangement clip clip_index. PROPOSE
+ONLY - hand chosen {track_index, uri} pairs to apply_instrument_plan.
+A plugin candidate loads bare (patch_selection: manual - the LOM cannot
+pick a Kontakt library or a VST patch). Returns {ok, data:{track_index,
+name, clip, analysis, intent, current_devices, doubles_audio_track,
+candidates, plugins, next}}.
+
+## recommend_set_instruments
+
+```python
+recommend_set_instruments(
+    track_indices: list = None,
+    intent: str = '',
+    limit: int = 3,
+    include_plugins: bool = True,
+)
+```
+
+recommend_track_instrument for every MIDI track, with set-wide context.
+
+Covers every MIDI track that holds a clip (or the given track_indices), in one call with set-wide context: tempo, a key
+guess from all parts together, instruments already in use (a sound used
+on another track is ranked down so parts do not collide), and whether a
+part doubles an audio track of the same name. Returns {ok, data:{tempo,
+key_guess, parts:[...], plan:[{track_index, name, uri, candidate}], skipped,
+next}}. plan holds each part's top stock candidate, ready for
+apply_instrument_plan after review. PROPOSE ONLY.
+
+## apply_instrument_plan
+
+```python
+apply_instrument_plan(assignments: list, confirm: bool = False)
+```
+
+Load a reviewed instrument plan (hot-swap) and verify each device.
+
+assignments is a list of {track_index, uri, candidate?} (the plan recommend_set_instruments
+returns, edited as needed). confirm=False (default) is a dry run that
+writes nothing. confirm=True loads each uri (HOT-SWAP: the track's current
+instrument is replaced) and verifies the device landed by re-reading the
+track. Returns {ok, data:{applied:[{track_index, name, uri, devices_after,
+verified}], failed:[...], dry_run}}; ok is false when any track failed.
+

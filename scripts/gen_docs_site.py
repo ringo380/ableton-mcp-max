@@ -92,8 +92,9 @@ CATEGORIES = [
     ("batch", "Batch & Transactions", "Collapse several mutations into a single atomic Live task / socket round-trip.", [
         "batch",
     ]),
-    ("host", "Host Lifecycle", "Save the set and gracefully quit/relaunch Ableton Live (no crash-recovery prompt) for an automated bounce after a Remote Script change.", [
+    ("host", "Host Lifecycle", "Save the set, gracefully quit/relaunch Ableton Live for an automated bounce after a Remote Script change, and answer the prompts Live opens (including crash recovery).", [
         "restart_live",
+        "answer_live_prompt",
         "save_set",
         "save_set_as",
         "set_auto_warp_long_samples",
@@ -146,6 +147,8 @@ CATEGORIES = [
      "recommendation that can orchestrate the existing create tools.", [
         "search_catalog", "find_similar", "catalog_stats", "reindex_catalog",
         "recommend_asset", "recommend_instrument", "create_from_plan",
+        "recommend_track_instrument", "recommend_set_instruments",
+        "apply_instrument_plan",
     ]),
     ("export", "Export", "Bounce the set's Main output to an audio file on disk - format, bit depth, sample rate, and bar range under program control - by driving Live's Export Audio/Video dialog (there is no LOM render API).", [
         "render_audio",
