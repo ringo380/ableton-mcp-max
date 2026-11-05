@@ -3400,6 +3400,11 @@ def _render_audio_impl(name, start_bar=None, end_bar=None, file_type="WAV",
                   "start": float(transport.get("loop_start", 0.0) or 0.0),
                   "length": float(transport.get("loop_length", 4.0) or 4.0)}
     fingerprint = _arrangement_fingerprint(ableton)
+    # The render brings Live's windows to the front; anything the user is
+    # typing in another window at that moment lands in Live (2026-11-04: every
+    # clip split at the render range a minute after the user typed in a
+    # terminal). Start only once the keyboard and mouse have been idle.
+    idle = _wait_for_user_idle()
     try:
         res = _render_with_dialog(ableton, app, basename, plan, sig,
                                   start_beats, length_beats, start_bar,
@@ -3416,7 +3421,57 @@ def _render_audio_impl(name, start_bar=None, end_bar=None, file_type="WAV",
             ableton.send_command("set_arrangement_loop", prior_loop)
         except Exception as e:
             logger.error("render_audio: could not restore the loop: %s", e)
-    return _check_arrangement_intact(ableton, song_length, res, fingerprint)
+    return _with_input_idle(
+        _check_arrangement_intact(ableton, song_length, res, fingerprint), idle)
+
+
+RENDER_IDLE_S = 3.0        # keyboard/mouse quiet this long before a render starts
+RENDER_IDLE_MAX_WAIT_S = 60.0
+
+
+def _wait_for_user_idle(min_idle=None, max_wait=None, idle_fn=None,
+                        sleep=time.sleep, clock=time.monotonic):
+    """Block until the user's keyboard and mouse have been idle for
+    `min_idle` seconds (Windows GetLastInputInfo), at most `max_wait` seconds.
+    Returns {"waited_s", "timed_out"}, or None where idle time is unknown
+    (not Windows). A timeout does not stop the render; it is reported."""
+    min_idle = RENDER_IDLE_S if min_idle is None else min_idle
+    max_wait = RENDER_IDLE_MAX_WAIT_S if max_wait is None else max_wait
+    if idle_fn is None:
+        if not IS_WINDOWS:
+            return None
+        idle_fn = _win.input_idle_seconds
+    start = clock()
+    while True:
+        idle = idle_fn()
+        if idle is None:
+            return None
+        waited = clock() - start
+        if idle >= min_idle:
+            return {"waited_s": round(waited, 1), "timed_out": False}
+        if waited >= max_wait:
+            logger.error("render_audio: input never went idle for %.1f s in %.0f s; "
+                         "rendering anyway", min_idle, max_wait)
+            return {"waited_s": round(waited, 1), "timed_out": True}
+        sleep(max(0.1, min(0.5, min_idle - idle)))
+
+
+def _with_input_idle(res, idle):
+    """Report the pre-render idle wait: data.input_idle on a good result, a
+    top-level input_idle on an error."""
+    if idle is None:
+        return res
+    try:
+        out = json.loads(res)
+    except Exception:
+        return res
+    if not isinstance(out, dict):
+        return res
+    if out.get("ok") and isinstance(out.get("data"), dict):
+        out["data"]["input_idle"] = idle
+    else:
+        out["input_idle"] = idle
+    return json.dumps(out, indent=2)
 
 
 def _arrangement_fingerprint(ableton):

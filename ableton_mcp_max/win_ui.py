@@ -541,6 +541,26 @@ _MOUSEEVENTF_MOVE, _MOUSEEVENTF_LEFTDOWN = 0x0001, 0x0002
 _MOUSEEVENTF_LEFTUP, _MOUSEEVENTF_ABSOLUTE = 0x0004, 0x8000
 
 
+class _LASTINPUTINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.UINT), ("dwTime", wintypes.DWORD)]
+
+
+user32.GetLastInputInfo.argtypes = [ctypes.POINTER(_LASTINPUTINFO)]
+user32.GetLastInputInfo.restype = wintypes.BOOL
+kernel32.GetTickCount.restype = wintypes.DWORD
+
+
+def input_idle_seconds():
+    """Seconds since the last keyboard or mouse input in this session
+    (GetLastInputInfo), or None if Windows will not say. Both counters are
+    32-bit milliseconds, so the difference is taken modulo 2**32."""
+    li = _LASTINPUTINFO()
+    li.cbSize = ctypes.sizeof(_LASTINPUTINFO)
+    if not user32.GetLastInputInfo(ctypes.byref(li)):
+        return None
+    return ((kernel32.GetTickCount() - li.dwTime) & 0xFFFFFFFF) / 1000.0
+
+
 def click_point(x, y):
     """Left-click at SCREEN pixel (x, y) with SendInput (absolute coordinates).
     The pointer moves there - used only as a fallback when a UIA Invoke is

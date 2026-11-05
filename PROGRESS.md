@@ -50,6 +50,12 @@ one call; on an older Remote Script the server falls back to `get_arrangement_cl
 `get_track_info` per track (two reads per track before and after - slow on a large set until
 Live is restarted with the new Remote Script).
 
+The cause, as far as the evidence goes: a render brings Live's windows to the front, so whatever
+the user is typing in another window at that moment lands in Live (one split came a minute after
+the user typed in a terminal). On Windows `render_audio` now waits until the keyboard and mouse
+have been idle for 3 seconds (GetLastInputInfo, at most 60 seconds) before it touches Live's
+windows, and reports the wait as `input_idle` in the result.
+
 ## MIDI-aware instrument recommendation (2026-10-27, unreleased)
 `recommend_instrument` only parsed a typed intent (six roles) and ranked engines; it never read
 the notes and could not name a preset. **3 new `@mcp.tool()`s**, 191 -> 194 tools:
