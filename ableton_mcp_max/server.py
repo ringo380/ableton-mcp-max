@@ -3409,7 +3409,7 @@ def _render_audio_impl(name, start_bar=None, end_bar=None, file_type="WAV",
         try:
             res = _render_with_dialog(ableton, app, basename, plan, sig,
                                       start_beats, length_beats, start_bar,
-                                      end_bar, timeout)
+                                      end_bar, timeout, guard=guard)
         finally:
             # Dismiss BEFORE restoring: a still-open modal dialog would block
             # the loop restore for the Remote Script's whole socket timeout and
@@ -3456,11 +3456,13 @@ def _render_key_guard(pid):
 
 def _with_key_guard(res, guard):
     """Report the key guard: data.key_guard on a good result, a top-level
-    key_guard on an error. {"installed": bool, "blocked": n}; blocked > 0
-    means the user typed into Live while it rendered (and was stopped)."""
+    key_guard on an error. {"installed": bool, "blocked": n, "passed": n};
+    blocked > 0 means the user typed into Live while it rendered (and was
+    stopped); passed counts harmless presses let through once the export ran."""
     if guard.installed is None:
         return res
-    report = {"installed": bool(guard.installed), "blocked": int(guard.blocked)}
+    report = {"installed": bool(guard.installed), "blocked": int(guard.blocked),
+              "passed": int(getattr(guard, "passed", 0))}
     if guard.blocked:
         logger.info("render_audio: key guard dropped %d key press(es) aimed at "
                     "Live during the render", guard.blocked)
@@ -3591,7 +3593,7 @@ def _check_arrangement_intact(ableton, song_length_before, res,
 
 
 def _render_with_dialog(ableton, app, basename, plan, sig, start_beats,
-                        length_beats, start_bar, end_bar, timeout):
+                        length_beats, start_bar, end_bar, timeout, guard=None):
     # The dialog reads the arrangement TIME SELECTION, and its own range sliders
     # cannot be written - so seed the range here, before it opens.
     ableton.send_command("set_arrangement_loop",
@@ -3683,6 +3685,11 @@ def _render_with_dialog(ableton, app, basename, plan, sig, start_beats,
         if _replace_sheet_open():
             _confirm_replace_sheet()
 
+    # The name is in and the export is running: from here the key guard lets
+    # plain letters and digits through and drops only keys that can act on
+    # Live (cancel, confirm, menus, shortcuts).
+    if guard is not None and hasattr(guard, "set_phase"):
+        guard.set_phase("render")
     done = _wait_until(lambda: _render_finished(baseline), timeout=timeout,
                        interval=1.0, sleep=_rsleep)
     if not done:

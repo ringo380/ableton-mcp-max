@@ -60,6 +60,14 @@ ever ending. On Windows `render_audio` now runs inside a low-level keyboard hook
 Live window are dropped and counted. Key releases, injected input (the plugin's own keystroke
 fallback) and keys aimed at other windows pass; the mouse is not hooked. The result reports
 `key_guard: {installed, blocked}`; `blocked > 0` means typing reached Live and was stopped.
+In v0.36.0 the first live sweep dropped 0-29 presses per render with no set changes.
+
+Since then the guard has two phases. While the Export and Save dialogs are open it drops every
+press aimed at Live (a letter would land in the file name). Once the name is in and the export is
+running it drops only keys that can act on Live: Esc, Return, Space, Tab, Backspace, Delete,
+Insert, arrows and page keys, F-keys, Alt and the menu key, S (solo selected tracks), 0
+(deactivate clips), and any key pressed with Ctrl, Alt or Win held. Plain letters and digits
+pass. The result adds `passed`, the presses let through.
 
 ## MIDI-aware instrument recommendation (2026-10-27, unreleased)
 `recommend_instrument` only parsed a typed intent (six roles) and ranked engines; it never read
