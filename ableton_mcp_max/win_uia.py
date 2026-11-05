@@ -162,3 +162,12 @@ def wait(pred, timeout, interval=0.2):
             return True
         time.sleep(interval)
     return bool(pred())
+
+
+def rect(el):
+    """(left, top, right, bottom) screen rectangle of `el`, or None."""
+    try:
+        r = el.CurrentBoundingRectangle
+        return (int(r.left), int(r.top), int(r.right), int(r.bottom))
+    except Exception:
+        return None

@@ -815,7 +815,8 @@ class AbletonMCP(ControlSurface):
                 pitch_span = params.get("pitch_span", 128)
                 response["result"] = self._get_clip_notes(
                     track_index, clip_index, from_time, time_span,
-                    from_pitch, pitch_span)
+                    from_pitch, pitch_span,
+                    params.get("clip_location", "session"))
             elif command_type == "get_scenes":
                 response["result"] = self._get_scenes()
             elif command_type == "get_transport":
@@ -829,6 +830,8 @@ class AbletonMCP(ControlSurface):
             elif command_type == "get_arrangement_clips":
                 response["result"] = self._get_arrangement_clips(
                     params.get("track_index", 0))
+            elif command_type == "get_arrangement_fingerprint":
+                response["result"] = self._get_arrangement_fingerprint()
             elif command_type == "get_automation":
                 response["result"] = self._get_automation(
                     params.get("track_index", 0),
@@ -2500,12 +2503,14 @@ class AbletonMCP(ControlSurface):
         return {"clips": clips}
 
     def _get_clip_notes(self, track_index, clip_index, from_time,
-                        time_span, from_pitch, pitch_span):
+                        time_span, from_pitch, pitch_span,
+                        clip_location="session"):
         """Read MIDI notes within a window via the extended API. Note the
         extended arg order is (from_pitch, pitch_span, from_time, time_span) --
-        pitch first, opposite the legacy get_notes."""
+        pitch first, opposite the legacy get_notes. clip_location picks a
+        session slot (default) or an arrangement clip by position."""
         try:
-            clip = self._resolve_clip(track_index, clip_index)
+            clip = self._resolve_clip_loc(track_index, clip_index, clip_location)
             self._require_midi_clip(clip, "get_clip_notes")
             if time_span < 0:
                 time_span = clip.length
@@ -3410,6 +3415,19 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error deleting cue at playhead: " + str(e))
             raise
 
+    def _get_arrangement_fingerprint(self):
+        """Per regular track: arrangement clip count, solo, mute - one call,
+        read before and after a render to catch a stray edit (split, solo)."""
+        try:
+            tracks = {}
+            for i, t in enumerate(self._song.tracks):
+                tracks[str(i)] = {"clips": len(t.arrangement_clips),
+                                  "solo": bool(t.solo), "mute": bool(t.mute)}
+            return {"song_length": self._song.song_length, "tracks": tracks}
+        except Exception as e:
+            self.log_message("Error getting arrangement fingerprint: " + str(e))
+            raise
+
     def _get_arrangement_clips(self, track_index):
         """List the clips placed on a track's Arrangement timeline."""
         try:
@@ -3708,8 +3726,23 @@ class AbletonMCP(ControlSurface):
             if not item:
                 raise ValueError("Browser item with URI '{0}' not found".format(item_uri))
 
-            # Select the track
+            # Select the track. browser.load_item loads into Live's SELECTED
+            # track, and the selected_track setter is silently ignored while
+            # the Arrangement view holds a time selection (render_audio leaves
+            # one), so verify, retry from the Session view, and refuse rather
+            # than load onto whatever track happens to be selected.
             self._song.view.selected_track = track
+            if self._song.view.selected_track != track:
+                try:
+                    app.view.show_view("Session")
+                except Exception:
+                    pass
+                self._song.view.selected_track = track
+            if self._song.view.selected_track != track:
+                raise RuntimeError(
+                    "Live would not select track '{0}' (selected: '{1}'); "
+                    "not loading onto the wrong track".format(
+                        track.name, self._song.view.selected_track.name))
 
             # Load the item
             app.browser.load_item(item)

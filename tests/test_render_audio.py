@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 
 import pytest
 
@@ -276,11 +277,17 @@ def test_mp3_only_renders_the_mp3(wired):
 def test_range_is_seeded_via_loop_then_focus_then_select_loop(wired):
     wired.sliders.update(_range_sliders(16.0, 32.0))
     server.render_audio(None, "track", start_bar=5, end_bar=13)
-    assert wired.conn.commands() == ["get_transport", "set_arrangement_loop",
-                                     "focus_view", "set_arrangement_loop"]
-    loop = dict(wired.conn.sent[1][1])
+    # The pre-render fingerprint read (get_arrangement_fingerprint, then the
+    # per-track fallback's get_session_info) comes back empty from this fake,
+    # so there is nothing to compare and no post-render fingerprint read.
+    assert wired.conn.commands() == ["get_transport",
+                                     "get_arrangement_fingerprint", "get_session_info",
+                                     "set_arrangement_loop",
+                                     "focus_view", "set_arrangement_loop",
+                                     "get_transport"]   # final: arrangement intact?
+    loop = dict(_loop_writes(wired.conn)[0])
     assert loop["start"] == 16.0 and loop["length"] == 32.0
-    assert wired.conn.sent[2][1] == {"view": "Arranger"}
+    assert ("focus_view", {"view": "Arranger"}) in wired.conn.sent
     assert ("Edit", "Select Loop") in wired.menus
 
 
@@ -288,7 +295,7 @@ def test_no_range_renders_the_whole_song(wired):
     wired.sliders.update(_range_sliders(0.0, 232.0))
     out = json.loads(server.render_audio(None, "track"))
     assert out["ok"] is True
-    loop = dict(wired.conn.sent[1][1])
+    loop = dict(_loop_writes(wired.conn)[0])
     assert loop["start"] == 0.0 and loop["length"] == 232.0
     assert out["data"]["range"] == {"start_bar": None, "end_bar": None}
 
@@ -598,3 +605,169 @@ def test_dialog_is_dismissed_when_the_save_panel_never_appears(wired):
     assert "Cancel" in wired.pressed
     assert _loop_writes(wired.conn)[-1] == {"enabled": True, "start": 0.0,
                                             "length": 4.0}
+
+
+def test_render_reports_an_arrangement_that_changed_underneath(wired):
+    """2026-11-02: a render left 32 beats inserted at the render range and the
+    bounce was silence. The song length moving during the render turns the
+    result into an error that still carries the render facts."""
+    wired.sliders.update(_range_sliders(16.0, 32.0))
+    conn = wired.conn
+    orig = conn.send_command
+    calls = {"n": 0}
+
+    def grow(cmd, params=None):
+        out = orig(cmd, params)
+        if cmd == "get_transport":
+            calls["n"] += 1
+            if calls["n"] >= 2:
+                out = dict(out, song_length=conn.song_length + 32.0)
+        return out
+    conn.send_command = grow
+    out = json.loads(server.render_audio(None, "track", start_bar=5, end_bar=13))
+    assert out["ok"] is False
+    assert "song length 232.000 -> 264.000" in out["error"]
+    assert "render" in out
+
+
+def _fingerprinted(conn, before, after):
+    """Make the fake answer get_arrangement_fingerprint with `before` on the
+    first call and `after` on the second (the post-render read)."""
+    orig = conn.send_command
+    calls = {"n": 0}
+
+    def fp(cmd, params=None):
+        if cmd == "get_arrangement_fingerprint":
+            if any(conn.windows.values()):
+                raise RuntimeError("Live is busy (a modal dialog is open)")
+            conn.sent.append((cmd, params or {}))
+            calls["n"] += 1
+            return {"tracks": before if calls["n"] == 1 else after}
+        return orig(cmd, params)
+    conn.send_command = fp
+
+
+def test_render_reports_clips_split_during_the_render(wired):
+    """2026-11-02: a stray Ctrl+E while the export was starting split every
+    track's clip at the render range (song length unchanged)."""
+    wired.sliders.update(_range_sliders(16.0, 32.0))
+    before = {"0": {"clips": 1, "solo": False, "mute": False},
+              "1": {"clips": 1, "solo": False, "mute": True}}
+    after = {"0": {"clips": 3, "solo": False, "mute": False},
+             "1": {"clips": 3, "solo": False, "mute": True}}
+    _fingerprinted(wired.conn, before, after)
+    out = json.loads(server.render_audio(None, "track", start_bar=5, end_bar=13))
+    assert out["ok"] is False
+    assert "clip count changed on 2 track(s)" in out["error"]
+    assert out["changes"] == {"clips": [{"track": 0, "before": 1, "after": 3},
+                                        {"track": 1, "before": 1, "after": 3}]}
+    assert "render" in out
+    assert "get_session_info" not in wired.conn.commands()   # one-call path used
+
+
+def test_render_reports_solo_changed_during_the_render(wired):
+    """2026-11-02: a stray S soloed every track but the one under test, and
+    six bounces of 'the keyboard' were the whole mix."""
+    wired.sliders.update(_range_sliders(16.0, 32.0))
+    before = {"0": {"clips": 1, "solo": False, "mute": False},
+              "1": {"clips": 1, "solo": True, "mute": False}}
+    after = {"0": {"clips": 1, "solo": True, "mute": False},
+             "1": {"clips": 1, "solo": True, "mute": False}}
+    _fingerprinted(wired.conn, before, after)
+    out = json.loads(server.render_audio(None, "track", start_bar=5, end_bar=13))
+    assert out["ok"] is False
+    assert "solo changed on 1 track(s)" in out["error"]
+    assert out["changes"] == {"solo": [{"track": 0, "before": False, "after": True}]}
+
+
+def test_render_passes_when_the_fingerprint_is_unchanged(wired):
+    wired.sliders.update(_range_sliders(16.0, 32.0))
+    same = {"0": {"clips": 1, "solo": True, "mute": False}}
+    _fingerprinted(wired.conn, same, dict(same))
+    out = json.loads(server.render_audio(None, "track", start_bar=5, end_bar=13))
+    assert out["ok"] is True
+    assert "changes" not in out
+    assert out["data"]["soloed_tracks"] == [0]   # caller can check what was bounced
+
+
+def test_fingerprint_falls_back_to_per_track_reads_on_an_old_remote_script():
+    class Old:
+        def __init__(self):
+            self.sent = []
+
+        def send_command(self, cmd, params=None):
+            self.sent.append(cmd)
+            if cmd == "get_arrangement_fingerprint":
+                raise Exception("Unknown command: get_arrangement_fingerprint")
+            if cmd == "get_session_info":
+                return {"track_count": 2}
+            if cmd == "get_arrangement_clips":
+                return {"count": 1 + params["track_index"]}
+            if cmd == "get_track_info":
+                return {"solo": params["track_index"] == 1, "mute": False}
+            return {}
+    conn = Old()
+    fp = server._arrangement_fingerprint(conn)
+    assert fp == {"0": {"clips": 1, "solo": False, "mute": False},
+                  "1": {"clips": 2, "solo": True, "mute": False}}
+    assert conn.sent.count("get_arrangement_clips") == 2
+    assert server._fingerprint_changes(fp, fp) == {}
+
+
+
+# --- key guard: the user's typing must not reach Live during a render ---------
+
+def _fake_guard(blocked, installed=True):
+    class G:
+        def __init__(self):
+            self.blocked, self.installed, self.entered = blocked, installed, False
+
+        def __enter__(self):
+            self.entered = True
+            return self
+
+        def __exit__(self, *exc):
+            return False
+    return G()
+
+
+def test_render_runs_inside_the_key_guard_and_reports_it(wired, monkeypatch):
+    """2026-11-02..04: keystrokes typed elsewhere while a render had Live in
+    front split every clip and soloed every track but one."""
+    wired.sliders.update(_range_sliders(16.0, 32.0))
+    g = _fake_guard(2)
+    monkeypatch.setattr(server, "_render_key_guard", lambda pid: g)
+    out = json.loads(server.render_audio(None, "track", start_bar=5, end_bar=13))
+    assert g.entered
+    assert out["ok"] is True
+    assert out["data"]["key_guard"] == {"installed": True, "blocked": 2}
+
+
+def test_key_guard_is_reported_on_an_error_too(wired, monkeypatch):
+    wired.sliders.update(_range_sliders(16.0, 32.0))
+    monkeypatch.setattr(server, "_render_key_guard", lambda pid: _fake_guard(0, False))
+    before = {"0": {"clips": 1, "solo": False, "mute": False}}
+    after = {"0": {"clips": 2, "solo": False, "mute": False}}
+    _fingerprinted(wired.conn, before, after)
+    out = json.loads(server.render_audio(None, "track", start_bar=5, end_bar=13))
+    assert out["ok"] is False
+    assert out["key_guard"] == {"installed": False, "blocked": 0}
+
+
+def test_no_key_guard_off_windows(wired, monkeypatch):
+    monkeypatch.setattr(server, "IS_WINDOWS", False)
+    wired.sliders.update(_range_sliders(16.0, 32.0))
+    out = json.loads(server.render_audio(None, "track", start_bar=5, end_bar=13))
+    assert out["ok"] is True
+    assert "key_guard" not in out["data"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="win_ui is Windows-only")
+def test_keyguard_decision_drops_only_real_presses_aimed_at_live():
+    from ableton_mcp_max import win_ui as w
+    live = {111}
+    assert w.keyguard_decision(w.WM_KEYDOWN, 0, 111, live) is True
+    assert w.keyguard_decision(w.WM_SYSKEYDOWN, 0, 111, live) is True     # Alt+key
+    assert w.keyguard_decision(0x0101, 0, 111, live) is False             # key up passes
+    assert w.keyguard_decision(w.WM_KEYDOWN, w.LLKHF_INJECTED, 111, live) is False
+    assert w.keyguard_decision(w.WM_KEYDOWN, 0, 222, live) is False       # other window

@@ -9,7 +9,7 @@ permalink: /
 <div class="hero" markdown="0">
   <div class="hero__eyebrow">Claude Code plugin · MCP server</div>
   <h1 class="hero__title">ableton-mcp-max</h1>
-  <p class="hero__tagline">Drive Ableton Live 11 and 12 straight from Claude. 191 tools spanning tracks,
+  <p class="hero__tagline">Drive Ableton Live 11 and 12 straight from Claude. 195 tools spanning tracks,
   clips, MIDI, devices, mixing, automation, arrangement, scenes, transport, composition, and full
   preset generation - built on the Live Object Model with preset-XML backdoors for the
   controls Live keeps hidden.</p>
@@ -21,7 +21,7 @@ permalink: /
   </div>
 </div>
 
-[Browse all 191 tools](./tools/){: .btn .btn-primary .mr-2 }
+[Browse all 195 tools](./tools/){: .btn .btn-primary .mr-2 }
 [Get it on the marketplace](https://github.com/robworks-code/robworks-claude-code-plugins){: .btn }
 
 ---

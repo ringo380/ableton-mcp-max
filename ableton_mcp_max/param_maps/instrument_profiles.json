@@ -2,7 +2,7 @@
  "engines": {
   "serum": {
    "display": "Serum 2", "native": false, "creatable": true, "domain": "serum", "cpu": "high",
-   "roles": {"bass": 5, "lead": 5, "pad": 4, "pluck": 4, "fx": 5, "drums": 1},
+   "roles": {"bass": 5, "lead": 5, "pad": 4, "pluck": 4, "fx": 5, "drums": 1, "keys": 3, "strings": 3, "brass": 3, "winds": 2, "vocal": 2},
    "genres": ["dnb", "dubstep", "future-bass", "edm", "techno", "trap"],
    "character": ["gritty", "evolving", "modern", "aggressive", "digital", "complex-mod", "growl"],
    "reach_for_when": ["wavetable morphing", "heavy unison", "complex mod matrix", "reese/growl"],
@@ -10,7 +10,7 @@
   },
   "wavetable": {
    "display": "Wavetable (native)", "native": true, "creatable": true, "domain": "wavetable", "cpu": "med",
-   "roles": {"bass": 4, "lead": 4, "pad": 5, "pluck": 4, "fx": 4, "drums": 1},
+   "roles": {"bass": 4, "lead": 4, "pad": 5, "pluck": 4, "fx": 4, "drums": 1, "keys": 4, "strings": 4, "brass": 4, "winds": 3, "vocal": 3},
    "genres": ["house", "techno", "edm", "pop", "ambient"],
    "character": ["modern", "clean", "evolving", "digital"],
    "reach_for_when": ["wavetable morph without a 3rd-party plugin", "portable set", "generic pad/lead"],
@@ -18,7 +18,7 @@
   },
   "operator": {
    "display": "Operator (FM)", "native": true, "creatable": false, "domain": "device_preset", "cpu": "low",
-   "roles": {"bass": 4, "lead": 4, "pad": 3, "pluck": 5, "fx": 3, "drums": 2},
+   "roles": {"bass": 4, "lead": 4, "pad": 3, "pluck": 5, "fx": 3, "drums": 2, "keys": 4, "strings": 3, "brass": 4, "winds": 3, "vocal": 3},
    "genres": ["house", "techno", "electro", "pop"],
    "character": ["metallic", "clean", "punchy", "digital"],
    "reach_for_when": ["FM bells/plucks", "clean sub", "low cpu", "e-piano/DX-style"],
@@ -26,7 +26,7 @@
   },
   "analog": {
    "display": "Analog", "native": true, "creatable": false, "domain": "device_preset", "cpu": "low",
-   "roles": {"bass": 4, "lead": 4, "pad": 4, "pluck": 3, "fx": 2, "drums": 1},
+   "roles": {"bass": 4, "lead": 4, "pad": 4, "pluck": 3, "fx": 2, "drums": 1, "keys": 3, "strings": 3, "brass": 4, "winds": 2, "vocal": 1},
    "genres": ["house", "techno", "synthwave", "pop", "ambient"],
    "character": ["warm", "vintage", "analog", "smooth"],
    "reach_for_when": ["classic subtractive", "warm analog pad/bass", "low cpu"],
@@ -34,7 +34,7 @@
   },
   "simpler": {
    "display": "Simpler / Sampler", "native": true, "creatable": true, "domain": "simpler", "cpu": "low",
-   "roles": {"bass": 3, "lead": 3, "pad": 3, "pluck": 3, "fx": 4, "drums": 3},
+   "roles": {"bass": 3, "lead": 3, "pad": 3, "pluck": 3, "fx": 4, "drums": 3, "keys": 5, "strings": 5, "brass": 5, "winds": 5, "vocal": 5},
    "genres": ["hip-hop", "lofi", "house", "pop", "ambient"],
    "character": ["acoustic", "realistic", "organic", "vintage", "textural"],
    "reach_for_when": ["acoustic/realistic instrument", "a specific sample as the source", "one-shot/chop"],
@@ -42,7 +42,7 @@
   },
   "drum_rack": {
    "display": "Drum Rack", "native": true, "creatable": false, "domain": "device_preset", "cpu": "med",
-   "roles": {"bass": 1, "lead": 1, "pad": 1, "pluck": 1, "fx": 2, "drums": 5},
+   "roles": {"bass": 1, "lead": 1, "pad": 1, "pluck": 1, "fx": 2, "drums": 5, "keys": 1, "strings": 1, "brass": 1, "winds": 1, "vocal": 1},
    "genres": ["hip-hop", "house", "techno", "dnb", "trap", "pop"],
    "character": ["percussive", "organic", "punchy"],
    "reach_for_when": ["drums/percussion", "beat/kit", "layered one-shots"],
@@ -51,11 +51,16 @@
  },
  "role_vocab": {
   "bass": ["bass", "sub", "reese", "808", "bassline"],
+  "drums": ["drum", "drums", "kick", "snare", "hat", "hihat", "perc", "percussion", "beat", "kit"],
+  "keys": ["key", "keys", "keyboard", "piano", "e-piano", "epiano", "rhodes", "wurli", "organ", "clav", "chords", "comp"],
+  "strings": ["strings", "string", "violin", "cello", "viola", "orchestral"],
+  "brass": ["brass", "horn", "horns", "trumpet", "trombone", "sax"],
+  "winds": ["flute", "woodwind", "woodwinds", "clarinet", "oboe", "winds"],
+  "vocal": ["vocal", "vocals", "vox", "voice", "choir"],
   "lead": ["lead", "melody", "topline", "arp", "hook"],
-  "pad": ["pad", "atmosphere", "ambient", "drone", "wash", "strings"],
-  "pluck": ["pluck", "stab", "key", "keys", "bell", "mallet", "e-piano", "rhodes"],
-  "fx": ["fx", "riser", "sweep", "impact", "texture", "noise", "downlifter"],
-  "drums": ["drum", "drums", "kick", "snare", "hat", "hihat", "perc", "percussion", "beat", "kit"]
+  "pad": ["pad", "atmosphere", "ambient", "drone", "wash"],
+  "pluck": ["pluck", "stab", "bell", "mallet", "guitar"],
+  "fx": ["fx", "riser", "sweep", "impact", "texture", "noise", "downlifter"]
  },
  "genre_vocab": {
   "dnb": ["dnb", "drum and bass", "drum-and-bass", "neurofunk"],

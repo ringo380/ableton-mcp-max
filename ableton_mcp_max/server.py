@@ -166,6 +166,7 @@ from ableton_mcp_max import catalog_query as _cat_query
 from ableton_mcp_max import catalog_decide as _cat_decide
 from ableton_mcp_max import catalog_adapt
 from ableton_mcp_max import instrument_select
+from ableton_mcp_max import midi_role_utils as _mru
 from ableton_mcp_max import ozone_utils as _oz
 from ableton_mcp_max import ozone_param_catalog as _ozcat
 from ableton_mcp_max import ozone_state_utils as _osu
@@ -2228,6 +2229,75 @@ def _win_press_prompt(buttons, name):
     win_uia.invoke(buttons[name])
 
 
+def _win_click_prompt(buttons, name):
+    """Fallback for a prompt that ignores UIA Invoke (Live's crash-recovery
+    prompt at startup): a real pointer click on the button's centre. True if
+    the button had a rectangle to click."""
+    from ableton_mcp_max import win_uia
+    r = win_uia.rect(buttons[name])
+    if not r:
+        return False
+    _win.click_point((r[0] + r[2]) // 2, (r[1] + r[3]) // 2)
+    return True
+
+
+def _win_live_prompt_any():
+    """(pid, hwnd, buttons) of the first Live-drawn prompt on ANY Live process,
+    bound to the control-surface port or not. A Live that is still starting
+    (the 'Live unexpectedly quit ... recover your work?' prompt) has no port
+    yet, so _win_live() cannot see it; this scans by process image."""
+    for pid in _win.live_pids():
+        hwnd, buttons = _win_prompt(pid)
+        if buttons:
+            return pid, hwnd, buttons
+    return None, None, {}
+
+
+def _win_answer_prompt_impl(answer="", wait=0.0, settle=2.0, sleep=time.sleep):
+    """Find a Live prompt (waiting up to `wait` s for one) and, if `answer`
+    names one of its buttons, press it: UIA Invoke first, then a pointer click
+    if the prompt is still showing. Returns a status dict."""
+    found = []
+
+    def _seen():
+        pid, hwnd, buttons = _win_live_prompt_any()
+        if buttons:
+            found[:] = [(pid, hwnd, buttons)]
+        return bool(buttons)
+
+    if not _seen() and wait > 0:
+        _wait_until(_seen, timeout=wait, interval=0.5, sleep=sleep)
+    if not found:
+        return {"found": False, "buttons": []}
+    pid, hwnd, buttons = found[0]
+    result = {"found": True, "pid": pid, "buttons": sorted(buttons)}
+    if not answer:
+        return result
+    if answer not in buttons:
+        raise ValueError("The prompt has no %r button (it has: %s)."
+                         % (answer, ", ".join(sorted(buttons))))
+
+    def _gone():
+        return not _win_prompt(pid)[1]
+
+    _win_press_prompt(buttons, answer)
+    result["answered"] = answer
+    result["method"] = "invoke"
+    if _wait_until(_gone, timeout=settle, interval=0.25, sleep=sleep):
+        result["dismissed"] = True
+        return result
+    if _win_click_prompt(buttons, answer):
+        result["method"] = "click"
+        if _wait_until(_gone, timeout=settle, interval=0.25, sleep=sleep):
+            result["dismissed"] = True
+            return result
+    result["dismissed"] = False
+    result["error"] = ("Live ignored both the UIA press and a pointer click; "
+                       "the prompt is still showing - click %r in Live by hand."
+                       % answer)
+    return result
+
+
 def _win_confirm_overwrite(pid, sleep=time.sleep):
     """Answer an 'already exists - replace it?' confirmation (the stock
     'Confirm Save As' box or a Live prompt) with Yes. True if one was seen."""
@@ -2343,7 +2413,8 @@ def _run_before_relaunch(hook, result):
 
 
 def _win_restart_live_impl(save="discard", relaunch=True, wait_timeout=90.0,
-                           dirty_after=5.0, sleep=time.sleep, before_relaunch=None):
+                           dirty_after=5.0, sleep=time.sleep, before_relaunch=None,
+                           startup_prompt="No"):
     if save not in ("discard", "save"):
         raise ValueError("save must be 'discard' or 'save' (got %r)." % save)
     pid, hwnd, exe = _win_live()
@@ -2396,7 +2467,28 @@ def _win_restart_live_impl(save="discard", relaunch=True, wait_timeout=90.0,
     if relaunch:
         _win.launch(exe)
         result["relaunched"] = True
-        result["surface_up"] = _wait_until(_port_listening, timeout=wait_timeout,
+
+        def _up_or_prompt():
+            # A Live that crashed earlier asks 'recover your work?' before it
+            # binds the port; answer it (No = load the set as saved) so the
+            # relaunch does not sit on the prompt until wait_timeout.
+            if _port_listening():
+                return True
+            if "startup_prompt" not in result:
+                _pid, _hwnd, buttons = _win_live_prompt_any()
+                if buttons:
+                    answer = startup_prompt if startup_prompt in buttons else None
+                    result["startup_prompt"] = {"buttons": sorted(buttons),
+                                                "answered": answer}
+                    if answer:
+                        # same press-then-click path as answer_live_prompt;
+                        # the startup prompt has ignored a bare Invoke.
+                        pressed = _win_answer_prompt_impl(answer=answer, sleep=sleep)
+                        result["startup_prompt"]["dismissed"] = pressed.get("dismissed")
+                        result["startup_prompt"]["method"] = pressed.get("method")
+            return False
+
+        result["surface_up"] = _wait_until(_up_or_prompt, timeout=wait_timeout,
                                            sleep=sleep)
     return result
 
@@ -2608,8 +2700,12 @@ def _restart_live_impl(save="discard", relaunch=True, wait_timeout=90.0,
 @mcp.tool()
 def restart_live(ctx: Context, save: str = "discard", relaunch: bool = True,
                  wait_timeout: float = 90.0) -> str:
-    """Gracefully quit and relaunch the running Ableton Live (no crash-recovery
-    prompt). Use this for an automated Live bounce after a Remote Script change.
+    """Gracefully quit and relaunch Live (answers a crash-recovery prompt).
+
+    A clean quit leaves no crash-recovery prompt; if one shows anyway (Live crashed earlier),
+    the relaunch wait answers it with No (load the set as saved) and reports
+    it under data.startup_prompt. Use this for an automated Live bounce after
+    a Remote Script change.
 
     save: how to handle UNSAVED changes if Live prompts on quit —
       'discard' (default; lose unsaved edits) or 'save' (overwrite; only works
@@ -2635,6 +2731,36 @@ def restart_live(ctx: Context, save: str = "discard", relaunch: bool = True,
     except Exception as e:
         logger.error("restart_live error: %s", e)
         return _err("restart_live error: %s" % e)
+
+
+@mcp.tool()
+def answer_live_prompt(ctx: Context, answer: str = "", wait: float = 0.0) -> str:
+    """Read, and optionally answer, a prompt Live has open (Windows only).
+
+    Covers Live-drawn prompts with Yes / No / OK / Cancel buttons on ANY Live
+    process, including one that is still starting and has not bound port 9877
+    yet - above all the 'Live unexpectedly quit while you were working on the
+    Live Set ... Would you like to recover your work?' prompt after a crash
+    (No = load the set as last saved; Yes = restore Live's crash state).
+
+    answer: button to press ('' = just report what is showing). The press is a
+      UIA Invoke, then a real pointer click on the button if the prompt is still
+      up; if it survives both, data.dismissed is false with the reason.
+    wait: seconds to wait for a prompt to appear before giving up (default 0).
+
+    Returns JSON {ok, data:{found, pid?, buttons, answered?, method?,
+    dismissed?, error?}}. found:false means no prompt is open.
+    """
+    try:
+        if not IS_WINDOWS:
+            return _err("answer_live_prompt is Windows-only (on macOS Live's "
+                        "prompts are driven through System Events).")
+        return _ok(_win_answer_prompt_impl(answer=answer or "", wait=float(wait or 0)))
+    except (ValueError, RuntimeError) as e:
+        return _err(str(e))
+    except Exception as e:
+        logger.error("answer_live_prompt error: %s", e)
+        return _err("answer_live_prompt error: %s" % e)
 
 
 def _live_prefs_cfg():
@@ -3273,22 +3399,195 @@ def _render_audio_impl(name, start_bar=None, end_bar=None, file_type="WAV",
     prior_loop = {"enabled": bool(transport.get("loop", False)),
                   "start": float(transport.get("loop_start", 0.0) or 0.0),
                   "length": float(transport.get("loop_length", 4.0) or 4.0)}
+    fingerprint = _arrangement_fingerprint(ableton)
+    # The render brings Live's windows to the front, so anything the user is
+    # typing in another window lands in Live (2026-11-02..04: every clip split
+    # at the render range, every track but one soloed). Drop real key presses
+    # aimed at Live for as long as the render drives its windows.
+    guard = _render_key_guard(_pid)
+    with guard:
+        try:
+            res = _render_with_dialog(ableton, app, basename, plan, sig,
+                                      start_beats, length_beats, start_bar,
+                                      end_bar, timeout)
+        finally:
+            # Dismiss BEFORE restoring: a still-open modal dialog would block
+            # the loop restore for the Remote Script's whole socket timeout and
+            # then swallow the failure. Never let either step overwrite the
+            # real result.
+            try:
+                _dismiss_export_dialog(_export_ui)
+            except Exception as e:
+                logger.error("render_audio: dialog cleanup failed: %s", e)
+            try:
+                ableton.send_command("set_arrangement_loop", prior_loop)
+            except Exception as e:
+                logger.error("render_audio: could not restore the loop: %s", e)
+    return _with_key_guard(
+        _check_arrangement_intact(ableton, song_length, res, fingerprint), guard)
+
+
+class _NoKeyGuard:
+    """Stand-in where no key guard exists (not Windows)."""
+    installed = None
+    blocked = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _render_key_guard(pid):
+    """A win_ui.KeyGuard over every Live process (the running one plus any
+    other Live pid), or a no-op off Windows."""
+    if not IS_WINDOWS:
+        return _NoKeyGuard()
+    pids = set()
     try:
-        return _render_with_dialog(ableton, app, basename, plan, sig,
-                                   start_beats, length_beats, start_bar,
-                                   end_bar, timeout)
-    finally:
-        # Dismiss BEFORE restoring: a still-open modal dialog would block the
-        # loop restore for the Remote Script's whole socket timeout and then
-        # swallow the failure. Never let either step overwrite the real result.
-        try:
-            _dismiss_export_dialog(_export_ui)
-        except Exception as e:
-            logger.error("render_audio: dialog cleanup failed: %s", e)
-        try:
-            ableton.send_command("set_arrangement_loop", prior_loop)
-        except Exception as e:
-            logger.error("render_audio: could not restore the loop: %s", e)
+        pids.update(int(p) for p in _win.live_pids())
+    except Exception as e:
+        logger.error("render_audio: could not list Live processes: %s", e)
+    if pid:
+        pids.add(int(pid))
+    return _win.KeyGuard(pids)
+
+
+def _with_key_guard(res, guard):
+    """Report the key guard: data.key_guard on a good result, a top-level
+    key_guard on an error. {"installed": bool, "blocked": n}; blocked > 0
+    means the user typed into Live while it rendered (and was stopped)."""
+    if guard.installed is None:
+        return res
+    report = {"installed": bool(guard.installed), "blocked": int(guard.blocked)}
+    if guard.blocked:
+        logger.info("render_audio: key guard dropped %d key press(es) aimed at "
+                    "Live during the render", guard.blocked)
+    try:
+        out = json.loads(res)
+    except Exception:
+        return res
+    if not isinstance(out, dict):
+        return res
+    if out.get("ok") and isinstance(out.get("data"), dict):
+        out["data"]["key_guard"] = report
+    else:
+        out["key_guard"] = report
+    return json.dumps(out, indent=2)
+
+
+def _arrangement_fingerprint(ableton):
+    """{track_index(str): {"clips": n, "solo": bool, "mute": bool}} for every
+    regular track - the state a stray keystroke during a render changes
+    (Ctrl+E splits every clip at the time selection, S solos the selected
+    tracks). One Remote Script round-trip when it knows
+    get_arrangement_fingerprint, else one get_arrangement_clips plus one
+    get_track_info per track. {} when nothing could be read."""
+    try:
+        fp = ableton.send_command("get_arrangement_fingerprint") or {}
+        if isinstance(fp, dict) and isinstance(fp.get("tracks"), dict):
+            return fp["tracks"]
+    except Exception as e:
+        logger.info("get_arrangement_fingerprint unavailable (%s); "
+                    "reading per track", e)
+    out = {}
+    try:
+        n = int((ableton.send_command("get_session_info") or {})
+                .get("track_count", 0) or 0)
+        for i in range(n):
+            clips = ableton.send_command("get_arrangement_clips",
+                                         {"track_index": i}) or {}
+            info = ableton.send_command("get_track_info",
+                                        {"track_index": i}) or {}
+            out[str(i)] = {"clips": int(clips.get("count", 0) or 0),
+                           "solo": bool(info.get("solo", False)),
+                           "mute": bool(info.get("mute", False))}
+    except Exception as e:
+        logger.error("render_audio: arrangement fingerprint failed: %s", e)
+        return {}
+    return out
+
+
+def _fingerprint_changes(before, after):
+    """Tracks whose clip count / solo / mute differ between two fingerprints."""
+    changes = {"clips": [], "solo": [], "mute": []}
+    for key in sorted(set(before) & set(after), key=lambda k: int(k)):
+        b, a = before[key], after[key]
+        for field in ("clips", "solo", "mute"):
+            if b.get(field) != a.get(field):
+                changes[field].append({"track": int(key), "before": b.get(field),
+                                       "after": a.get(field)})
+    return {k: v for k, v in changes.items() if v}
+
+
+def _with_soloed_tracks(res, fingerprint):
+    """Add data.soloed_tracks (from the pre-render fingerprint) to a good
+    render result. The before/after check cannot see a solo state that was
+    already wrong when the render started (2026-11-02: every track but the one
+    under test was soloed before six renders); this lets the caller check that
+    what was soloed is what it meant to bounce."""
+    if not fingerprint:
+        return res
+    try:
+        out = json.loads(res)
+    except Exception:
+        return res
+    if not (isinstance(out, dict) and out.get("ok")
+            and isinstance(out.get("data"), dict)):
+        return res
+    out["data"]["soloed_tracks"] = sorted(
+        int(k) for k, v in fingerprint.items() if v.get("solo"))
+    return json.dumps(out, indent=2)
+
+
+def _check_arrangement_intact(ableton, song_length_before, res,
+                              fingerprint_before=None):
+    """A render drives Live's UI; if the set changed while it ran, something
+    edited it - a stray keystroke lands in Live while the export is gearing
+    up (2026-11-02: Ctrl+I inserted 32 beats of silence at the render range
+    and the bounces came back silent; Ctrl+E split every track's clip at the
+    range; S soloed every track but one, so six bounces were the full mix).
+    Turn any of those into an error that carries the render result, so it is
+    never taken as a good bounce."""
+    try:
+        after = float((ableton.send_command("get_transport") or {})
+                      .get("song_length", song_length_before) or song_length_before)
+    except Exception:
+        return res
+    changes = {}
+    if fingerprint_before:
+        changes = _fingerprint_changes(fingerprint_before,
+                                       _arrangement_fingerprint(ableton))
+    if abs(after - song_length_before) < 1e-6 and not changes:
+        return _with_soloed_tracks(res, fingerprint_before)
+    try:
+        inner = json.loads(res)
+    except Exception:
+        inner = {"raw": res}
+    if abs(after - song_length_before) >= 1e-6:
+        logger.error("render_audio: song length changed during the render: %s -> %s",
+                     song_length_before, after)
+        return _err("The arrangement changed while rendering: song length %.3f -> "
+                    "%.3f beats. Time was inserted or deleted (likely at the render "
+                    "range) - do NOT trust this bounce; check the Arrangement and use "
+                    "Edit > Undo in Live, or reload the last save."
+                    % (song_length_before, after), render=inner, changes=changes)
+    what = []
+    if "clips" in changes:
+        what.append("clip count changed on %d track(s) (clips split or added at "
+                    "the render range?)" % len(changes["clips"]))
+    if "solo" in changes:
+        what.append("solo changed on %d track(s) (the bounce did not contain "
+                    "what you soloed)" % len(changes["solo"]))
+    if "mute" in changes:
+        what.append("mute changed on %d track(s)" % len(changes["mute"]))
+    logger.error("render_audio: the set changed during the render: %s", changes)
+    return _err("The set changed while rendering: %s. A keystroke probably "
+                "reached Live while the export was starting - do NOT trust this "
+                "bounce; check the Arrangement and use Edit > Undo in Live, or "
+                "reload the last save." % "; ".join(what),
+                render=inner, changes=changes)
 
 
 def _render_with_dialog(ableton, app, basename, plan, sig, start_beats,
@@ -6258,6 +6557,7 @@ def get_clip_notes(
     time_span: float = -1.0,
     from_pitch: int = 0,
     pitch_span: int = 128,
+    clip_location: str = "session",
 ) -> str:
     """
     Read MIDI notes from a clip (MIDI clips only). Uses the Live 11+ extended note
@@ -6271,6 +6571,8 @@ def get_clip_notes(
     - time_span: length of the window in beats; -1 (default) = whole clip length
     - from_pitch: lowest pitch to include (default 0)
     - pitch_span: number of pitches to include (default 128 = all)
+    - clip_location: "session" (default; clip_index is the slot) or
+      "arrangement" (clip_index is the position in get_arrangement_clips)
     """
     try:
         ableton = get_ableton_connection()
@@ -6283,6 +6585,7 @@ def get_clip_notes(
                 "time_span": time_span,
                 "from_pitch": from_pitch,
                 "pitch_span": pitch_span,
+                "clip_location": clip_location,
             },
         )
         return _ok(result)
@@ -6582,6 +6885,12 @@ def load_instrument_or_effect(ctx: Context, track_index: int, uri: str, track_ty
     """
     try:
         ableton = get_ableton_connection()
+        # browser.load_item loads into Live's SELECTED track, and the Remote
+        # Script's selection write is ignored while the Arrangement view holds
+        # a time selection (render_audio leaves one): compare the target
+        # track's devices before and after so a load that landed elsewhere is
+        # reported as a failure, not a success.
+        before = _track_device_names(ableton, track_index, track_type)
         result = ableton.send_command("load_browser_item", {
             "track_index": track_index,
             "item_uri": uri,
@@ -6590,17 +6899,44 @@ def load_instrument_or_effect(ctx: Context, track_index: int, uri: str, track_ty
         
         # Check if the instrument was loaded successfully
         if result.get("loaded", False):
+            after = _track_device_names(ableton, track_index, track_type)
+            item_name = os.path.splitext(str(result.get("item_name") or ""))[0]
+            same_preset = bool(item_name) and item_name in (after or [])
+            if (before is not None and after is not None and after == before
+                    and not same_preset):
+                sel = ableton.send_command("get_view_selection") or {}
+                return _err(
+                    f"'{uri}' did not land on {track_type} track {track_index} "
+                    f"(its devices are unchanged: {', '.join(after) or 'none'}). "
+                    f"Live's selected track is {sel.get('selected_track_index')} "
+                    f"({sel.get('selected_track_name')}); check it for a stray "
+                    f"device, switch to the Session view (focus_view) and retry.")
             new_devices = result.get("new_devices", [])
             if new_devices:
                 return _ok(f"Loaded '{uri}' on {track_type} track {track_index}. New devices: {', '.join(new_devices)}")
             else:
-                devices = result.get("devices_after", [])
+                devices = after if after is not None else result.get("devices_after", [])
                 return _ok(f"Loaded '{uri}' on {track_type} track {track_index}. Devices on track: {', '.join(devices)}")
         else:
             return _err(f"Failed to load '{uri}' on {track_type} track {track_index}")
     except Exception as e:
         logger.error(f"Error loading instrument by URI: {str(e)}")
         return _err(f"Error loading instrument by URI: {str(e)}")
+def _track_device_names(conn, track_index, track_type="regular"):
+    """Device names on a REGULAR track, or None when unknown (return/master
+    tracks, a failed read, or a reply without a devices list)."""
+    if track_type != "regular":
+        return None
+    try:
+        info = conn.send_command("get_track_info", {"track_index": track_index}) or {}
+    except Exception:
+        return None
+    devs = info.get("devices")
+    if devs is None:
+        return None
+    return [d.get("name") for d in devs]
+
+
 @mcp.tool()
 def fire_clip(ctx: Context, track_index: int, clip_index: int) -> str:
     """
@@ -10601,6 +10937,390 @@ def recommend_instrument(ctx: Context, intent: str,
     except Exception as e:
         logger.error("recommend_instrument error: %s", e)
         return _err("recommend_instrument error: %s" % e)
+
+
+# --- MIDI-aware instrument recommendation ----------------------------------
+
+_role_map_cache = None
+_installed_plugins_cache = None
+
+
+def _role_map():
+    global _role_map_cache
+    if _role_map_cache is None:
+        _role_map_cache = _mru.load_role_map()
+    return _role_map_cache
+
+
+def _browser_items(conn, path):
+    res = conn.send_command("get_browser_items_at_path", {"path": path})
+    return (res or {}).get("items", []) if isinstance(res, dict) else []
+
+
+def _installed_plugins(conn, force=False):
+    """{plugin name: browser uri} for every loadable plugin Live lists under
+    Plug-Ins (vendor folders walked one level). Cached per process; {} when
+    the browser cannot be read."""
+    global _installed_plugins_cache
+    if _installed_plugins_cache is not None and not force:
+        return _installed_plugins_cache
+    found = {}
+    try:
+        for it in _browser_items(conn, "plugins"):
+            if it.get("is_folder"):
+                for p in _browser_items(conn, "plugins/%s" % it.get("name")):
+                    if p.get("is_loadable") and not p.get("is_folder"):
+                        found[p["name"]] = p.get("uri")
+            elif it.get("is_loadable"):
+                found[it["name"]] = it.get("uri")
+    except Exception as e:
+        logger.warning("plugin listing unavailable: %s", e)
+    _installed_plugins_cache = found
+    return found
+
+
+def _read_part_notes(conn, track_index, clip_index, clip_location):
+    """Notes of a MIDI clip. clip_location 'auto' reads the session slot and
+    falls back to the arrangement clip at the same index. Returns
+    (notes, location_used)."""
+    order = ([clip_location] if clip_location in ("session", "arrangement")
+             else ["session", "arrangement"])
+    last = None
+    for loc in order:
+        try:
+            res = conn.send_command("get_clip_notes", {
+                "track_index": track_index, "clip_index": clip_index,
+                "from_time": 0.0, "time_span": -1.0, "from_pitch": 0,
+                "pitch_span": 128, "clip_location": loc})
+            notes = res.get("notes", []) if isinstance(res, dict) else list(res)
+            if notes or loc == order[-1]:
+                return notes, loc
+        except Exception as e:
+            last = e
+    raise RuntimeError("no MIDI clip readable on track %d (slot/clip %d): %s"
+                       % (track_index, clip_index, last))
+
+
+def _set_instrument_context(conn):
+    """What the set already is: tempo, every track's name/kind/devices, and
+    the instrument names in use (to avoid handing two parts the same sound)."""
+    info = conn.send_command("get_session_info") or {}
+    n = int(info.get("track_count", 0))
+    tracks = []
+    for i in range(n):
+        ti = conn.send_command("get_track_info", {"track_index": i}) or {}
+        tracks.append({
+            "index": i, "name": ti.get("name", ""),
+            "is_midi": bool(ti.get("is_midi_track")),
+            "devices": [d.get("name") for d in ti.get("devices", [])],
+            "clip_slots": [s.get("index") for s in ti.get("clip_slots", [])
+                           if s.get("has_clip")],
+        })
+    return {"tempo": info.get("tempo"), "tracks": tracks}
+
+
+def _doubles_audio_track(name, tracks):
+    """A 'Strings MIDI' part next to an audio track called 'Strings' is a
+    doubling: the user may want a complementary texture, not the same sound."""
+    base = re.sub(r"\s*\(.*\)\s*$", "", name or "", flags=re.I)
+    base = re.sub(r"\bmidi\b", "", base, flags=re.I).strip().lower()
+    if not base:
+        return None
+    for t in tracks:
+        if not t["is_midi"] and (t["name"] or "").strip().lower() == base:
+            return t["name"]
+    return None
+
+
+def _device_preset_rows(cat_conn):
+    cur = cat_conn.execute(
+        "SELECT name, uri, folder, tags FROM items WHERE domain='device_preset'"
+        " AND folder <> ''")
+    return [{"name": r[0], "uri": r[1], "folder": r[2], "tags": r[3]} for r in cur]
+
+
+def _recommend_part(conn, cat_conn, track, notes, location, intent, limit,
+                    include_plugins, context, role_map, extra_used=()):
+    """Describe one part and rank what to load for it. Pure given its inputs
+    except for the drum-kit browser read. extra_used: sounds a set-wide plan
+    has already handed to earlier parts."""
+    desc = _mru.describe_part(notes, track["name"], role_map)
+    role = desc["role"]
+    used = [d for t in context["tracks"] if t["index"] != track["index"]
+            for d in t["devices"]] + list(extra_used)
+    doubles = _doubles_audio_track(track["name"], context["tracks"])
+    full_intent = " ".join(x for x in [intent, _mru.intent_for(
+        desc, {"tempo": context.get("tempo")})] if x)
+    # the track's own words ("Guitar", "Woodwinds") count as intent too
+    rank_intent = " ".join([intent] + _mru.name_terms(track["name"])).strip()
+    f = desc["features"]
+    current = track["devices"]
+    spec = role_map["roles"].get(role, {})
+    if spec.get("browser_path"):
+        try:
+            items = _browser_items(conn, spec["browser_path"])
+        except Exception as e:
+            logger.warning("kit listing unavailable: %s", e)
+            items = []
+        candidates = _mru.score_kits(items, intent=rank_intent, used_names=used,
+                                     limit=limit, current_names=current)
+        if role == "percussion":
+            # hits in the GM drum range want a kit; a melodic percussive
+            # part (pitched, held notes) wants a Percussive preset
+            presets = _mru.score_candidates(
+                _device_preset_rows(cat_conn), role, role_map,
+                intent=rank_intent, used_names=used, limit=limit, features=f,
+                current_names=current)
+            candidates = ((candidates + presets) if desc["texture"] == "drums"
+                          else (presets + candidates))[:limit]
+    else:
+        candidates = _mru.score_candidates(
+            _device_preset_rows(cat_conn), role, role_map, intent=rank_intent,
+            used_names=used, limit=limit, features=f, current_names=current)
+    plugins = []
+    if include_plugins:
+        plugins = _mru.plugin_candidates(role, role_map, _installed_plugins(conn))
+    keep = ("count", "pitch_low", "pitch_high", "pitch_median", "max_polyphony",
+            "chord_onset_ratio", "onsets_per_beat", "median_duration",
+            "coverage", "velocity_mean")
+    return {
+        "track_index": track["index"], "name": track["name"],
+        "clip": {"index": track.get("clip_index", 0), "location": location,
+                 "note_count": f.get("count", 0)},
+        "analysis": {
+            "texture": desc["texture"], "role": role,
+            "confidence": desc["confidence"], "evidence": desc["evidence"],
+            "name_hint": desc["name_hint"], "conflict": desc["conflict"],
+            "key_guess": desc["key_guess"],
+            "features": {k: f[k] for k in keep if k in f},
+        },
+        "intent": full_intent,
+        "current_devices": track["devices"],
+        "doubles_audio_track": doubles,
+        "candidates": candidates,
+        "plugins": plugins,
+        "pitch_class_histogram": f.get("pitch_class_histogram"),
+    }
+
+
+def _strip_part_histograms(parts):
+    for p in parts:
+        p.pop("pitch_class_histogram", None)
+    return parts
+
+
+def _set_key_guess(parts):
+    """Key of the set: the confident parts vote (drums and sparse parts do
+    not), the merged histogram breaks a tie or stands in when nobody votes."""
+    votes = {}
+    for p in parts:
+        a = p["analysis"]
+        kg = a.get("key_guess")
+        if not kg or a["texture"] in ("drums", "sparse") or kg["correlation"] < 0.7:
+            continue
+        votes[kg["key"]] = votes.get(kg["key"], 0) + 1
+    merged = _mru.guess_key(_mru.merge_histograms(
+        [p.get("pitch_class_histogram") for p in parts]))
+    if not votes:
+        return merged
+    best = max(votes.items(), key=lambda kv: (kv[1], kv[0] == (merged or {}).get("key")))
+    return {"key": best[0], "votes": votes,
+            "histogram_key": (merged or {}).get("key")}
+
+
+@mcp.tool()
+def recommend_track_instrument(ctx: Context, track_index: int,
+                               clip_index: int = 0,
+                               clip_location: str = "auto",
+                               intent: str = "", limit: int = 5,
+                               include_plugins: bool = True) -> str:
+    """Classify a MIDI track's part from its notes and rank presets for it.
+
+    Measures the clip (pitch range, polyphony, note length, density), classifies the
+    musical texture (bass / pad / keys / stabs / lead / arp / drums ...), uses
+    the track name as a prior (content wins on a conflict, which is reported),
+    then ranks loadable stock presets from the catalog for that role and lists
+    installed plugins that suit it. intent adds free text to the ranking
+    ("warm", "boom bap", "orchestral"). clip_location "auto" reads session
+    slot clip_index and falls back to arrangement clip clip_index. PROPOSE
+    ONLY - hand chosen {track_index, uri} pairs to apply_instrument_plan.
+    A plugin candidate loads bare (patch_selection: manual - the LOM cannot
+    pick a Kontakt library or a VST patch). Returns {ok, data:{track_index,
+    name, clip, analysis, intent, current_devices, doubles_audio_track,
+    candidates, plugins, next}}."""
+    try:
+        conn = get_ableton_connection()
+        cat = _catalog_conn()
+        _ensure_device_index(cat)
+        context = _set_instrument_context(conn)
+        try:
+            track = next(t for t in context["tracks"] if t["index"] == int(track_index))
+        except StopIteration:
+            return _err("track %s not found (%d tracks)"
+                        % (track_index, len(context["tracks"])))
+        if not track["is_midi"]:
+            return _err("track %d (%s) is not a MIDI track" % (track["index"], track["name"]))
+        notes, loc = _read_part_notes(conn, track["index"], clip_index, clip_location)
+        track["clip_index"] = clip_index
+        part = _recommend_part(conn, cat, track, notes, loc, intent, limit,
+                               include_plugins, context, _role_map())
+        _strip_part_histograms([part])
+        part["next"] = ("Pick a candidate and call apply_instrument_plan("
+                        "[{track_index, uri}], confirm=True); it hot-swaps the "
+                        "track's instrument.")
+        return _ok(part)
+    except Exception as e:
+        logger.error("recommend_track_instrument error: %s", e)
+        return _err("recommend_track_instrument error: %s" % e)
+
+
+@mcp.tool()
+def recommend_set_instruments(ctx: Context, track_indices: list = None,
+                              intent: str = "", limit: int = 3,
+                              include_plugins: bool = True) -> str:
+    """recommend_track_instrument for every MIDI track, with set-wide context.
+
+    Covers every MIDI track that holds a clip (or the given track_indices), in one call with set-wide context: tempo, a key
+    guess from all parts together, instruments already in use (a sound used
+    on another track is ranked down so parts do not collide), and whether a
+    part doubles an audio track of the same name. Returns {ok, data:{tempo,
+    key_guess, parts:[...], plan:[{track_index, name, uri, candidate}], skipped,
+    next}}. plan holds each part's top stock candidate, ready for
+    apply_instrument_plan after review. PROPOSE ONLY."""
+    try:
+        conn = get_ableton_connection()
+        cat = _catalog_conn()
+        _ensure_device_index(cat)
+        context = _set_instrument_context(conn)
+        wanted = (set(int(i) for i in track_indices) if track_indices else None)
+        parts, skipped = [], []
+        for t in context["tracks"]:
+            if wanted is not None and t["index"] not in wanted:
+                continue
+            if not t["is_midi"]:
+                if wanted is not None:
+                    skipped.append({"track_index": t["index"], "name": t["name"],
+                                    "reason": "not a MIDI track"})
+                continue
+            clip_index = t["clip_slots"][0] if t["clip_slots"] else 0
+            try:
+                notes, loc = _read_part_notes(conn, t["index"], clip_index, "auto")
+            except Exception as e:
+                skipped.append({"track_index": t["index"], "name": t["name"],
+                                "reason": str(e)})
+                continue
+            if not notes:
+                skipped.append({"track_index": t["index"], "name": t["name"],
+                                "reason": "no notes"})
+                continue
+            t["clip_index"] = clip_index
+            planned = [p["candidates"][0]["name"] for p in parts if p["candidates"]]
+            parts.append(_recommend_part(conn, cat, t, notes, loc, intent,
+                                         limit, include_plugins, context,
+                                         _role_map(), extra_used=planned))
+        key = _set_key_guess(parts)
+        _strip_part_histograms(parts)
+        plan, keep = [], []
+        for p in parts:
+            if not p["candidates"]:
+                continue
+            top = p["candidates"][0]
+            a = p["analysis"]
+            cur = [d.lower() for d in p["current_devices"] if d]
+            if (top["name"] or "").lower() in cur:
+                keep.append({"track_index": p["track_index"], "name": p["name"],
+                             "current": p["current_devices"],
+                             "reason": "current instrument is already the top match"})
+                continue
+            if a["texture"] == "sparse" and cur:
+                keep.append({"track_index": p["track_index"], "name": p["name"],
+                             "current": p["current_devices"],
+                             "reason": "too few notes (%d) to justify a swap; "
+                                       "top match would be %s"
+                                       % (a["features"].get("count", 0), top["name"])})
+                continue
+            plan.append({"track_index": p["track_index"], "name": p["name"],
+                         "uri": top["uri"], "candidate": top["name"],
+                         "replaces": p["current_devices"],
+                         "conflict": a["conflict"]})
+        return _ok({"tempo": context.get("tempo"), "key_guess": key,
+                    "parts": parts, "plan": plan, "keep": keep,
+                    "skipped": skipped,
+                    "next": ("Review parts[].analysis (role, conflict) and the "
+                             "candidates; plan rows with a conflict are a "
+                             "musical call, not a fact. Edit plan, then "
+                             "apply_instrument_plan(plan, confirm=True).")})
+    except Exception as e:
+        logger.error("recommend_set_instruments error: %s", e)
+        return _err("recommend_set_instruments error: %s" % e)
+
+
+@mcp.tool()
+def apply_instrument_plan(ctx: Context, assignments: list,
+                          confirm: bool = False) -> str:
+    """Load a reviewed instrument plan (hot-swap) and verify each device.
+
+    assignments is a list of {track_index, uri, candidate?} (the plan recommend_set_instruments
+    returns, edited as needed). confirm=False (default) is a dry run that
+    writes nothing. confirm=True loads each uri (HOT-SWAP: the track's current
+    instrument is replaced) and verifies the device landed by re-reading the
+    track. Returns {ok, data:{applied:[{track_index, name, uri, devices_after,
+    verified}], failed:[...], dry_run}}; ok is false when any track failed."""
+    try:
+        if not isinstance(assignments, list) or not assignments:
+            return _err("assignments must be a non-empty list of {track_index, uri}")
+        for a in assignments:
+            if not isinstance(a, dict) or "track_index" not in a or not a.get("uri"):
+                return _err("each assignment needs track_index and uri: %r" % (a,))
+        if not confirm:
+            return _ok({"dry_run": True, "would_load": [
+                {"track_index": int(a["track_index"]), "uri": a["uri"],
+                 "candidate": a.get("candidate")} for a in assignments],
+                "next": "Call again with confirm=True to load them."})
+        conn = get_ableton_connection()
+        applied, failed = [], []
+        for a in assignments:
+            idx = int(a["track_index"])
+            expected = (a.get("candidate") or "").lower()
+            try:
+                before_ti = conn.send_command("get_track_info", {"track_index": idx}) or {}
+                before = [d.get("name") for d in before_ti.get("devices", [])]
+                res = conn.send_command("load_browser_item", {
+                    "track_index": idx, "item_uri": a["uri"],
+                    "track_type": "regular"}) or {}
+                ti = conn.send_command("get_track_info", {"track_index": idx}) or {}
+                devices = [d.get("name") for d in ti.get("devices", [])]
+                landed = not expected or any(
+                    expected in (d or "").lower() or (d or "").lower() in expected
+                    for d in devices)
+                # A hot-swap replaces: the old instrument must be gone and the
+                # chain must not have grown (an appended second instrument
+                # gets no MIDI and the old sound keeps playing).
+                stale = [d for d in before if d in devices
+                         and (d or "").lower() != expected]
+                swapped = not stale and len(devices) <= max(1, len(before))
+                verified = bool(res.get("loaded")) and bool(devices) and landed and swapped
+                entry = {"track_index": idx, "name": ti.get("name"),
+                         "uri": a["uri"], "candidate": a.get("candidate"),
+                         "devices_before": before, "devices_after": devices,
+                         "verified": verified}
+                if not verified:
+                    entry["why"] = ("old device still present: %s" % stale if stale
+                                    else "device chain grew" if len(devices) > max(1, len(before))
+                                    else "expected device not found" if not landed
+                                    else "load reported failure")
+                (applied if verified else failed).append(entry)
+            except Exception as e:
+                failed.append({"track_index": idx, "uri": a["uri"],
+                               "error": str(e)})
+        data = {"dry_run": False, "applied": applied, "failed": failed}
+        if failed:
+            return _err("apply_instrument_plan: %d of %d assignments did not "
+                        "verify" % (len(failed), len(assignments)), data=data)
+        return _ok(data)
+    except Exception as e:
+        logger.error("apply_instrument_plan error: %s", e)
+        return _err("apply_instrument_plan error: %s" % e)
 
 
 # Main execution

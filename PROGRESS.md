@@ -1,5 +1,82 @@
 # ableton-mcp-max — Progress
 
+## Live prompts after a crash: answer_live_prompt (2026-11-02, unreleased)
+Live 12.4.16 on Windows can die inside `UIAutomationCore.dll` (0xc0000409) while `render_audio`
+drives the Export dialog (intermittent: seen twice, 2026-10-31 and 2026-11-02, with runs of
+six renders in a row that were fine; save the set before every render). The relaunch then sits
+on "Live unexpectedly quit ...
+recover your work?" before the Remote Script binds port 9877, so nothing that finds Live through
+the port could see it. **1 new `@mcp.tool()`, 194 -> 195**: `answer_live_prompt(answer, wait)`
+scans every Live process by image name (`win_ui.live_pids`, Toolhelp32), reads the prompt's
+buttons through UIA and presses one: Invoke first, then a real pointer click on the button
+rectangle (`win_ui.click_point`, SendInput) if the prompt is still up, and reports
+`dismissed:false` with the reason if it survives both. `restart_live` runs the same path on that
+startup prompt (No, i.e. load the set as saved) while waiting for the port and reports whether
+it went away. Also fixed:
+`win_ui.listening_pid` required `dwState == LISTEN` on a row from the LISTENER table; Live's
+listener showed state 6 after clients came and went, so `render_audio` and every other
+port-to-pid lookup reported "No running Ableton Live" with Live up. Membership in the LISTENER
+table is now the test. Known limit: the startup recovery prompt ignored both the Invoke and the
+synthetic click in the one live try (a hand click worked); the tool says so instead of claiming
+success.
+
+Two more render-path hazards from the same day. (1) A render left 32 beats of silence inserted
+across the whole arrangement at the render range (every clip split at the range start, the rest
+of the song shifted 8 bars, the bounce silent) - the signature of Ctrl+I (Insert Silence) reaching
+the set window while the time selection was the loop. The only global keystrokes in the render
+path were the Save dialog's Ctrl+A + typed name + Return, so `win_ui.file_dialog_save` now types
+the name with WM_CHAR to the edit control and presses Save with BM_CLICK (targeted messages,
+nothing can land elsewhere), keeping SendInput only as a fallback when the box does not read
+back; `activate` tries a plain SetForegroundWindow before its Alt tap. `render_audio` also reads
+the song length after the render and returns an error (carrying the render facts) if it moved.
+(2) After a render, `browser.load_item` loaded onto Live's SELECTED track, not the target: the
+Remote Script's `selected_track` write is ignored while the Arrangement holds a time selection.
+`_load_browser_item` now verifies the selection, retries from the Session view and refuses
+rather than load onto the wrong track; `load_instrument_or_effect` compares the target's devices
+before and after and reports a load that did not land (a same-preset reload is accepted).
+
+Later the same day, with the targeted Save-dialog typing in place, the set was changed twice
+around renders, most likely by a keystroke reaching Live while the export was starting: once
+every track except the one under test ended up soloed (six bounces of "one track" were the full
+mix), and once every track's clip was split at the render range (Ctrl+E) with the song length
+unchanged, so the length check missed it. `render_audio` now takes a fingerprint of every track
+(arrangement clip count, solo, mute) before the render and compares it after; a change DURING the
+render turns the result into an error that lists the changed tracks and still carries the render
+facts. A solo state that was already wrong when the render started cannot show up in a
+before/after compare, so a good result now also reports `data.soloed_tracks` from the
+pre-render fingerprint: a caller bouncing a soloed track should check it is exactly what it
+meant to solo. New Remote Script command `get_arrangement_fingerprint` reads the fingerprint in
+one call; on an older Remote Script the server falls back to `get_arrangement_clips` +
+`get_track_info` per track (two reads per track before and after - slow on a large set until
+Live is restarted with the new Remote Script).
+
+The cause, as far as the evidence goes: a render brings Live's windows to the front, so whatever
+the user is typing in another window at that moment lands in Live (one split came a minute after
+the user typed in a terminal). Waiting for idle input before the render was tried first and was
+not enough: a render that started after a clean 3-second pause still got every other track
+soloed during its 28 seconds, and mouse movement (screen magnifier panning) kept the wait from
+ever ending. On Windows `render_audio` now runs inside a low-level keyboard hook
+(`win_ui.KeyGuard`): while the render drives Live's windows, real key presses whose target is a
+Live window are dropped and counted. Key releases, injected input (the plugin's own keystroke
+fallback) and keys aimed at other windows pass; the mouse is not hooked. The result reports
+`key_guard: {installed, blocked}`; `blocked > 0` means typing reached Live and was stopped.
+
+## MIDI-aware instrument recommendation (2026-10-27, unreleased)
+`recommend_instrument` only parsed a typed intent (six roles) and ranked engines; it never read
+the notes and could not name a preset. **3 new `@mcp.tool()`s**, 191 -> 194 tools:
+`recommend_track_instrument` reads a MIDI clip (session slot, or the arrangement clip as a
+fallback - `get_clip_notes` gained `clip_location`), measures it (pitch range, polyphony, note
+length, density, coverage), classifies the texture (drums / bass / pad / keys / stabs / lead /
+sustained line / arp / sparse), takes the track name as a prior (content wins, conflicts are
+reported, a part under 50 notes defers to its name), and ranks device presets from the catalog by
+browser category (`param_maps/midi_role_map.json`) plus installed plugins (bare load, patch is
+manual). `recommend_set_instruments` runs it over every MIDI track with tempo, a Krumhansl key
+guess, sounds already in use (ranked down) and same-name audio doublings, and returns a plan;
+`apply_instrument_plan` loads it (hot-swap) and verifies by re-reading the track. Pure logic in
+`midi_role_utils.py`. The intent vocab also learned keys / strings / brass / winds / vocal.
+Checked against a Suno 12-part MIDI pack: bass, kit, percussion, comped keys, chordal synth, a
+fast vocal line and a 35-note flute run all land on the right role.
+
 ## Windows support - branch feat/windows-support (2026-10-03, unreleased)
 The plugin now runs against Live 12 on Windows 11. Tool count unchanged (187).
 

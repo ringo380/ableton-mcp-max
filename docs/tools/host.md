@@ -8,7 +8,7 @@ nav_order: 17
 # Host Lifecycle
 {: .no_toc }
 
-Save the set and gracefully quit/relaunch Ableton Live (no crash-recovery prompt) for an automated bounce after a Remote Script change.
+Save the set, gracefully quit/relaunch Ableton Live for an automated bounce after a Remote Script change, and answer the prompts Live opens (including crash recovery).
 
 <details open markdown="block">
   <summary>Tools on this page</summary>
@@ -25,8 +25,12 @@ Save the set and gracefully quit/relaunch Ableton Live (no crash-recovery prompt
 restart_live(save: str = 'discard', relaunch: bool = True, wait_timeout: float = 90.0)
 ```
 
-Gracefully quit and relaunch the running Ableton Live (no crash-recovery
-prompt). Use this for an automated Live bounce after a Remote Script change.
+Gracefully quit and relaunch Live (answers a crash-recovery prompt).
+
+A clean quit leaves no crash-recovery prompt; if one shows anyway (Live crashed earlier),
+the relaunch wait answers it with No (load the set as saved) and reports
+it under data.startup_prompt. Use this for an automated Live bounce after
+a Remote Script change.
 
 save: how to handle UNSAVED changes if Live prompts on quit —
   'discard' (default; lose unsaved edits) or 'save' (overwrite; only works
@@ -41,6 +45,28 @@ Code restart (the MCP server can't restart its own process); a Remote-Script
 change is fully covered by reinstalling the script + this bounce. Discarding
 unsaved work is irreversible — prefer the /ableton:restart command, which
 asks before discarding.
+
+## answer_live_prompt
+
+```python
+answer_live_prompt(answer: str = '', wait: float = 0.0)
+```
+
+Read, and optionally answer, a prompt Live has open (Windows only).
+
+Covers Live-drawn prompts with Yes / No / OK / Cancel buttons on ANY Live
+process, including one that is still starting and has not bound port 9877
+yet - above all the 'Live unexpectedly quit while you were working on the
+Live Set ... Would you like to recover your work?' prompt after a crash
+(No = load the set as last saved; Yes = restore Live's crash state).
+
+answer: button to press ('' = just report what is showing). The press is a
+  UIA Invoke, then a real pointer click on the button if the prompt is still
+  up; if it survives both, data.dismissed is false with the reason.
+wait: seconds to wait for a prompt to appear before giving up (default 0).
+
+Returns JSON {ok, data:{found, pid?, buttons, answered?, method?,
+dismissed?, error?}}. found:false means no prompt is open.
 
 ## save_set
 
