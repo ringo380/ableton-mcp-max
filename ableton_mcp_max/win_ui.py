@@ -541,24 +541,120 @@ _MOUSEEVENTF_MOVE, _MOUSEEVENTF_LEFTDOWN = 0x0001, 0x0002
 _MOUSEEVENTF_LEFTUP, _MOUSEEVENTF_ABSOLUTE = 0x0004, 0x8000
 
 
-class _LASTINPUTINFO(ctypes.Structure):
-    _fields_ = [("cbSize", wintypes.UINT), ("dwTime", wintypes.DWORD)]
+# --- key guard: keep the user's typing out of Live during a render -----------
+# A render brings Live's windows to the front, so whatever the user is typing in
+# another window lands in Live (2026-11-02..04: every clip split at the render
+# range, every track but one soloed, 32 beats of silence inserted). While a
+# render runs, a low-level keyboard hook drops REAL key presses whose target is
+# a Live window and counts them. It never drops: key releases (a modifier can
+# never stick), injected input (the plugin's own SendInput fallback), or keys
+# aimed at any other window. The mouse is not hooked at all.
+
+WH_KEYBOARD_LL = 13
+HC_ACTION = 0
+WM_KEYDOWN, WM_SYSKEYDOWN = 0x0100, 0x0104
+WM_QUIT = 0x0012
+LLKHF_INJECTED = 0x10
 
 
-user32.GetLastInputInfo.argtypes = [ctypes.POINTER(_LASTINPUTINFO)]
-user32.GetLastInputInfo.restype = wintypes.BOOL
-kernel32.GetTickCount.restype = wintypes.DWORD
+class _KBDLLHOOKSTRUCT(ctypes.Structure):
+    _fields_ = [("vkCode", wintypes.DWORD), ("scanCode", wintypes.DWORD),
+                ("flags", wintypes.DWORD), ("time", wintypes.DWORD),
+                ("dwExtraInfo", ctypes.c_size_t)]
 
 
-def input_idle_seconds():
-    """Seconds since the last keyboard or mouse input in this session
-    (GetLastInputInfo), or None if Windows will not say. Both counters are
-    32-bit milliseconds, so the difference is taken modulo 2**32."""
-    li = _LASTINPUTINFO()
-    li.cbSize = ctypes.sizeof(_LASTINPUTINFO)
-    if not user32.GetLastInputInfo(ctypes.byref(li)):
-        return None
-    return ((kernel32.GetTickCount() - li.dwTime) & 0xFFFFFFFF) / 1000.0
+_LowLevelKeyboardProc = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, ctypes.c_int,
+                                           wintypes.WPARAM, wintypes.LPARAM)
+user32.SetWindowsHookExW.argtypes = [ctypes.c_int, _LowLevelKeyboardProc,
+                                     wintypes.HINSTANCE, wintypes.DWORD]
+user32.SetWindowsHookExW.restype = wintypes.HHOOK
+user32.CallNextHookEx.argtypes = [wintypes.HHOOK, ctypes.c_int,
+                                  wintypes.WPARAM, wintypes.LPARAM]
+user32.CallNextHookEx.restype = ctypes.c_ssize_t
+user32.UnhookWindowsHookEx.argtypes = [wintypes.HHOOK]
+user32.GetMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND,
+                               wintypes.UINT, wintypes.UINT]
+user32.PostThreadMessageW.argtypes = [wintypes.DWORD, wintypes.UINT,
+                                      wintypes.WPARAM, wintypes.LPARAM]
+kernel32.GetModuleHandleW.restype = wintypes.HMODULE
+kernel32.GetCurrentThreadId.restype = wintypes.DWORD
+
+
+def keyguard_decision(msg, flags, foreground_pid, live_pids):
+    """True when a key event should be dropped: a real (not injected) key
+    PRESS whose target is a Live process. Pure, so it is unit-tested."""
+    if msg not in (WM_KEYDOWN, WM_SYSKEYDOWN):
+        return False
+    if flags & LLKHF_INJECTED:
+        return False
+    return foreground_pid in live_pids
+
+
+class KeyGuard:
+    """Context manager: while active, real key presses aimed at Live are
+    dropped and counted in .blocked. .installed is False when the hook could
+    not be set (the render then runs unguarded; the caller reports it)."""
+
+    def __init__(self, live_pids):
+        self.live_pids = frozenset(int(p) for p in live_pids if p)
+        self.blocked = 0
+        self.installed = False
+        self._thread = None
+        self._tid = None
+        self._ready = None
+
+    def _foreground_pid(self):
+        h = user32.GetForegroundWindow()
+        if not h:
+            return 0
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(h, ctypes.byref(pid))
+        return pid.value
+
+    def _run(self):
+        import threading  # noqa: F401  (thread is started by __enter__)
+        self._tid = kernel32.GetCurrentThreadId()
+
+        def proc(n_code, w_param, l_param):
+            try:
+                if n_code == HC_ACTION:
+                    kb = ctypes.cast(l_param, ctypes.POINTER(_KBDLLHOOKSTRUCT)).contents
+                    if keyguard_decision(int(w_param), int(kb.flags),
+                                         self._foreground_pid(), self.live_pids):
+                        self.blocked += 1
+                        return 1
+            except Exception:
+                pass
+            return user32.CallNextHookEx(None, n_code, w_param, l_param)
+
+        self._proc = _LowLevelKeyboardProc(proc)   # keep a reference alive
+        hook = user32.SetWindowsHookExW(WH_KEYBOARD_LL, self._proc,
+                                        kernel32.GetModuleHandleW(None), 0)
+        self.installed = bool(hook)
+        self._ready.set()
+        if not hook:
+            return
+        msg = wintypes.MSG()
+        try:
+            while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                pass
+        finally:
+            user32.UnhookWindowsHookEx(hook)
+
+    def __enter__(self):
+        import threading
+        self._ready = threading.Event()
+        self._thread = threading.Thread(target=self._run, name="live-keyguard",
+                                        daemon=True)
+        self._thread.start()
+        self._ready.wait(2.0)
+        return self
+
+    def __exit__(self, *exc):
+        if self._thread and self._tid:
+            user32.PostThreadMessageW(self._tid, WM_QUIT, 0, 0)
+            self._thread.join(2.0)
+        return False
 
 
 def click_point(x, y):

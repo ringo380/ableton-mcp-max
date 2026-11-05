@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 
 import pytest
 
@@ -713,55 +714,60 @@ def test_fingerprint_falls_back_to_per_track_reads_on_an_old_remote_script():
     assert server._fingerprint_changes(fp, fp) == {}
 
 
-def test_wait_for_user_idle_waits_until_input_is_quiet():
-    """2026-11-04: a render took focus while the user was typing elsewhere and
-    the keystrokes split every clip. Rendering waits for idle input first."""
-    clock = {"t": 0.0}
-    idles = iter([0.2, 1.0, 2.5, 3.4])
-    slept = []
 
-    def sleep(s):
-        slept.append(s)
-        clock["t"] += 1.0
-    out = server._wait_for_user_idle(min_idle=3.0, max_wait=60.0,
-                                     idle_fn=lambda: next(idles), sleep=sleep,
-                                     clock=lambda: clock["t"])
-    assert out == {"waited_s": 3.0, "timed_out": False}
-    assert len(slept) == 3
+# --- key guard: the user's typing must not reach Live during a render ---------
 
+def _fake_guard(blocked, installed=True):
+    class G:
+        def __init__(self):
+            self.blocked, self.installed, self.entered = blocked, installed, False
 
-def test_wait_for_user_idle_gives_up_and_reports():
-    clock = {"t": 0.0}
+        def __enter__(self):
+            self.entered = True
+            return self
 
-    def sleep(s):
-        clock["t"] += 5.0
-    out = server._wait_for_user_idle(min_idle=3.0, max_wait=10.0,
-                                     idle_fn=lambda: 0.1, sleep=sleep,
-                                     clock=lambda: clock["t"])
-    assert out == {"waited_s": 10.0, "timed_out": True}
+        def __exit__(self, *exc):
+            return False
+    return G()
 
 
-def test_wait_for_user_idle_is_skipped_off_windows(monkeypatch):
-    monkeypatch.setattr(server, "IS_WINDOWS", False)
-    assert server._wait_for_user_idle() is None
-
-
-def test_render_reports_the_idle_wait(wired, monkeypatch):
+def test_render_runs_inside_the_key_guard_and_reports_it(wired, monkeypatch):
+    """2026-11-02..04: keystrokes typed elsewhere while a render had Live in
+    front split every clip and soloed every track but one."""
     wired.sliders.update(_range_sliders(16.0, 32.0))
-    monkeypatch.setattr(server, "_wait_for_user_idle",
-                        lambda: {"waited_s": 2.5, "timed_out": False})
+    g = _fake_guard(2)
+    monkeypatch.setattr(server, "_render_key_guard", lambda pid: g)
     out = json.loads(server.render_audio(None, "track", start_bar=5, end_bar=13))
+    assert g.entered
     assert out["ok"] is True
-    assert out["data"]["input_idle"] == {"waited_s": 2.5, "timed_out": False}
+    assert out["data"]["key_guard"] == {"installed": True, "blocked": 2}
 
 
-def test_render_reports_the_idle_wait_on_an_error_too(wired, monkeypatch):
+def test_key_guard_is_reported_on_an_error_too(wired, monkeypatch):
     wired.sliders.update(_range_sliders(16.0, 32.0))
-    monkeypatch.setattr(server, "_wait_for_user_idle",
-                        lambda: {"waited_s": 60.0, "timed_out": True})
+    monkeypatch.setattr(server, "_render_key_guard", lambda pid: _fake_guard(0, False))
     before = {"0": {"clips": 1, "solo": False, "mute": False}}
     after = {"0": {"clips": 2, "solo": False, "mute": False}}
     _fingerprinted(wired.conn, before, after)
     out = json.loads(server.render_audio(None, "track", start_bar=5, end_bar=13))
     assert out["ok"] is False
-    assert out["input_idle"] == {"waited_s": 60.0, "timed_out": True}
+    assert out["key_guard"] == {"installed": False, "blocked": 0}
+
+
+def test_no_key_guard_off_windows(wired, monkeypatch):
+    monkeypatch.setattr(server, "IS_WINDOWS", False)
+    wired.sliders.update(_range_sliders(16.0, 32.0))
+    out = json.loads(server.render_audio(None, "track", start_bar=5, end_bar=13))
+    assert out["ok"] is True
+    assert "key_guard" not in out["data"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="win_ui is Windows-only")
+def test_keyguard_decision_drops_only_real_presses_aimed_at_live():
+    from ableton_mcp_max import win_ui as w
+    live = {111}
+    assert w.keyguard_decision(w.WM_KEYDOWN, 0, 111, live) is True
+    assert w.keyguard_decision(w.WM_SYSKEYDOWN, 0, 111, live) is True     # Alt+key
+    assert w.keyguard_decision(0x0101, 0, 111, live) is False             # key up passes
+    assert w.keyguard_decision(w.WM_KEYDOWN, w.LLKHF_INJECTED, 111, live) is False
+    assert w.keyguard_decision(w.WM_KEYDOWN, 0, 222, live) is False       # other window

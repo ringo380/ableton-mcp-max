@@ -52,9 +52,14 @@ Live is restarted with the new Remote Script).
 
 The cause, as far as the evidence goes: a render brings Live's windows to the front, so whatever
 the user is typing in another window at that moment lands in Live (one split came a minute after
-the user typed in a terminal). On Windows `render_audio` now waits until the keyboard and mouse
-have been idle for 3 seconds (GetLastInputInfo, at most 60 seconds) before it touches Live's
-windows, and reports the wait as `input_idle` in the result.
+the user typed in a terminal). Waiting for idle input before the render was tried first and was
+not enough: a render that started after a clean 3-second pause still got every other track
+soloed during its 28 seconds, and mouse movement (screen magnifier panning) kept the wait from
+ever ending. On Windows `render_audio` now runs inside a low-level keyboard hook
+(`win_ui.KeyGuard`): while the render drives Live's windows, real key presses whose target is a
+Live window are dropped and counted. Key releases, injected input (the plugin's own keystroke
+fallback) and keys aimed at other windows pass; the mouse is not hooked. The result reports
+`key_guard: {installed, blocked}`; `blocked > 0` means typing reached Live and was stopped.
 
 ## MIDI-aware instrument recommendation (2026-10-27, unreleased)
 `recommend_instrument` only parsed a typed intent (six roles) and ranked engines; it never read
