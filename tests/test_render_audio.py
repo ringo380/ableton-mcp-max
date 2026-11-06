@@ -721,6 +721,10 @@ def _fake_guard(blocked, installed=True):
     class G:
         def __init__(self):
             self.blocked, self.installed, self.entered = blocked, installed, False
+            self.passed, self.phases = 0, []
+
+        def set_phase(self, phase):
+            self.phases.append(phase)
 
         def __enter__(self):
             self.entered = True
@@ -740,7 +744,9 @@ def test_render_runs_inside_the_key_guard_and_reports_it(wired, monkeypatch):
     out = json.loads(server.render_audio(None, "track", start_bar=5, end_bar=13))
     assert g.entered
     assert out["ok"] is True
-    assert out["data"]["key_guard"] == {"installed": True, "blocked": 2}
+    assert out["data"]["key_guard"] == {"installed": True, "blocked": 2, "passed": 0}
+    # the guard relaxes only once the Save dialog is done and the export runs
+    assert g.phases == ["render"]
 
 
 def test_key_guard_is_reported_on_an_error_too(wired, monkeypatch):
@@ -751,7 +757,7 @@ def test_key_guard_is_reported_on_an_error_too(wired, monkeypatch):
     _fingerprinted(wired.conn, before, after)
     out = json.loads(server.render_audio(None, "track", start_bar=5, end_bar=13))
     assert out["ok"] is False
-    assert out["key_guard"] == {"installed": False, "blocked": 0}
+    assert out["key_guard"] == {"installed": False, "blocked": 0, "passed": 0}
 
 
 def test_no_key_guard_off_windows(wired, monkeypatch):
@@ -771,3 +777,31 @@ def test_keyguard_decision_drops_only_real_presses_aimed_at_live():
     assert w.keyguard_decision(0x0101, 0, 111, live) is False             # key up passes
     assert w.keyguard_decision(w.WM_KEYDOWN, w.LLKHF_INJECTED, 111, live) is False
     assert w.keyguard_decision(w.WM_KEYDOWN, 0, 222, live) is False       # other window
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="win_ui is Windows-only")
+def test_keyguard_render_phase_drops_only_keys_that_act_on_live():
+    from ableton_mcp_max import win_ui as w
+    live, D = {111}, w.WM_KEYDOWN
+
+    def r(vk, msg=D, mod=False, phase="render"):
+        return w.keyguard_decision(msg, 0, 111, live, vk=vk, phase=phase,
+                                   modifier_down=mod)
+    # dialog phase: every press aimed at Live is dropped (it would land in
+    # the file name), letters included
+    assert r(0x41, phase="dialog") is True
+    # render phase: plain letters and digits pass ...
+    assert r(0x41) is False          # A
+    assert r(0x31) is False          # 1
+    # ... keys that cancel, confirm, move focus, delete or open menus do not
+    for vk in (0x1B, 0x0D, 0x20, 0x09, 0x08, 0x2E, 0x25, 0x28, 0x70, 0x79, 0x12, 0x5D):
+        assert r(vk) is True, hex(vk)
+    # Live's set-changing single keys: S solos, 0 deactivates
+    assert r(0x53) is True and r(0x30) is True and r(0x60) is True
+    # any key with Ctrl/Alt/Win held (Ctrl+E splits, Ctrl+I inserts silence)
+    assert r(0x45, mod=True) is True
+    assert r(0x49, msg=w.WM_SYSKEYDOWN) is True
+    # still never: injected input, key ups, other windows
+    assert w.keyguard_decision(D, w.LLKHF_INJECTED, 111, live, vk=0x1B, phase="render") is False
+    assert w.keyguard_decision(0x0101, 0, 111, live, vk=0x1B, phase="render") is False
+    assert w.keyguard_decision(D, 0, 222, live, vk=0x1B, phase="render") is False

@@ -548,7 +548,9 @@ _MOUSEEVENTF_LEFTUP, _MOUSEEVENTF_ABSOLUTE = 0x0004, 0x8000
 # render runs, a low-level keyboard hook drops REAL key presses whose target is
 # a Live window and counts them. It never drops: key releases (a modifier can
 # never stick), injected input (the plugin's own SendInput fallback), or keys
-# aimed at any other window. The mouse is not hooked at all.
+# aimed at any other window. The mouse is not hooked at all. Once the Save
+# dialog has closed and the export is running (phase "render"), only keys that
+# can act on Live are dropped; plain letters and digits pass.
 
 WH_KEYBOARD_LL = 13
 HC_ACTION = 0
@@ -578,16 +580,41 @@ user32.PostThreadMessageW.argtypes = [wintypes.DWORD, wintypes.UINT,
                                       wintypes.WPARAM, wintypes.LPARAM]
 kernel32.GetModuleHandleW.restype = wintypes.HMODULE
 kernel32.GetCurrentThreadId.restype = wintypes.DWORD
+user32.GetAsyncKeyState.argtypes = [ctypes.c_int]
+user32.GetAsyncKeyState.restype = ctypes.c_short
 
 
-def keyguard_decision(msg, flags, foreground_pid, live_pids):
+# Keys that can act on Live without a modifier while the export runs: cancel
+# or confirm a dialog (Esc, Return, Space), move focus or the view (Tab,
+# arrows, Home/End/Page keys), delete (Backspace, Delete, Insert), open the
+# menu bar (Alt, F10) or a context menu (Apps), and the F-keys. Plain letters,
+# digits and punctuation are let through in the "render" phase - except S
+# (solos the selected tracks) and 0 (deactivates the selected clips), Live's
+# single-key commands that change the set.
+RISKY_VKS = frozenset(
+    [0x08, 0x09, 0x0D, 0x12, 0x1B, 0x20, 0x2D, 0x2E, 0x5D, 0xA4, 0xA5,
+     0x53, 0x30, 0x60]                # S, 0, numpad 0
+    + list(range(0x21, 0x29))         # PageUp..Down arrow
+    + list(range(0x70, 0x88)))        # F1..F24
+_VK_MODIFIERS = (0x11, 0x12, 0x5B, 0x5C)  # Ctrl, Alt, left/right Win
+
+
+def keyguard_decision(msg, flags, foreground_pid, live_pids, vk=0,
+                      phase="dialog", modifier_down=False):
     """True when a key event should be dropped: a real (not injected) key
-    PRESS whose target is a Live process. Pure, so it is unit-tested."""
+    PRESS whose target is a Live process. In the "dialog" phase (export and
+    Save dialogs open: a typed letter lands in the file name) every such press
+    is dropped; in the "render" phase only RISKY_VKS and any key pressed while
+    Ctrl, Alt or Win is held. Pure, so it is unit-tested."""
     if msg not in (WM_KEYDOWN, WM_SYSKEYDOWN):
         return False
     if flags & LLKHF_INJECTED:
         return False
-    return foreground_pid in live_pids
+    if foreground_pid not in live_pids:
+        return False
+    if phase != "render":
+        return True
+    return vk in RISKY_VKS or modifier_down or msg == WM_SYSKEYDOWN
 
 
 class KeyGuard:
@@ -598,6 +625,8 @@ class KeyGuard:
     def __init__(self, live_pids):
         self.live_pids = frozenset(int(p) for p in live_pids if p)
         self.blocked = 0
+        self.passed = 0      # presses aimed at Live let through ("render" phase)
+        self.phase = "dialog"
         self.installed = False
         self._thread = None
         self._tid = None
@@ -619,10 +648,16 @@ class KeyGuard:
             try:
                 if n_code == HC_ACTION:
                     kb = ctypes.cast(l_param, ctypes.POINTER(_KBDLLHOOKSTRUCT)).contents
-                    if keyguard_decision(int(w_param), int(kb.flags),
-                                         self._foreground_pid(), self.live_pids):
+                    msg, fg = int(w_param), self._foreground_pid()
+                    mod = any(user32.GetAsyncKeyState(v) & 0x8000 for v in _VK_MODIFIERS)
+                    if keyguard_decision(msg, int(kb.flags), fg, self.live_pids,
+                                         vk=int(kb.vkCode), phase=self.phase,
+                                         modifier_down=mod):
                         self.blocked += 1
                         return 1
+                    if (msg in (WM_KEYDOWN, WM_SYSKEYDOWN) and fg in self.live_pids
+                            and not kb.flags & LLKHF_INJECTED):
+                        self.passed += 1
             except Exception:
                 pass
             return user32.CallNextHookEx(None, n_code, w_param, l_param)
@@ -640,6 +675,11 @@ class KeyGuard:
                 pass
         finally:
             user32.UnhookWindowsHookEx(hook)
+
+    def set_phase(self, phase):
+        """"dialog" (default: drop every press aimed at Live) or "render"
+        (the export is running: drop only keys that can act on Live)."""
+        self.phase = phase
 
     def __enter__(self):
         import threading
